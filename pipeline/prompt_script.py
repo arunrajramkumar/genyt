@@ -1,5 +1,5 @@
-"""Turns a single free-form user prompt into a structured video script via the
-local Ollama model. Generic — works for any topic (stock analysis, history,
+"""Turns a single free-form user prompt into a structured video script via a
+hosted LLM (Groq). Generic — works for any topic (stock analysis, history,
 science, etc.), not just finance.
 
 If the prompt contains specific facts/figures (e.g. revenue numbers), the model
@@ -9,9 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-import requests
-
-from . import config, segmented_script
+from . import llm, segmented_script
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -91,28 +89,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
 
     last_error = None
     for attempt in range(3):
-        try:
-            resp = requests.post(
-                f"{config.OLLAMA_HOST}/api/chat",
-                json={
-                    "model": config.OLLAMA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "format": "json",
-                    "stream": False,
-                    "options": {"num_predict": 4096},
-                },
-                timeout=300,
-            )
-        except requests.ConnectionError as e:
-            raise RuntimeError(
-                f"Could not reach Ollama at {config.OLLAMA_HOST}. "
-                f"Start it with `ollama serve` and make sure `{config.OLLAMA_MODEL}` is pulled."
-            ) from e
-        resp.raise_for_status()
-        raw = resp.json()["message"]["content"]
+        raw = llm.chat_json(SYSTEM_PROMPT, user_prompt, max_tokens=4096, timeout=120)
         try:
             script = _extract_json(raw)
             for key in ("title", "description", "tags", "scenes"):
@@ -125,6 +102,5 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
             last_error = e
             continue
     raise RuntimeError(
-        f"Local model returned an invalid script 3 times in a row ({last_error}). "
-        "Try again, or use a larger OLLAMA_MODEL for more reliable JSON output."
+        f"Model returned an invalid script 3 times in a row ({last_error}). Try again."
     )

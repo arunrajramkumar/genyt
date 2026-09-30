@@ -9,8 +9,8 @@ load_dotenv(ROOT / ".env")
 
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 THEMES_FILE = ROOT / "themes.yaml"
 OUTPUT_DIR = ROOT / "output"

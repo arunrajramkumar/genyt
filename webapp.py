@@ -63,7 +63,7 @@ FORM_PAGE = """
   <h1>AI Video Generator</h1>
   <div class="disclaimer">
     Describe any topic, or paste your own analysis/facts (e.g. a stock's revenue,
-    profit, P/E). If you include specific facts/numbers, the local model will only
+    profit, P/E). If you include specific facts/numbers, the model will only
     narrate those — it won't invent figures. For open topics, it'll write freely.
   </div>
   <form method="post" action="/generate">
@@ -147,7 +147,7 @@ def _run_job(job_id: str, form: dict) -> None:
             JOBS[job_id]["log"].append(msg)
 
     try:
-        log("Writing script from your prompt (local model)...")
+        log("Writing script from your prompt...")
         script = prompt_script.write_script_from_prompt(
             prompt=form["prompt"],
             duration_sec=int(form.get("duration", 60)),

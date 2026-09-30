@@ -1,18 +1,18 @@
-# Docker image for running the ytagent pipeline on Hugging Face Spaces (Docker SDK).
-# Bakes the Ollama model into the image at build time so a Space restart doesn't
-# have to re-download ~2GB every time it wakes from sleep.
+# Docker image for running the ytagent pipeline on Render's free web service tier.
+# Script generation is delegated to Groq's hosted API (see pipeline/llm.py) rather
+# than a local LLM, so the image doesn't need to bundle/run Ollama — this keeps it
+# small enough to fit free hosting tiers with limited RAM (Render's free tier is
+# ~512MB).
+#
+# Render sets $PORT at runtime; webapp.py already binds to that if present
+# (falls back to 7860 for local use).
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-noto-core \
-    curl \
     ca-certificates \
-    zstd \
-    procps \
     && rm -rf /var/lib/apt/lists/*
-
-RUN curl -fsSL https://ollama.com/install.sh | sh
 
 WORKDIR /app
 
@@ -21,16 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ARG OLLAMA_MODEL=llama3.2
-RUN (ollama serve &) && \
-    sleep 5 && \
-    ollama pull ${OLLAMA_MODEL} && \
-    pkill ollama && \
-    sleep 1
-
-RUN chmod +x start.sh
-
-ENV OLLAMA_MODEL=${OLLAMA_MODEL}
 EXPOSE 7860
 
-CMD ["./start.sh"]
+CMD ["python3", "webapp.py"]

@@ -3,7 +3,7 @@
 Give it a theme, it produces a finished, ready-to-upload video:
 
 ```
-theme  -->  local Ollama LLM writes script  -->  Piper narrates each scene
+theme  -->  Groq-hosted LLM writes script  -->  Microsoft Edge TTS narrates each scene
        -->  Pexels fetches matching stock footage/photos
        -->  ffmpeg assembles everything into one MP4
 ```
@@ -24,20 +24,9 @@ pip3 install -r requirements.txt
 
 Edit `.env` and fill in:
 - `PEXELS_API_KEY` — free, from https://www.pexels.com/api/
+- `GROQ_API_KEY` — free, from https://console.groq.com/keys (used to write scripts)
 
-Ollama and the `llama3.2` model are already installed on this machine (in
-`~/.local/bin`, since Homebrew's `ollama` formula fails to build from source
-here — see Notes below). Before running the pipeline, make sure the Ollama
-server is running:
-
-```bash
-ollama serve &     # starts the local model server; leave it running
-```
-
-If it's not already running, `run.py` will fail with a clear connection error
-telling you to start it.
-
-The Piper voice model and ffmpeg are already installed for this machine.
+ffmpeg is already installed for this machine.
 
 ## Usage
 
@@ -62,28 +51,15 @@ up new themes you add.
 
 ## Notes / limitations
 
-- **Ollama is installed manually, not via Homebrew.** `brew install ollama` tries
-  to compile from source on this machine (its Homebrew lives at a non-standard
-  prefix, so no precompiled bottles are available) and that build is flaky. Instead,
-  the official precompiled app was downloaded from ollama.com and its CLI binary
-  plus runtime libraries were extracted into `~/.local/bin`. If you ever need to
-  reinstall/upgrade, redownload `https://ollama.com/download/Ollama-darwin.zip`,
-  unzip it, and copy everything from `Ollama.app/Contents/Resources/` into
-  `~/.local/bin/` again.
-- **`ollama serve` must be running** for script generation to work. It's not set
-  up as an auto-starting service — start it manually (`ollama serve &`) each
-  session, or set up a `launchd` agent if you want it always running.
 - **Captions aren't burned into the video.** This machine's ffmpeg was built from
   source (non-standard Homebrew prefix) without `libass`, so the `subtitles` filter
   isn't available. The `.srt` file is generated separately — upload it in YouTube
   Studio under Subtitles for the same effect, with the benefit that viewers can
   toggle it off.
-- **Script quality is local-LLM quality.** `llama3.2` (3B) is fast but less
-  capable than a hosted frontier model — expect occasionally repetitive or
-  generic scripts. Swap models via `OLLAMA_MODEL` in `.env` (e.g. a larger
-  `llama3.1:8b` or `qwen2.5:14b` if your machine can run it) for better output
-  at the cost of slower generation.
-- **Stock visuals** come from Pexels based on the local model's `visual_query` per
+- **Script quality** depends on the Groq model in use. Swap models via
+  `GROQ_MODEL` in `.env` — see https://console.groq.com/docs/models for the
+  current free-tier catalog.
+- **Stock visuals** come from Pexels based on the model's `visual_query` per
   scene. Quality depends on how well the query matches available stock footage —
   review output before publishing.
 - No upload automation is included by design (per your choice) — you stay in

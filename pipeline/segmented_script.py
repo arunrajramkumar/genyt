@@ -12,9 +12,7 @@ the section the user asked for.
 import json
 import re
 
-import requests
-
-from . import config
+from . import llm
 
 HEADER_RE = re.compile(
     r"(\d+)\s*[-–—]\s*(\d+)\s*sec(?:ond)?s?\s*[-–—]\s*(.+)",
@@ -172,28 +170,7 @@ def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
 
     last_error = None
     for attempt in range(3):
-        try:
-            resp = requests.post(
-                f"{config.OLLAMA_HOST}/api/chat",
-                json={
-                    "model": config.OLLAMA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "format": "json",
-                    "stream": False,
-                    "options": {"num_predict": 512},
-                },
-                timeout=120,
-            )
-        except requests.ConnectionError as e:
-            raise RuntimeError(
-                f"Could not reach Ollama at {config.OLLAMA_HOST}. "
-                f"Start it with `ollama serve` and make sure `{config.OLLAMA_MODEL}` is pulled."
-            ) from e
-        resp.raise_for_status()
-        raw = resp.json()["message"]["content"]
+        raw = llm.chat_json(system_prompt, user_prompt, max_tokens=512, timeout=60)
         try:
             scene = _extract_json(raw)
             if not (scene.get("narration") or "").strip():
@@ -205,7 +182,7 @@ def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
             continue
     if scene is None:
         raise RuntimeError(
-            f"Local model failed to write the '{label}' scene 3 times in a row ({last_error})."
+            f"Model failed to write the '{label}' scene 3 times in a row ({last_error})."
         )
 
     if verbatim:

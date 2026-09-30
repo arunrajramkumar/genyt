@@ -1,10 +1,8 @@
-"""Uses a local Ollama model to turn a theme into a structured video script."""
+"""Uses a hosted Groq model to turn a theme into a structured video script."""
 import json
 import re
 
-import requests
-
-from . import config
+from . import llm
 
 SYSTEM_PROMPT = """You write scripts for short-form educational/entertainment YouTube videos.
 Output ONLY valid JSON (no markdown fences, no commentary) matching this schema:
@@ -55,30 +53,7 @@ def write_script(theme: str, style: str = "", duration_sec: int = 180) -> dict:
 
     last_error = None
     for attempt in range(3):
-        try:
-            resp = requests.post(
-                f"{config.OLLAMA_HOST}/api/chat",
-                json={
-                    "model": config.OLLAMA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "format": "json",
-                    "stream": False,
-                    "options": {"num_predict": 4096},
-                },
-                timeout=300,
-            )
-        except requests.ConnectionError as e:
-            raise RuntimeError(
-                f"Could not reach Ollama at {config.OLLAMA_HOST}. "
-                "Is it running? Start it with `ollama serve` "
-                f"(or the Ollama app), and make sure `{config.OLLAMA_MODEL}` is pulled: "
-                f"`ollama pull {config.OLLAMA_MODEL}`."
-            ) from e
-        resp.raise_for_status()
-        raw = resp.json()["message"]["content"]
+        raw = llm.chat_json(SYSTEM_PROMPT, user_prompt, max_tokens=4096, timeout=120)
         try:
             script = _extract_json(raw)
             for key in ("title", "description", "tags", "scenes"):
@@ -91,6 +66,5 @@ def write_script(theme: str, style: str = "", duration_sec: int = 180) -> dict:
             last_error = e
             continue
     raise RuntimeError(
-        f"Local model returned an invalid script 3 times in a row ({last_error}). "
-        "Try again, or use a larger OLLAMA_MODEL for more reliable JSON output."
+        f"Model returned an invalid script 3 times in a row ({last_error}). Try again."
     )

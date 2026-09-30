@@ -1,0 +1,20 @@
+# Themes to generate videos for.
+# Each run of `python3 run.py` picks the first theme not yet marked done
+# and produces a full video for it, then marks it done.
+#
+# Fields:
+#   theme:        the topic/prompt for the video (required)
+#   style:        tone/format guidance for the script writer (optional)
+#   duration_sec: target spoken length in seconds (optional, default 180)
+#   done:         set to true automatically once a video has been produced
+
+themes:
+  - theme: "5 surprising facts about the deep ocean"
+    style: "curious, upbeat, family-friendly narration"
+    duration_sec: 180
+    done: false
+
+  - theme: "How compound interest quietly makes people rich"
+    style: "clear, practical, personal-finance explainer"
+    duration_sec: 240
+    done: false

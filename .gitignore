@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+cache/
+output/
+.DS_Store
+corp-ca.pem
+Dockerfile.local
+~/

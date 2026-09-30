@@ -1,0 +1,134 @@
+"""Assembles per-scene visuals + narration into a single finished MP4 using ffmpeg."""
+import shutil
+import subprocess
+from pathlib import Path
+
+from . import config, textcard
+
+FFMPEG_BIN = shutil.which("ffmpeg")
+FFPROBE_BIN = shutil.which("ffprobe")
+
+
+def _run(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True, capture_output=True)
+
+
+def _probe_duration(path: Path) -> float:
+    result = subprocess.run(
+        [FFPROBE_BIN, "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+        check=True, capture_output=True, text=True,
+    )
+    return float(result.stdout.strip())
+
+
+def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: Path, width: int, height: int) -> None:
+    """Render one scene's visual (image or video) to exactly `duration` seconds,
+    scaled/cropped to the target resolution."""
+    w, h = width, height
+    scale_crop = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+
+    if kind == "image":
+        # Slow pan/zoom (Ken Burns) over a still image.
+        zoom_frames = int(duration * config.VIDEO_FPS)
+        vf = (
+            f"{scale_crop},"
+            f"zoompan=z='min(zoom+0.0006,1.15)':d={zoom_frames}:"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={config.VIDEO_FPS}"
+        )
+        cmd = [
+            FFMPEG_BIN, "-y", "-loop", "1", "-i", str(visual_path),
+            "-t", str(duration), "-vf", vf,
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+        ]
+    else:
+        # Pexels source clips vary in native frame rate (25/30/59.94fps). The
+        # scenes are concatenated later with stream copy (-c copy), which
+        # requires identical codec parameters across segments — mismatched
+        # frame rates there corrupt the container's duration metadata and
+        # desync audio from video. Force a consistent fps here so every scene
+        # clip is uniform before concatenation.
+        source_duration = _probe_duration(visual_path)
+        if source_duration >= duration:
+            cmd = [
+                FFMPEG_BIN, "-y", "-i", str(visual_path),
+                "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
+                "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+            ]
+        else:
+            loops = int(duration // source_duration) + 1
+            cmd = [
+                FFMPEG_BIN, "-y", "-stream_loop", str(loops), "-i", str(visual_path),
+                "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
+                "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+            ]
+    _run(cmd)
+
+
+def _overlay_text(clip_path: Path, text: str, width: int, height: int, out_path: Path, work_dir: Path) -> None:
+    """Burns a pre-rendered text-card PNG onto `clip_path` via the plain
+    `overlay` filter (works without libass/freetype support)."""
+    card_path = work_dir / f"{out_path.stem}_card.png"
+    textcard.render_text_card(text, width, height, card_path)
+    _run([
+        FFMPEG_BIN, "-y", "-i", str(clip_path), "-i", str(card_path),
+        "-filter_complex", "[0:v][1:v]overlay=0:0",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+    ])
+
+
+def assemble_video(
+    scenes: list[dict],
+    narration_paths: list[Path],
+    visual_paths: list[tuple[Path, str]],
+    out_path: Path,
+    work_dir: Path,
+    width: int = None,
+    height: int = None,
+) -> Path:
+    """scenes: script scenes; narration_paths/visual_paths align by index.
+
+    Captions are produced separately as an .srt file (see pipeline.captions) and
+    uploaded to YouTube as closed captions rather than burned in, since this
+    ffmpeg build has no libass/subtitle filter support.
+    """
+    if not FFMPEG_BIN or not FFPROBE_BIN:
+        raise RuntimeError("ffmpeg/ffprobe not found on PATH. Install ffmpeg first.")
+
+    width = width or config.VIDEO_WIDTH
+    height = height or config.VIDEO_HEIGHT
+
+    work_dir.mkdir(parents=True, exist_ok=True)
+    clip_paths = []
+    for i, (scene, narration_path, (visual_path, kind)) in enumerate(
+        zip(scenes, narration_paths, visual_paths)
+    ):
+        duration = _probe_duration(narration_path)
+        clip_path = work_dir / f"scene_{i:02d}.mp4"
+        _build_scene_clip(visual_path, kind, duration, clip_path, width, height)
+
+        on_screen_text = (scene.get("on_screen_text") or "").strip()
+        if on_screen_text:
+            text_clip_path = work_dir / f"scene_{i:02d}_text.mp4"
+            _overlay_text(clip_path, on_screen_text, width, height, text_clip_path, work_dir)
+            clip_path = text_clip_path
+
+        # Mux this scene's narration onto its visual clip.
+        muxed_path = work_dir / f"scene_{i:02d}_muxed.mp4"
+        _run([
+            FFMPEG_BIN, "-y", "-i", str(clip_path), "-i", str(narration_path),
+            "-c:v", "copy", "-c:a", "aac", "-shortest", str(muxed_path),
+        ])
+        clip_paths.append(muxed_path)
+
+    concat_list = work_dir / "concat.txt"
+    concat_list.write_text(
+        "\n".join(f"file '{p.resolve()}'" for p in clip_paths), encoding="utf-8"
+    )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    _run([
+        FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
+        "-c", "copy", str(out_path),
+    ])
+    return out_path

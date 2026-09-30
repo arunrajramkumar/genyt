@@ -21,14 +21,15 @@ CACHE_DIR = ROOT / "cache"
 # run `edge-tts --list-voices` for the full catalog.
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-IN-PrabhatNeural")
 
-# Video output settings
-VIDEO_WIDTH = 1920
-VIDEO_HEIGHT = 1080
-VIDEO_FPS = 30
+# Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays
+# under the ~512MB RAM ceiling of the free hosting tier this runs on.
+VIDEO_WIDTH = 1280
+VIDEO_HEIGHT = 720
+VIDEO_FPS = 24
 
 # Orientation presets
-LANDSCAPE = {"width": 1920, "height": 1080, "orientation": "landscape"}
-SHORTS = {"width": 1080, "height": 1920, "orientation": "portrait"}
+LANDSCAPE = {"width": 1280, "height": 720, "orientation": "landscape"}
+SHORTS = {"width": 720, "height": 1280, "orientation": "portrait"}
 
 for d in (OUTPUT_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)

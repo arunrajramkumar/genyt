@@ -39,7 +39,8 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
         cmd = [
             FFMPEG_BIN, "-y", "-loop", "1", "-i", str(visual_path),
             "-t", str(duration), "-vf", vf,
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+            "-pix_fmt", "yuv420p", str(out_path),
         ]
     else:
         # Pexels source clips vary in native frame rate (25/30/59.94fps). The
@@ -53,14 +54,16 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
             cmd = [
                 FFMPEG_BIN, "-y", "-i", str(visual_path),
                 "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
-                "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+                "-pix_fmt", "yuv420p", str(out_path),
             ]
         else:
             loops = int(duration // source_duration) + 1
             cmd = [
                 FFMPEG_BIN, "-y", "-stream_loop", str(loops), "-i", str(visual_path),
                 "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
-                "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+                "-pix_fmt", "yuv420p", str(out_path),
             ]
     _run(cmd)
 
@@ -73,7 +76,8 @@ def _overlay_text(clip_path: Path, text: str, width: int, height: int, out_path:
     _run([
         FFMPEG_BIN, "-y", "-i", str(clip_path), "-i", str(card_path),
         "-filter_complex", "[0:v][1:v]overlay=0:0",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out_path),
+        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+        "-pix_fmt", "yuv420p", str(out_path),
     ])
 
 

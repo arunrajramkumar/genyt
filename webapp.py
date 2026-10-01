@@ -24,6 +24,8 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD")
 
 @app.before_request
 def _check_auth():
+    if request.path == "/healthz":
+        return None
     if not APP_PASSWORD:
         return None
     auth = request.authorization
@@ -33,6 +35,13 @@ def _check_auth():
             {"WWW-Authenticate": 'Basic realm="Video Generator"'},
         )
     return None
+
+
+@app.route("/healthz")
+def healthz():
+    # Unauthenticated on purpose: an external uptime pinger hits this to keep
+    # the free-tier instance warm so it doesn't spin down mid-video-generation.
+    return "ok"
 
 # In-memory job store — fine for a single-user local tool.
 JOBS = {}

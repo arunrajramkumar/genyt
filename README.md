@@ -49,6 +49,32 @@ up new themes you add.
 0 9 * * * cd /Users/aramkumar/ytagent && /usr/bin/python3 run.py >> cron.log 2>&1
 ```
 
+### Generating from your phone via Telegram
+
+Instead of the web UI, you can message a Telegram bot with a prompt and get the
+finished video sent straight back to the chat:
+
+1. In Telegram, message **@BotFather** → `/newbot` → follow the prompts → copy
+   the bot token it gives you.
+2. Message your new bot once (anything), then visit
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser to find your
+   numeric `chat.id` — this is your Telegram user ID.
+3. Set these environment variables on your deployment (e.g. Render's
+   dashboard → Environment):
+   - `TELEGRAM_BOT_TOKEN` — from step 1.
+   - `TELEGRAM_WEBHOOK_SECRET` — any random string you make up.
+   - `TELEGRAM_ALLOWED_CHAT_IDS` — your chat ID from step 2 (comma-separate for
+     more than one person). Leave unset to allow anyone who finds the bot —
+     not recommended.
+4. After deploying, register the webhook once (replace placeholders):
+   ```bash
+   curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+     -d "url=https://<your-app>.onrender.com/telegram-webhook" \
+     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+   ```
+5. Message your bot a prompt (e.g. "5 facts about octopuses") — it replies with
+   the video, thumbnail, captions, and metadata once generation finishes.
+
 ## Notes / limitations
 
 - **Captions aren't burned into the video.** This machine's ffmpeg was built from

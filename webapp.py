@@ -11,7 +11,7 @@ import uuid
 
 from flask import Flask, request, redirect, url_for, jsonify, send_file, abort, Response
 
-from pipeline import config, prompt_script, producer
+from pipeline import config, prompt_script, producer, telegram_bot
 
 app = Flask(__name__)
 
@@ -24,7 +24,7 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD")
 
 @app.before_request
 def _check_auth():
-    if request.path == "/healthz":
+    if request.path in ("/healthz", "/telegram-webhook"):
         return None
     if not APP_PASSWORD:
         return None
@@ -242,6 +242,21 @@ def job_thumbnail(job_id):
     if not job or job["status"] != "done":
         abort(404)
     return send_file(job["result"]["thumbnail"], mimetype="image/png")
+
+
+@app.route("/telegram-webhook", methods=["POST"])
+def telegram_webhook():
+    # Unauthenticated by design (Telegram can't send our Basic Auth creds) —
+    # a per-deployment secret header, set via Telegram's setWebhook secret_token,
+    # stands in for auth instead. See README for setup.
+    if not telegram_bot.BOT_TOKEN:
+        abort(404)
+    if telegram_bot.WEBHOOK_SECRET and (
+        request.headers.get("X-Telegram-Bot-Api-Secret-Token") != telegram_bot.WEBHOOK_SECRET
+    ):
+        abort(403)
+    telegram_bot.handle_update(request.get_json(silent=True) or {})
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

@@ -29,6 +29,11 @@ def chat_json(system_prompt: str, user_prompt: str, max_tokens: int, timeout: in
                 ],
                 "response_format": {"type": "json_object"},
                 "max_tokens": max_tokens,
+                # openai/gpt-oss-120b is a reasoning model: without this it can burn
+                # the whole max_tokens budget on hidden chain-of-thought and return
+                # a 400 "max completion tokens reached before generating a valid
+                # document" instead of the actual JSON.
+                "reasoning_effort": "low",
             },
             timeout=timeout,
         )

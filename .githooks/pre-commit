@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Mandatory pre-commit gate: the fast test suite must pass before any commit
+# lands, so regressions from new features get caught locally instead of in
+# production. Enable once per clone with:
+#   git config core.hooksPath .githooks
+#
+# This only runs the default (fast, mocked, no network/ffmpeg) suite — see
+# tests/integration/ for the slower real-ffmpeg checks, run manually via
+# `pytest -m integration` when touching pipeline/assemble.py.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+echo "Running test suite before commit..."
+if ! python3 -m pytest; then
+    echo
+    echo "Tests failed — commit blocked. Fix the failures or (rarely, with a"
+    echo "good reason) bypass with 'git commit --no-verify'."
+    exit 1
+fi

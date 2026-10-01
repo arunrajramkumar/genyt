@@ -81,6 +81,34 @@ finished video sent straight back to the chat:
    `/voice es-MX-DaliaNeural`) for finer control — run `edge-tts --list-voices`
    for the full catalog.
 
+## Testing
+
+This repo has a pytest suite covering every module (script generation/grounding
+rules, font rendering, voice selection, Telegram bot commands, ffmpeg command
+construction, the web UI's auth/routing). It's fully mocked — no network calls,
+no real ffmpeg/TTS — so the whole thing runs in a couple of seconds.
+
+**Run the tests before every commit — this is mandatory, not optional**, so a
+new feature can't silently break an existing one (e.g. the font-rendering
+change and the Groq reasoning_effort fix were both caught by re-running this
+suite after unrelated work).
+
+```bash
+pip3 install -r requirements-dev.txt
+./scripts/run_tests.sh                 # fast suite — run this before every commit
+./scripts/run_tests.sh --integration   # + slower real-ffmpeg checks (run when touching pipeline/assemble.py)
+```
+
+To make this automatic, enable the repo's pre-commit hook once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+With the hook enabled, `git commit` refuses to proceed if any test fails.
+When you add a new feature, add or update tests for it in `tests/` in the same
+commit — don't let coverage drift behind the code.
+
 ## Notes / limitations
 
 - **Captions aren't burned into the video.** This machine's ffmpeg was built from

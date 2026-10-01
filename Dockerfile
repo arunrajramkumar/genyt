@@ -36,8 +36,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
+# Pillow is rebuilt from source (below) so it links against libraqm for correct
+# non-Latin glyph shaping — the prebuilt PyPI wheel lacks raqm support.
+#
+# --no-binary=Pillow (NOT :all:) matters: :all: forces pip to also build
+# Pillow's own build-time dependency pybind11 from source, whose build
+# backend (scikit-build-core) then needs to build CMake from source too —
+# a multi-minute compile that OOM-crashes on Render's free-tier build box.
+# Scoping --no-binary to just Pillow lets pybind11/setuptools/wheel install
+# from their normal prebuilt wheels.
+#
+# --no-build-isolation reuses the setuptools/wheel/pybind11 already
+# installed above instead of pip fetching a fresh isolated build env for
+# every deploy.
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir --force-reinstall --no-binary=:all: Pillow
+    && pip install --no-cache-dir --upgrade setuptools wheel pybind11 \
+    && pip install --no-cache-dir --force-reinstall --no-binary=Pillow --no-build-isolation Pillow
 
 COPY . .
 

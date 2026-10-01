@@ -125,21 +125,26 @@ STATUS_PAGE = """
   <div id="result"></div>
   <script>
     async function poll() {
-      const r = await fetch("/job/{{ job_id }}/status");
-      const data = await r.json();
-      document.getElementById("log").textContent = data.log.join("\\n");
-      if (data.status === "done") {
-        document.getElementById("result").innerHTML = `
-          <video controls src="/job/{{ job_id }}/video"></video><br>
-          <a class="button" href="/job/{{ job_id }}/video" download>Download MP4</a>
-          <a class="button" href="/job/{{ job_id }}/srt" download>Download Captions (.srt)</a>
-          <a class="button" href="/job/{{ job_id }}/metadata" download>Download Title/Description/Tags</a>
-        `;
-        return;
-      }
-      if (data.status === "error") {
-        document.getElementById("result").innerHTML = '<p class="error">' + data.error + '</p>';
-        return;
+      try {
+        const r = await fetch("/job/{{ job_id }}/status");
+        const data = await r.json();
+        document.getElementById("log").textContent = data.log.join("\\n");
+        if (data.status === "done") {
+          document.getElementById("result").innerHTML = `
+            <video controls src="/job/{{ job_id }}/video"></video><br>
+            <a class="button" href="/job/{{ job_id }}/video" download>Download MP4</a>
+            <a class="button" href="/job/{{ job_id }}/srt" download>Download Captions (.srt)</a>
+            <a class="button" href="/job/{{ job_id }}/metadata" download>Download Title/Description/Tags</a>
+          `;
+          return;
+        }
+        if (data.status === "error") {
+          document.getElementById("result").innerHTML = '<p class="error">' + data.error + '</p>';
+          return;
+        }
+      } catch (e) {
+        // Transient network blip or a cold-start hiccup on the host — keep
+        // polling instead of silently dying and leaving the page stuck.
       }
       setTimeout(poll, 1500);
     }

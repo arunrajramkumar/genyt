@@ -24,38 +24,51 @@ HELP_TEXT = (
 )
 
 
+def _check(response: requests.Response) -> None:
+    """Telegram returns 200 with {"ok": false, "description": ...} on failure
+    rather than an HTTP error status — raise explicitly so callers don't
+    silently swallow a failed send (e.g. a video over the 50MB bot upload cap)."""
+    try:
+        data = response.json()
+    except ValueError:
+        response.raise_for_status()
+        return
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram API error: {data.get('description', data)}")
+
+
 def _send_message(chat_id, text: str) -> None:
-    requests.post(f"{API_BASE}/sendMessage", data={"chat_id": chat_id, "text": text}, timeout=30)
+    _check(requests.post(f"{API_BASE}/sendMessage", data={"chat_id": chat_id, "text": text}, timeout=30))
 
 
 def _send_video(chat_id, path, caption: str = "") -> None:
     with open(path, "rb") as f:
-        requests.post(
+        _check(requests.post(
             f"{API_BASE}/sendVideo",
             data={"chat_id": chat_id, "caption": caption[:1024]},
             files={"video": f},
             timeout=300,
-        )
+        ))
 
 
 def _send_photo(chat_id, path, caption: str = "") -> None:
     with open(path, "rb") as f:
-        requests.post(
+        _check(requests.post(
             f"{API_BASE}/sendPhoto",
             data={"chat_id": chat_id, "caption": caption[:1024]},
             files={"photo": f},
             timeout=60,
-        )
+        ))
 
 
 def _send_document(chat_id, path, caption: str = "") -> None:
     with open(path, "rb") as f:
-        requests.post(
+        _check(requests.post(
             f"{API_BASE}/sendDocument",
             data={"chat_id": chat_id, "caption": caption[:1024]},
             files={"document": f},
             timeout=120,
-        )
+        ))
 
 
 def _run_job(chat_id, prompt: str) -> None:

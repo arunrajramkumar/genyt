@@ -8,6 +8,12 @@ from . import config, textcard
 FFMPEG_BIN = shutil.which("ffmpeg")
 FFPROBE_BIN = shutil.which("ffprobe")
 
+# Caps the video bitrate so a full video stays comfortably under Telegram's
+# 50MB bot-upload limit even at the longest supported duration (180s) — ffmpeg's
+# default CRF with no bitrate cap produced files ranging 10-48MB unpredictably,
+# occasionally tipping over the limit and silently failing the Telegram send.
+_VIDEO_BITRATE_ARGS = ["-b:v", "1200k", "-maxrate", "1500k", "-bufsize", "3000k"]
+
 
 def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True, capture_output=True)
@@ -39,7 +45,7 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
         cmd = [
             FFMPEG_BIN, "-y", "-loop", "1", "-i", str(visual_path),
             "-t", str(duration), "-vf", vf,
-            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
             "-pix_fmt", "yuv420p", str(out_path),
         ]
     else:
@@ -54,7 +60,7 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
             cmd = [
                 FFMPEG_BIN, "-y", "-i", str(visual_path),
                 "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
-                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
                 "-pix_fmt", "yuv420p", str(out_path),
             ]
         else:
@@ -62,7 +68,7 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
             cmd = [
                 FFMPEG_BIN, "-y", "-stream_loop", str(loops), "-i", str(visual_path),
                 "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
-                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
                 "-pix_fmt", "yuv420p", str(out_path),
             ]
     _run(cmd)
@@ -76,7 +82,7 @@ def _overlay_text(clip_path: Path, text: str, width: int, height: int, out_path:
     _run([
         FFMPEG_BIN, "-y", "-i", str(clip_path), "-i", str(card_path),
         "-filter_complex", "[0:v][1:v]overlay=0:0",
-        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
         "-pix_fmt", "yuv420p", str(out_path),
     ])
 
@@ -91,7 +97,7 @@ def _build_hook_clip(hook_card_path: Path, duration: float, out_path: Path, widt
         "-t", str(duration),
         "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
         "-r", str(config.VIDEO_FPS),
-        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS, "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-ar", "44100", "-ac", "2", "-shortest",
         str(out_path),
     ]

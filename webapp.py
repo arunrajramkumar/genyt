@@ -135,6 +135,7 @@ STATUS_PAGE = """
             <a class="button" href="/job/{{ job_id }}/video" download>Download MP4</a>
             <a class="button" href="/job/{{ job_id }}/srt" download>Download Captions (.srt)</a>
             <a class="button" href="/job/{{ job_id }}/metadata" download>Download Title/Description/Tags</a>
+            <a class="button" href="/job/{{ job_id }}/thumbnail" download>Download Thumbnail (.png)</a>
           `;
           return;
         }
@@ -233,6 +234,14 @@ def job_metadata(job_id):
     if not job or job["status"] != "done":
         abort(404)
     return send_file(job["result"]["metadata"], as_attachment=True)
+
+
+@app.route("/job/<job_id>/thumbnail")
+def job_thumbnail(job_id):
+    job = JOBS.get(job_id)
+    if not job or job["status"] != "done":
+        abort(404)
+    return send_file(job["result"]["thumbnail"], mimetype="image/png")
 
 
 if __name__ == "__main__":

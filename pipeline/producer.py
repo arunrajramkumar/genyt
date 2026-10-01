@@ -6,7 +6,7 @@ import re
 import shutil
 from pathlib import Path
 
-from . import config, tts, visuals, assemble, captions
+from . import config, tts, visuals, assemble, captions, textcard
 
 
 def slugify(title: str) -> str:
@@ -48,6 +48,22 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         for scene in script["scenes"]
     ]
 
+    on_progress("Rendering hook card / thumbnail")
+    stat_text = next(
+        (
+            (scene.get("on_screen_text") or "").strip()
+            for scene in script["scenes"]
+            if any(ch.isdigit() for ch in (scene.get("on_screen_text") or ""))
+        ),
+        "",
+    )
+    hook_bg_path = visual_paths[0][0] if visual_paths and visual_paths[0][1] == "image" else None
+    thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
+    textcard.render_hook_card(
+        script["title"], stat_text, orientation["width"], orientation["height"],
+        thumb_path, background_path=hook_bg_path,
+    )
+
     on_progress("Building captions")
     t = 0.0
     timed_scenes = []
@@ -61,6 +77,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     assemble.assemble_video(
         script["scenes"], narration_paths, visual_paths, out_path, work_dir,
         width=orientation["width"], height=orientation["height"],
+        hook_card_path=thumb_path,
     )
 
     meta_path = config.OUTPUT_DIR / f"{slug}.metadata.txt"
@@ -72,4 +89,4 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     )
 
     on_progress(f"Done: {out_path}")
-    return {"video": out_path, "srt": srt_path, "metadata": meta_path, "slug": slug}
+    return {"video": out_path, "srt": srt_path, "metadata": meta_path, "thumbnail": thumb_path, "slug": slug}

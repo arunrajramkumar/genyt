@@ -81,6 +81,23 @@ def _overlay_text(clip_path: Path, text: str, width: int, height: int, out_path:
     ])
 
 
+def _build_hook_clip(hook_card_path: Path, duration: float, out_path: Path, width: int, height: int) -> None:
+    """Builds a short silent clip from the hook-card thumbnail image, so it can
+    be prepended to the scene clips before the final stream-copy concat."""
+    cmd = [
+        FFMPEG_BIN, "-y",
+        "-loop", "1", "-i", str(hook_card_path),
+        "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+        "-t", str(duration),
+        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
+        "-r", str(config.VIDEO_FPS),
+        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-shortest",
+        str(out_path),
+    ]
+    _run(cmd)
+
+
 def assemble_video(
     scenes: list[dict],
     narration_paths: list[Path],
@@ -89,12 +106,16 @@ def assemble_video(
     work_dir: Path,
     width: int = None,
     height: int = None,
+    hook_card_path: Path = None,
 ) -> Path:
     """scenes: script scenes; narration_paths/visual_paths align by index.
 
     Captions are produced separately as an .srt file (see pipeline.captions) and
     uploaded to YouTube as closed captions rather than burned in, since this
     ffmpeg build has no libass/subtitle filter support.
+
+    `hook_card_path` (optional): a pre-rendered thumbnail image prepended as a
+    ~2s silent intro clip, to hook viewers before narration starts.
     """
     if not FFMPEG_BIN or not FFPROBE_BIN:
         raise RuntimeError("ffmpeg/ffprobe not found on PATH. Install ffmpeg first.")
@@ -104,6 +125,12 @@ def assemble_video(
 
     work_dir.mkdir(parents=True, exist_ok=True)
     clip_paths = []
+
+    if hook_card_path:
+        hook_clip_path = work_dir / "hook_intro.mp4"
+        _build_hook_clip(hook_card_path, 2.0, hook_clip_path, width, height)
+        clip_paths.append(hook_clip_path)
+
     for i, (scene, narration_path, (visual_path, kind)) in enumerate(
         zip(scenes, narration_paths, visual_paths)
     ):

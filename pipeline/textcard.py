@@ -56,3 +56,78 @@ def render_text_card(text: str, width: int, height: int, out_path: Path) -> Path
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
     return out_path
+
+
+def _wrapped_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+    max_chars = max(5, int(len(text) * max_width / max(1, draw.textbbox((0, 0), text, font=font)[2])))
+    return textwrap.wrap(text, width=max_chars) or [text]
+
+
+def _draw_centered_lines(draw, lines, font, fill, top_y, width, line_gap) -> int:
+    """Draws `lines` centered horizontally starting at `top_y`; returns the y
+    position just below the last line."""
+    y = top_y
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((width - text_w) // 2, y), line, font=font, fill=fill)
+        y += text_h + line_gap
+    return y
+
+
+def render_hook_card(
+    title: str,
+    stat_text: str,
+    width: int,
+    height: int,
+    out_path: Path,
+    background_path: Path = None,
+) -> Path:
+    """Renders a bold, full-bleed branded "hook card": used as both the opening
+    ~2s clip of a video (to grab attention before the narration starts) and as
+    the standalone downloadable YouTube thumbnail for the same video.
+
+    `background_path` (optional): a still image to crop/cover behind the text,
+    e.g. the video's own first-scene visual, darkened for text contrast.
+    """
+    if background_path and Path(background_path).exists():
+        bg = Image.open(background_path).convert("RGB")
+        src_w, src_h = bg.size
+        scale = max(width / src_w, height / src_h)
+        bg = bg.resize((max(1, int(src_w * scale)), max(1, int(src_h * scale))))
+        left = (bg.width - width) // 2
+        top = (bg.height - height) // 2
+        bg = bg.crop((left, top, left + width, top + height))
+        img = bg.convert("RGBA")
+        dark = Image.new("RGBA", (width, height), (10, 15, 25, 150))
+        img = Image.alpha_composite(img, dark)
+    else:
+        img = Image.new("RGBA", (width, height), (12, 18, 30, 255))
+
+    draw = ImageDraw.Draw(img)
+
+    # Bold white title bar near the top, like a headline.
+    title_font = _load_font(max(36, width // 14))
+    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.88))
+    title_bar_y0 = int(height * 0.08)
+    line_h = draw.textbbox((0, 0), "A", font=title_font)[3]
+    title_bar_h = len(title_lines) * (line_h + 10) + int(width * 0.05)
+    draw.rectangle([0, title_bar_y0, width, title_bar_y0 + title_bar_h], fill=(255, 255, 255, 235))
+    _draw_centered_lines(
+        draw, title_lines, title_font, (15, 20, 35, 255),
+        title_bar_y0 + int(width * 0.025), width, 10,
+    )
+
+    # Bright green stat callout near the bottom, for the "FY27 TARGET: ..."-style hook.
+    if stat_text:
+        stat_font = _load_font(max(30, width // 20))
+        stat_lines = _wrapped_lines(draw, stat_text.upper(), stat_font, int(width * 0.9))
+        stat_line_h = draw.textbbox((0, 0), "A", font=stat_font)[3]
+        stat_block_h = len(stat_lines) * (stat_line_h + 8)
+        stat_y0 = height - stat_block_h - int(height * 0.08)
+        draw.rectangle([0, stat_y0 - int(height * 0.02), width, height], fill=(5, 10, 18, 210))
+        _draw_centered_lines(draw, stat_lines, stat_font, (60, 230, 110, 255), stat_y0, width, 8)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.convert("RGB").save(out_path)
+    return out_path

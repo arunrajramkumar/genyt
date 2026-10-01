@@ -92,7 +92,7 @@ def _build_hook_clip(hook_card_path: Path, duration: float, out_path: Path, widt
         "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
         "-r", str(config.VIDEO_FPS),
         "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-shortest",
+        "-c:a", "aac", "-ar", "44100", "-ac", "2", "-shortest",
         str(out_path),
     ]
     _run(cmd)
@@ -144,11 +144,14 @@ def assemble_video(
             _overlay_text(clip_path, on_screen_text, width, height, text_clip_path, work_dir)
             clip_path = text_clip_path
 
-        # Mux this scene's narration onto its visual clip.
+        # Mux this scene's narration onto its visual clip. The final assembly
+        # concatenates all clips with -c copy (stream copy), which requires
+        # every segment's audio to share identical sample rate/channel layout —
+        # force both explicitly here so they match the hook-card intro clip.
         muxed_path = work_dir / f"scene_{i:02d}_muxed.mp4"
         _run([
             FFMPEG_BIN, "-y", "-i", str(clip_path), "-i", str(narration_path),
-            "-c:v", "copy", "-c:a", "aac", "-shortest", str(muxed_path),
+            "-c:v", "copy", "-c:a", "aac", "-ar", "44100", "-ac", "2", "-shortest", str(muxed_path),
         ])
         clip_paths.append(muxed_path)
 

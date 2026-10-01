@@ -4,11 +4,22 @@ using Pillow, since this ffmpeg build has no libass/freetype for drawtext.
 import textwrap
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, features
+
+# Tamil/Kannada/Telugu/Malayalam/Devanagari reorder certain vowel signs before
+# their base consonant — plain freetype rendering (Pillow's default layout
+# engine) draws those as a disconnected dotted-circle + glyph instead of the
+# correctly shaped letter. RAQM (harfbuzz+fribidi) fixes this, but it's an
+# opt-in Pillow build (see Dockerfile, which compiles Pillow from source
+# against libraqm-dev) — PyPI's prebuilt wheel doesn't include it, so this
+# falls back to Pillow's default layout wherever raqm isn't present (e.g.
+# local macOS dev) rather than crashing.
+_RAQM_AVAILABLE = features.check("raqm")
 
 # Arial Bold's ₹ glyph renders as tofu (missing-glyph box) on macOS — Helvetica.ttc
 # (bold face, index 1) is the confirmed-working macOS font. On the Linux container
 # (apt package fonts-noto-core), Noto Sans Bold covers the rupee glyph instead.
+# Used for Latin-script text (and as the final fallback for any script).
 FONT_CANDIDATES = [
     ("/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf", 0),
     ("/System/Library/Fonts/Helvetica.ttc", 1),
@@ -16,11 +27,69 @@ FONT_CANDIDATES = [
     ("/System/Library/Fonts/Supplemental/Arial.ttf", 0),
 ]
 
+# Non-Latin on-screen text (e.g. a Hindi/Tamil story transcript narrated with a
+# matching /voice) needs a font that actually has those glyphs — Noto Sans Bold
+# above only covers Latin/Cyrillic/Greek. Each entry is (unicode codepoint
+# range, Linux font candidates, macOS font candidates) — installed via
+# fonts-noto-extra in the Docker image (see Dockerfile); on macOS we fall back
+# to whatever Apple system font covers that script, if any.
+SCRIPT_FONT_CANDIDATES = [
+    ((0x0900, 0x097F), [  # Devanagari (Hindi, Marathi)
+        ("/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Devanagari Sangam MN.ttc", 0),
+    ]),
+    ((0x0980, 0x09FF), [  # Bengali
+        ("/usr/share/fonts/truetype/noto/NotoSansBengali-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Bangla Sangam MN.ttc", 0),
+    ]),
+    ((0x0A80, 0x0AFF), [  # Gujarati
+        ("/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Gujarati Sangam MN.ttc", 0),
+    ]),
+    ((0x0B80, 0x0BFF), [  # Tamil
+        ("/usr/share/fonts/truetype/noto/NotoSansTamil-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Tamil Sangam MN.ttc", 0),
+    ]),
+    ((0x0C00, 0x0C7F), [  # Telugu
+        ("/usr/share/fonts/truetype/noto/NotoSansTelugu-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Telugu Sangam MN.ttc", 0),
+    ]),
+    ((0x0C80, 0x0CFF), [  # Kannada
+        ("/usr/share/fonts/truetype/noto/NotoSansKannada-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Kannada Sangam MN.ttc", 0),
+    ]),
+    ((0x0D00, 0x0D7F), [  # Malayalam
+        ("/usr/share/fonts/truetype/noto/NotoSansMalayalam-Bold.ttf", 0),
+        ("/System/Library/Fonts/Supplemental/Malayalam Sangam MN.ttc", 0),
+    ]),
+    ((0x0600, 0x06FF), [  # Arabic (also covers Urdu/Persian text)
+        ("/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf", 0),
+        ("/System/Library/Fonts/GeezaPro.ttc", 1),
+    ]),
+    ((0x4E00, 0x9FFF), [  # CJK (Chinese/Japanese) — not installed in the Docker
+        # image (fonts-noto-cjk is ~150MB+, too heavy for the free-tier build);
+        # falls through to the Latin default below, which will render as tofu.
+        # Install fonts-noto-cjk and add candidates here if CJK on-screen text
+        # is needed.
+    ]),
+]
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont:
+
+def _detect_script_candidates(text: str) -> list:
+    for (lo, hi), candidates in SCRIPT_FONT_CANDIDATES:
+        if any(lo <= ord(ch) <= hi for ch in text):
+            return candidates
+    return []
+
+
+def _load_font(size: int, text: str = "") -> ImageFont.FreeTypeFont:
+    layout_engine = ImageFont.Layout.RAQM if _RAQM_AVAILABLE else ImageFont.Layout.BASIC
+    for path, index in _detect_script_candidates(text):
+        if Path(path).exists():
+            return ImageFont.truetype(path, size, index=index, layout_engine=layout_engine)
     for path, index in FONT_CANDIDATES:
         if Path(path).exists():
-            return ImageFont.truetype(path, size, index=index)
+            return ImageFont.truetype(path, size, index=index, layout_engine=layout_engine)
     return ImageFont.load_default()
 
 
@@ -31,7 +100,7 @@ def render_text_card(text: str, width: int, height: int, out_path: Path) -> Path
     draw = ImageDraw.Draw(img)
 
     font_size = max(28, width // 18)
-    font = _load_font(font_size)
+    font = _load_font(font_size, text)
 
     max_chars_per_line = max(10, width // (font_size // 2))
     lines = textwrap.wrap(text, width=max_chars_per_line) or [text]
@@ -107,7 +176,7 @@ def render_hook_card(
     draw = ImageDraw.Draw(img)
 
     # Bold white title bar near the top, like a headline.
-    title_font = _load_font(max(36, width // 14))
+    title_font = _load_font(max(36, width // 14), title)
     title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.88))
     title_bar_y0 = int(height * 0.08)
     line_h = draw.textbbox((0, 0), "A", font=title_font)[3]
@@ -120,7 +189,7 @@ def render_hook_card(
 
     # Bright green stat callout near the bottom, for the "FY27 TARGET: ..."-style hook.
     if stat_text:
-        stat_font = _load_font(max(30, width // 20))
+        stat_font = _load_font(max(30, width // 20), stat_text)
         stat_lines = _wrapped_lines(draw, stat_text.upper(), stat_font, int(width * 0.9))
         stat_line_h = draw.textbbox((0, 0), "A", font=stat_font)[3]
         stat_block_h = len(stat_lines) * (stat_line_h + 8)

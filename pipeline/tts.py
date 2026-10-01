@@ -11,6 +11,7 @@ import re
 import shutil
 import ssl
 import subprocess
+import time
 from pathlib import Path
 
 from . import config
@@ -76,10 +77,25 @@ async def _synthesize_async(text: str, voice: str, out_path: Path) -> None:
 
 
 def synthesize(text: str, out_path: Path) -> float:
-    """Render `text` to an MP3 file at `out_path`. Returns duration in seconds."""
+    """Render `text` to an MP3 file at `out_path`. Returns duration in seconds.
+
+    edge-tts talks to an unofficial Microsoft endpoint that occasionally drops
+    the connection without sending audio (NoAudioReceived/WebSocketError) —
+    seen more often from cloud/datacenter IPs (e.g. Render) than from home
+    networks. Retry a few times before giving up, since it's usually transient.
+    """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    asyncio.run(_synthesize_async(_normalize_for_speech(text), config.TTS_VOICE, out_path))
-    return _probe_duration(out_path)
+    normalized = _normalize_for_speech(text)
+
+    attempts = 4
+    for attempt in range(1, attempts + 1):
+        try:
+            asyncio.run(_synthesize_async(normalized, config.TTS_VOICE, out_path))
+            return _probe_duration(out_path)
+        except edge_tts.exceptions.EdgeTTSException:
+            if attempt == attempts:
+                raise
+            time.sleep(2 ** (attempt - 1))

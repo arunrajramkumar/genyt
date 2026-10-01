@@ -74,6 +74,12 @@ finished video sent straight back to the chat:
    ```
 5. Message your bot a prompt (e.g. "5 facts about octopuses") — it replies with
    the video, thumbnail, captions, and metadata once generation finishes.
+6. By default narration uses `TTS_VOICE` (Indian English). To switch languages
+   per-chat, send `/voice` to see supported languages, then e.g. `/voice hindi`
+   or `/voice tamil` — it applies to every video you request afterward until
+   changed again. Advanced: send any exact edge-tts voice ID (e.g.
+   `/voice es-MX-DaliaNeural`) for finer control — run `edge-tts --list-voices`
+   for the full catalog.
 
 ## Notes / limitations
 

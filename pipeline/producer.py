@@ -14,8 +14,10 @@ def slugify(title: str) -> str:
     return slug[:60] or "video"
 
 
-def produce_from_script(script: dict, orientation: dict = None, on_progress=print) -> dict:
+def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None) -> dict:
     """orientation: config.LANDSCAPE or config.SHORTS (defaults to landscape).
+    voice: edge-tts voice ID overriding config.TTS_VOICE for this video (e.g. a
+    per-chat language preference) — defaults to the configured voice.
     Returns {"video": Path, "srt": Path, "metadata": Path, "slug": str}.
     """
     orientation = orientation or config.LANDSCAPE
@@ -34,7 +36,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     narration_paths = []
     for i, scene in enumerate(script["scenes"]):
         wav_path = work_dir / f"narration_{i:02d}.mp3"
-        duration = tts.synthesize(scene["narration"], wav_path)
+        duration = tts.synthesize(scene["narration"], wav_path, voice=voice)
         scene["_duration"] = duration
         narration_paths.append(wav_path)
 

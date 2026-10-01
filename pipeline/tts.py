@@ -76,8 +76,11 @@ async def _synthesize_async(text: str, voice: str, out_path: Path) -> None:
     await communicate.save(str(out_path))
 
 
-def synthesize(text: str, out_path: Path) -> float:
+def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     """Render `text` to an MP3 file at `out_path`. Returns duration in seconds.
+
+    `voice` overrides config.TTS_VOICE for this call (e.g. a per-chat language
+    preference from the Telegram bot) — defaults to the configured voice.
 
     edge-tts talks to an unofficial Microsoft endpoint that occasionally drops
     the connection without sending audio (NoAudioReceived/WebSocketError) —
@@ -93,7 +96,7 @@ def synthesize(text: str, out_path: Path) -> float:
     attempts = 4
     for attempt in range(1, attempts + 1):
         try:
-            asyncio.run(_synthesize_async(normalized, config.TTS_VOICE, out_path))
+            asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
             return _probe_duration(out_path)
         except edge_tts.exceptions.EdgeTTSException:
             if attempt == attempts:

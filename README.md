@@ -14,7 +14,9 @@ Output per video (in `output/`):
   this ffmpeg build has no subtitle-burn-in support, see Notes below)
 - `<slug>.metadata.txt` — title, description, tags to paste into YouTube Studio
 
-This tool does **not** upload to YouTube — you review and publish the output yourself.
+Once a video finishes, it's automatically uploaded to your YouTube channel as
+**private** (see "YouTube upload" below) — you still review and flip it to
+public yourself, nothing goes live without you.
 
 ## One-time setup
 
@@ -27,6 +29,29 @@ Edit `.env` and fill in:
 - `GROQ_API_KEY` — free, from https://console.groq.com/keys (used to write scripts)
 
 ffmpeg is already installed for this machine.
+
+### YouTube upload
+
+Videos are uploaded automatically (as **private**) once generated. One-time setup:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project
+   (or reuse one), enable the **YouTube Data API v3**, then create an OAuth
+   client under Credentials — type **Desktop app**.
+2. Download its JSON and save it as `youtube_client_secret.json` in the repo
+   root (gitignored — never commit it).
+3. Run `python3 scripts/youtube_auth.py` once. It opens a browser — sign in
+   with the Google account that manages the target channel and grant access.
+   This saves a reusable token to `cache/youtube_token.json` (also gitignored).
+4. Re-run step 3 any time `cache/` is wiped or you switch channels.
+
+Until step 3 is done, uploads are silently skipped (video/captions/metadata
+still land in `output/` as usual) — generation never fails because of a
+missing YouTube token.
+
+Config knobs in `.env`:
+- `YOUTUBE_AUTO_UPLOAD=false` — disable automatic upload entirely (local-only mode)
+- `YOUTUBE_DEFAULT_PRIVACY=private|unlisted|public` — default `private`
+- `YOUTUBE_CLIENT_SECRETS_FILE=/path/to/file.json` — override the default repo-root path
 
 ## Usage
 
@@ -122,5 +147,6 @@ commit — don't let coverage drift behind the code.
 - **Stock visuals** come from Pexels based on the model's `visual_query` per
   scene. Quality depends on how well the query matches available stock footage —
   review output before publishing.
-- No upload automation is included by design (per your choice) — you stay in
-  control of what actually gets published to your channel.
+- **YouTube upload** happens automatically but defaults to private — see
+  "YouTube upload" above for one-time OAuth setup. You still control when
+  (and whether) a video actually goes public.

@@ -229,3 +229,44 @@ def test_run_job_reports_failure_to_chat_instead_of_raising(isolated_prefs, monk
     telegram_bot._run_job(1, "a prompt")  # must not raise
 
     assert any("failed" in t.lower() and "boom" in t for t in sent)
+
+
+def test_run_job_announces_youtube_link_when_upload_succeeded(isolated_prefs, monkeypatch):
+    sent = []
+    monkeypatch.setattr(telegram_bot, "_send_message", lambda chat_id, text: sent.append(text))
+    monkeypatch.setattr(telegram_bot, "_send_video", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_bot, "_send_photo", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_bot, "_send_document", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_bot.prompt_script, "write_script_from_prompt",
+                         lambda prompt, duration_sec: {"title": "T", "scenes": []})
+    monkeypatch.setattr(
+        telegram_bot.producer, "produce_from_script",
+        lambda script, orientation, on_progress, voice: {
+            "video": "v", "thumbnail": "t", "srt": "s", "metadata": "m",
+            "youtube_url": "https://youtu.be/abc123",
+        },
+    )
+
+    telegram_bot._run_job(1, "a prompt")
+
+    assert any("https://youtu.be/abc123" in t for t in sent)
+
+
+def test_run_job_says_nothing_extra_when_upload_was_skipped(isolated_prefs, monkeypatch):
+    sent = []
+    monkeypatch.setattr(telegram_bot, "_send_message", lambda chat_id, text: sent.append(text))
+    monkeypatch.setattr(telegram_bot, "_send_video", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_bot, "_send_photo", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_bot, "_send_document", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_bot.prompt_script, "write_script_from_prompt",
+                         lambda prompt, duration_sec: {"title": "T", "scenes": []})
+    monkeypatch.setattr(
+        telegram_bot.producer, "produce_from_script",
+        lambda script, orientation, on_progress, voice: {
+            "video": "v", "thumbnail": "t", "srt": "s", "metadata": "m", "youtube_url": None,
+        },
+    )
+
+    telegram_bot._run_job(1, "a prompt")
+
+    assert not any("youtube" in t.lower() for t in sent)

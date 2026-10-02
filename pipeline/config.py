@@ -31,5 +31,12 @@ VIDEO_FPS = 24
 LANDSCAPE = {"width": 1280, "height": 720, "orientation": "landscape"}
 SHORTS = {"width": 720, "height": 1280, "orientation": "portrait"}
 
+# YouTube upload — see README's "YouTube upload" section for one-time OAuth setup.
+YOUTUBE_CLIENT_SECRETS_FILE = Path(
+    os.environ.get("YOUTUBE_CLIENT_SECRETS_FILE", str(ROOT / "youtube_client_secret.json"))
+)
+YOUTUBE_DEFAULT_PRIVACY = os.environ.get("YOUTUBE_DEFAULT_PRIVACY", "private")
+YOUTUBE_AUTO_UPLOAD = os.environ.get("YOUTUBE_AUTO_UPLOAD", "true").strip().lower() not in ("0", "false", "no")
+
 for d in (OUTPUT_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)

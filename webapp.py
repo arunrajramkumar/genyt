@@ -130,12 +130,16 @@ STATUS_PAGE = """
         const data = await r.json();
         document.getElementById("log").textContent = data.log.join("\\n");
         if (data.status === "done") {
+          const ytLink = data.youtube_url
+            ? `<p><a class="button" href="${data.youtube_url}" target="_blank">View on YouTube (private)</a></p>`
+            : "";
           document.getElementById("result").innerHTML = `
             <video controls src="/job/{{ job_id }}/video"></video><br>
             <a class="button" href="/job/{{ job_id }}/video" download>Download MP4</a>
             <a class="button" href="/job/{{ job_id }}/srt" download>Download Captions (.srt)</a>
             <a class="button" href="/job/{{ job_id }}/metadata" download>Download Title/Description/Tags</a>
             <a class="button" href="/job/{{ job_id }}/thumbnail" download>Download Thumbnail (.png)</a>
+            ${ytLink}
           `;
           return;
         }
@@ -209,7 +213,10 @@ def job_status(job_id):
     if not job:
         abort(404)
     with JOBS_LOCK:
-        return jsonify({"status": job["status"], "log": job["log"], "error": job["error"]})
+        return jsonify({
+            "status": job["status"], "log": job["log"], "error": job["error"],
+            "youtube_url": (job["result"] or {}).get("youtube_url") if job["result"] else None,
+        })
 
 
 @app.route("/job/<job_id>/video")

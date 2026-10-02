@@ -6,7 +6,7 @@ import re
 import shutil
 from pathlib import Path
 
-from . import config, tts, visuals, assemble, captions, textcard
+from . import config, tts, visuals, assemble, captions, textcard, youtube_upload
 
 
 def slugify(title: str) -> str:
@@ -90,5 +90,24 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         encoding="utf-8",
     )
 
+    youtube_url = None
+    if config.YOUTUBE_AUTO_UPLOAD:
+        try:
+            on_progress("Uploading to YouTube")
+            upload = youtube_upload.upload_video(
+                out_path, script["title"], script["description"], script["tags"],
+                captions_path=srt_path,
+                captions_language=(voice or config.TTS_VOICE).split("-")[0],
+            )
+            youtube_url = upload["url"]
+            on_progress(f"Uploaded: {youtube_url}")
+        except youtube_upload.NotConfiguredError:
+            on_progress("YouTube upload skipped (not configured — see README)")
+        except Exception as e:
+            on_progress(f"YouTube upload failed: {e}")
+
     on_progress(f"Done: {out_path}")
-    return {"video": out_path, "srt": srt_path, "metadata": meta_path, "thumbnail": thumb_path, "slug": slug}
+    return {
+        "video": out_path, "srt": srt_path, "metadata": meta_path, "thumbnail": thumb_path,
+        "slug": slug, "youtube_url": youtube_url,
+    }

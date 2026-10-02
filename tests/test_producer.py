@@ -1,3 +1,5 @@
+from unittest import mock
+
 import pytest
 
 from pipeline import producer
@@ -114,3 +116,42 @@ def test_produce_from_script_clears_stale_work_dir(mocked_pipeline):
 
     producer.produce_from_script(script, on_progress=lambda m: None)
     assert not (work_dir / "stale_file.txt").exists()
+
+
+# -- YouTube upload wiring ------------------------------------------------------
+
+def test_produce_from_script_skips_upload_silently_when_not_configured(mocked_pipeline):
+    # No cache/youtube_token.json exists in the isolated test cache dir, so this
+    # must behave as "not configured yet" rather than crash the whole job.
+    result = producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert result["youtube_url"] is None
+
+
+def test_produce_from_script_sets_youtube_url_on_successful_upload(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    result = producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert result["youtube_url"] == "https://youtu.be/abc"
+
+
+def test_produce_from_script_upload_failure_does_not_fail_the_job(mocked_pipeline, monkeypatch):
+    logs = []
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        mock.Mock(side_effect=RuntimeError("quota exceeded")),
+    )
+    result = producer.produce_from_script(_stub_script(), on_progress=logs.append)
+    assert result["youtube_url"] is None
+    assert result["video"].exists() or result["video"].name  # job still completed
+    assert any("quota exceeded" in msg for msg in logs)
+
+
+def test_produce_from_script_respects_youtube_auto_upload_flag(mocked_pipeline, monkeypatch):
+    called = []
+    monkeypatch.setattr(producer.config, "YOUTUBE_AUTO_UPLOAD", False)
+    monkeypatch.setattr(producer.youtube_upload, "upload_video", lambda *a, **k: called.append(1))
+    result = producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert called == []
+    assert result["youtube_url"] is None

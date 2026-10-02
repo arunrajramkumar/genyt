@@ -139,6 +139,8 @@ def _run_job(chat_id, prompt: str) -> None:
         _send_photo(chat_id, result["thumbnail"], caption="Thumbnail")
         _send_document(chat_id, result["srt"], caption="Captions (.srt)")
         _send_document(chat_id, result["metadata"], caption="Title / description / tags")
+        if result.get("youtube_url"):
+            _send_message(chat_id, f"Uploaded to YouTube (private): {result['youtube_url']}")
     except Exception as e:
         _send_message(chat_id, f"Sorry, video generation failed: {e}")
 

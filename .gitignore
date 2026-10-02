@@ -6,4 +6,5 @@ output/
 .DS_Store
 corp-ca.pem
 Dockerfile.local
+youtube_client_secret.json
 ~/

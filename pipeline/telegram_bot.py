@@ -18,6 +18,18 @@ ALLOWED_CHAT_IDS = {
 
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+# Some Telegram clients (e.g. Desktop with the default "Enter sends message"
+# setting) send each line of a multi-paragraph prompt as a separate message
+# rather than one message with embedded newlines. Without buffering, each
+# fragment would kick off its own tiny, nonsensical video instead of the one
+# full prompt the user intended. Fragments from the same chat arriving within
+# this window are joined back into a single prompt before generation starts.
+PROMPT_DEBOUNCE_SECONDS = 3.0
+
+_pending_lock = threading.Lock()
+_pending_fragments = {}  # chat_id -> list[str], messages waiting to be joined
+_pending_timers = {}  # chat_id -> threading.Timer, armed to flush the buffer
+
 HELP_TEXT = (
     "Send me a topic or prompt (e.g. \"5 facts about octopuses\" or a stock's "
     "name + numbers) and I'll generate a vertical YouTube Short and send it "
@@ -131,6 +143,30 @@ def _run_job(chat_id, prompt: str) -> None:
         _send_message(chat_id, f"Sorry, video generation failed: {e}")
 
 
+def _flush_prompt(chat_id) -> None:
+    with _pending_lock:
+        fragments = _pending_fragments.pop(chat_id, [])
+        _pending_timers.pop(chat_id, None)
+    if not fragments:
+        return
+    threading.Thread(target=_run_job, args=(chat_id, "\n\n".join(fragments)), daemon=True).start()
+
+
+def _queue_prompt(chat_id, text: str) -> None:
+    with _pending_lock:
+        _pending_fragments.setdefault(chat_id, []).append(text)
+        old_timer = _pending_timers.get(chat_id)
+        if old_timer is not None:
+            old_timer.cancel()
+        timer = threading.Timer(PROMPT_DEBOUNCE_SECONDS, _flush_prompt, args=(chat_id,))
+        timer.daemon = True
+        _pending_timers[chat_id] = timer
+    # Started outside the lock: a timer that fires synchronously/immediately
+    # (as in tests) would otherwise re-enter _flush_prompt's `with _pending_lock`
+    # while this thread still holds it, deadlocking on this non-reentrant lock.
+    timer.start()
+
+
 def handle_update(update: dict) -> None:
     """Processes one Telegram webhook update. Fire-and-forget: always returns
     immediately, kicking off generation in a background thread, since Telegram
@@ -164,4 +200,4 @@ def handle_update(update: dict) -> None:
         _send_message(chat_id, f"Voice set to {voice}. Your next video will use it.")
         return
 
-    threading.Thread(target=_run_job, args=(chat_id, text), daemon=True).start()
+    _queue_prompt(chat_id, text)

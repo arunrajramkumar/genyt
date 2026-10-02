@@ -42,6 +42,54 @@ def isolated_prefs(isolated_dirs, monkeypatch):
     monkeypatch.setattr(chat_prefs, "_PREFS_PATH", cache_dir / "chat_prefs.json")
 
 
+@pytest.fixture(autouse=True)
+def _clear_pending_prompt_state():
+    telegram_bot._pending_fragments.clear()
+    telegram_bot._pending_timers.clear()
+    yield
+    telegram_bot._pending_fragments.clear()
+    telegram_bot._pending_timers.clear()
+
+
+class _ImmediateTimer:
+    """Stand-in for threading.Timer that fires synchronously on start(), for
+    tests that only send one message and don't care about the debounce delay."""
+
+    def __init__(self, interval, function, args=()):
+        self.function = function
+        self.args = args
+
+    def start(self):
+        self.function(*self.args)
+
+    def cancel(self):
+        pass
+
+
+class _ManualTimer:
+    """Stand-in for threading.Timer that never fires on its own — tests fire
+    it explicitly to simulate the debounce window elapsing, so multi-message
+    coalescing can be tested deterministically without sleeping."""
+
+    instances = []
+
+    def __init__(self, interval, function, args=()):
+        self.function = function
+        self.args = args
+        self.cancelled = False
+        _ManualTimer.instances.append(self)
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self):
+        if not self.cancelled:
+            self.function(*self.args)
+
+
 def test_handle_update_ignores_messages_without_text_or_chat(sent_messages, isolated_prefs):
     telegram_bot.handle_update({})
     telegram_bot.handle_update({"message": {"chat": {"id": 1}, "text": ""}})
@@ -88,9 +136,10 @@ def test_handle_update_blocks_unauthorized_chat(sent_messages, isolated_prefs, m
 
 def test_handle_update_allows_whitelisted_chat_and_kicks_off_job(sent_messages, isolated_prefs, monkeypatch):
     monkeypatch.setattr(telegram_bot, "ALLOWED_CHAT_IDS", {"1"})
+    # Stand in for threading.Timer/Thread with synchronous equivalents so the
+    # test doesn't depend on the real debounce delay or touch the real pipeline.
+    monkeypatch.setattr(telegram_bot.threading, "Timer", _ImmediateTimer)
     started = []
-    # Replace the background-thread launcher with a synchronous stand-in so the
-    # test doesn't depend on timing, and doesn't touch the real pipeline.
     monkeypatch.setattr(
         telegram_bot.threading, "Thread",
         lambda target, args, daemon: mock.Mock(start=lambda: started.append((target, args))),
@@ -99,6 +148,54 @@ def test_handle_update_allows_whitelisted_chat_and_kicks_off_job(sent_messages, 
     assert len(started) == 1
     assert started[0][0] is telegram_bot._run_job
     assert started[0][1] == (1, "5 facts about octopuses")
+
+
+def test_handle_update_coalesces_rapid_fragments_into_one_job(sent_messages, isolated_prefs, monkeypatch):
+    """Regression test: Telegram clients that send each line of a pasted
+    multi-paragraph prompt as a separate message (e.g. Desktop's default
+    Enter-sends-message behavior) must have those fragments joined back into
+    one prompt, not each trigger its own tiny, nonsensical video."""
+    _ManualTimer.instances.clear()
+    monkeypatch.setattr(telegram_bot.threading, "Timer", _ManualTimer)
+    started = []
+    monkeypatch.setattr(
+        telegram_bot.threading, "Thread",
+        lambda target, args, daemon: mock.Mock(start=lambda: started.append((target, args))),
+    )
+
+    telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "0-5 seconds - Hook"}})
+    telegram_bot.handle_update({"message": {"chat": {"id": 5}, "text": "5-20 seconds - Body"}})
+
+    # No job should have started yet — still inside the debounce window.
+    assert started == []
+    assert _ManualTimer.instances[0].cancelled is True  # superseded by the 2nd fragment
+    assert _ManualTimer.instances[1].cancelled is False
+
+    _ManualTimer.instances[1].fire()  # simulate the debounce window elapsing
+
+    assert len(started) == 1
+    assert started[0][0] is telegram_bot._run_job
+    assert started[0][1] == (5, "0-5 seconds - Hook\n\n5-20 seconds - Body")
+
+
+def test_handle_update_keeps_different_chats_independent(sent_messages, isolated_prefs, monkeypatch):
+    _ManualTimer.instances.clear()
+    monkeypatch.setattr(telegram_bot.threading, "Timer", _ManualTimer)
+    started = []
+    monkeypatch.setattr(
+        telegram_bot.threading, "Thread",
+        lambda target, args, daemon: mock.Mock(start=lambda: started.append((target, args))),
+    )
+
+    telegram_bot.handle_update({"message": {"chat": {"id": 1}, "text": "chat one prompt"}})
+    telegram_bot.handle_update({"message": {"chat": {"id": 2}, "text": "chat two prompt"}})
+
+    for timer in _ManualTimer.instances:
+        timer.fire()
+
+    assert len(started) == 2
+    assert (1, "chat one prompt") in [s[1] for s in started]
+    assert (2, "chat two prompt") in [s[1] for s in started]
 
 
 def test_run_job_uses_stored_voice_preference(isolated_prefs, monkeypatch):

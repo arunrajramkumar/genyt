@@ -12,7 +12,7 @@ the section the user asked for.
 import json
 import re
 
-from . import llm
+from . import llm, youtube_insights
 
 HEADER_RE = re.compile(
     r"(\d+)\s*[-–—]\s*(\d+)\s*sec(?:ond)?s?\s*[-–—]\s*(.+)",
@@ -218,9 +218,16 @@ Rules:
 """
 
 
-def _write_metadata(scenes: list) -> dict:
+def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
     narration = "\n".join(scene["narration"] for scene in scenes)
-    user_prompt = f"Narration:\n{narration}\n\nProduce the JSON metadata now."
+    user_prompt = f"Narration:\n{narration}"
+    if style_guidance:
+        user_prompt += (
+            "\n\nThis channel's own recent-video performance data suggests the "
+            f"following for what hooks viewers — apply it to the title (and tags "
+            f"where relevant), without contradicting the narration above:\n{style_guidance}"
+        )
+    user_prompt += "\n\nProduce the JSON metadata now."
 
     last_error = None
     for attempt in range(3):
@@ -246,7 +253,8 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) 
         scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"])
         scenes.append(scene)
 
-    meta = _write_metadata(scenes)
+    style_guidance = youtube_insights.get_style_guidance()
+    meta = _write_metadata(scenes, style_guidance)
     tags = list(dict.fromkeys(meta["tags"] or ["short video"]))
 
     return {"title": meta["title"], "description": meta["description"], "tags": tags, "scenes": scenes}

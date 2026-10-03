@@ -24,9 +24,9 @@ def main():
         print(
             f"Missing {config.YOUTUBE_CLIENT_SECRETS_FILE}.\n\n"
             "Create an OAuth client (type: Desktop app) in Google Cloud Console "
-            "for a project with the YouTube Data API v3 enabled, download its JSON, "
-            "and save it at that path (or point YOUTUBE_CLIENT_SECRETS_FILE at it). "
-            "See README's \"YouTube upload\" section."
+            "for a project with the YouTube Data API v3 AND YouTube Analytics API "
+            "both enabled, download its JSON, and save it at that path (or point "
+            "YOUTUBE_CLIENT_SECRETS_FILE at it). See README's \"YouTube upload\" section."
         )
         sys.exit(1)
 

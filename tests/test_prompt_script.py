@@ -83,3 +83,29 @@ def test_write_freeform_script_rejects_zero_scenes(monkeypatch):
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(bad_script))
     with pytest.raises(RuntimeError, match="3 times in a row"):
         prompt_script._write_freeform_script("octopuses")
+
+
+def test_write_freeform_script_includes_channel_style_guidance_when_available(monkeypatch):
+    monkeypatch.setattr(prompt_script.youtube_insights, "get_style_guidance", lambda: "- Lead with a number")
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _json_response(VALID_SCRIPT)
+
+    monkeypatch.setattr(prompt_script.llm, "chat_json", fake_chat_json)
+    prompt_script._write_freeform_script("octopuses")
+    assert "- Lead with a number" in captured["user_prompt"]
+
+
+def test_write_freeform_script_omits_style_guidance_section_when_unavailable(monkeypatch):
+    monkeypatch.setattr(prompt_script.youtube_insights, "get_style_guidance", lambda: "")
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _json_response(VALID_SCRIPT)
+
+    monkeypatch.setattr(prompt_script.llm, "chat_json", fake_chat_json)
+    prompt_script._write_freeform_script("octopuses")
+    assert "recent-video performance" not in captured["user_prompt"]

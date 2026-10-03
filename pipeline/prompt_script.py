@@ -9,7 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-from . import llm, segmented_script
+from . import llm, segmented_script, youtube_insights
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -84,8 +84,16 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
         f"{prompt.strip()}\n\n"
         f"Target narration length: about {target_words} words "
         f"(~{duration_sec} seconds spoken).\n\n"
-        "Produce the JSON script now."
     )
+    style_guidance = youtube_insights.get_style_guidance()
+    if style_guidance:
+        user_prompt += (
+            "This channel's own recent-video performance data suggests the "
+            "following for what hooks viewers — apply it to the title and the "
+            "first scene's hook, without contradicting the facts above:\n"
+            f"{style_guidance}\n\n"
+        )
+    user_prompt += "Produce the JSON script now."
 
     last_error = None
     for attempt in range(3):

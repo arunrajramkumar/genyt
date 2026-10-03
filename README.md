@@ -35,8 +35,9 @@ ffmpeg is already installed for this machine.
 Videos are uploaded automatically (as **private**) once generated. One-time setup:
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project
-   (or reuse one), enable the **YouTube Data API v3**, then create an OAuth
-   client under Credentials — type **Desktop app**.
+   (or reuse one), enable the **YouTube Data API v3** and the **YouTube
+   Analytics API** (the latter powers the channel-performance guidance below),
+   then create an OAuth client under Credentials — type **Desktop app**.
 2. Download its JSON and save it as `youtube_client_secret.json` in the repo
    root (gitignored — never commit it).
 3. Run `python3 scripts/youtube_auth.py` once. It opens a browser — sign in
@@ -52,6 +53,26 @@ Config knobs in `.env`:
 - `YOUTUBE_AUTO_UPLOAD=false` — disable automatic upload entirely (local-only mode)
 - `YOUTUBE_DEFAULT_PRIVACY=private|unlisted|public` — default `private`
 - `YOUTUBE_CLIENT_SECRETS_FILE=/path/to/file.json` — override the default repo-root path
+
+#### Channel-performance-driven titles/tags
+
+Every generation also pulls your channel's own recent-video performance (views,
+click-through rate, average view duration, via the YouTube Analytics API) and
+feeds a short "what's hooking viewers" guidance blurb into that video's title/
+description/tag generation — so new videos lean into whatever's actually working
+on your channel instead of guessing blind. This needs no extra setup beyond the
+steps above, but:
+
+- It also requires the **YouTube Analytics API** enabled on the same Google
+  Cloud project as the YouTube Data API v3 (step 1 above).
+- It's best-effort and silent: if there aren't at least a handful of uploaded
+  videos yet, or the token predates this feature, generation proceeds normally
+  without the guidance (no error, no blocked video).
+- If your existing `cache/youtube_token.json` was created before this feature
+  was added, it lacks the `yt-analytics.readonly` scope — re-run
+  `python3 scripts/youtube_auth.py` once to re-consent and pick it up (and
+  re-upload the refreshed `youtube_token.json` to Render's Secret Files if
+  you're running there).
 
 #### Enabling it on a Render deployment
 

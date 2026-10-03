@@ -189,10 +189,11 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
         ss, "_write_segment_scene",
         lambda label, content, duration: {"narration": f"N:{label}", "visual_query": "v", "on_screen_text": ""},
     )
+    monkeypatch.setattr(ss.youtube_insights, "get_style_guidance", lambda: "")
     monkeypatch.setattr(
         ss, "_write_metadata",
-        lambda scenes: {"title": "Premier Polyfilm: What Long-Term Investors Watch", "description": "desc",
-                         "tags": ["premier polyfilm", "stock analysis"]},
+        lambda scenes, style_guidance="": {"title": "Premier Polyfilm: What Long-Term Investors Watch",
+                         "description": "desc", "tags": ["premier polyfilm", "stock analysis"]},
     )
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
     script = ss.write_segmented_script("some prompt", segments)
@@ -200,6 +201,24 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
     assert script["description"] == "desc"
     assert script["tags"] == ["premier polyfilm", "stock analysis"]
     assert script["scenes"][0]["narration"] == "N:Hook"
+
+
+def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
+    )
+    monkeypatch.setattr(ss.youtube_insights, "get_style_guidance", lambda: "- Lead with a number")
+    captured = {}
+
+    def fake_write_metadata(scenes, style_guidance=""):
+        captured["style_guidance"] = style_guidance
+        return {"title": "T", "description": "d", "tags": []}
+
+    monkeypatch.setattr(ss, "_write_metadata", fake_write_metadata)
+    segments = [{"label": "Hook", "content": "c", "duration": 5}]
+    ss.write_segmented_script("some prompt", segments)
+    assert captured["style_guidance"] == "- Lead with a number"
 
 
 # -- _write_metadata: LLM-derived title/description/tags -----------------------
@@ -243,3 +262,27 @@ def test_write_metadata_raises_after_three_bad_attempts(monkeypatch):
     monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: "not json at all")
     with pytest.raises(RuntimeError, match="3 times in a row"):
         ss._write_metadata([{"narration": "n"}])
+
+
+def test_write_metadata_includes_style_guidance_in_prompt_when_given(monkeypatch):
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _mock_llm_response({"title": "T", "description": "d", "tags": []})
+
+    monkeypatch.setattr(ss.llm, "chat_json", fake_chat_json)
+    ss._write_metadata([{"narration": "n"}], style_guidance="- Lead with a number")
+    assert "- Lead with a number" in captured["user_prompt"]
+
+
+def test_write_metadata_omits_style_guidance_section_when_empty(monkeypatch):
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _mock_llm_response({"title": "T", "description": "d", "tags": []})
+
+    monkeypatch.setattr(ss.llm, "chat_json", fake_chat_json)
+    ss._write_metadata([{"narration": "n"}])
+    assert "recent-video performance" not in captured["user_prompt"]

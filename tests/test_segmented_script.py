@@ -189,9 +189,57 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
         ss, "_write_segment_scene",
         lambda label, content, duration: {"narration": f"N:{label}", "visual_query": "v", "on_screen_text": ""},
     )
+    monkeypatch.setattr(
+        ss, "_write_metadata",
+        lambda scenes: {"title": "Premier Polyfilm: What Long-Term Investors Watch", "description": "desc",
+                         "tags": ["premier polyfilm", "stock analysis"]},
+    )
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
-    script = ss.write_segmented_script('Topic: "XYZ Industries Ltd", about XYZ Industries Ltd, revenue info', segments)
-    assert script["title"]
-    assert "XYZ Industries Ltd" in script["description"] or script["description"]
-    assert isinstance(script["tags"], list) and script["tags"]
+    script = ss.write_segmented_script("some prompt", segments)
+    assert script["title"] == "Premier Polyfilm: What Long-Term Investors Watch"
+    assert script["description"] == "desc"
+    assert script["tags"] == ["premier polyfilm", "stock analysis"]
     assert script["scenes"][0]["narration"] == "N:Hook"
+
+
+# -- _write_metadata: LLM-derived title/description/tags -----------------------
+
+def test_write_metadata_uses_scene_narration_to_name_the_actual_subject(monkeypatch):
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({
+            "title": "Premier Polyfilm: What Long-Term Investors Watch",
+            "description": "A neutral look at Premier Polyfilm's fundamentals.",
+            "tags": ["premier polyfilm", "stock analysis", "long term investing"],
+        }),
+    )
+    scenes = [{"narration": "Premier Polyfilm has a 44.5% five-year CAGR."}]
+    meta = ss._write_metadata(scenes)
+    assert meta["title"] == "Premier Polyfilm: What Long-Term Investors Watch"
+    assert "Premier Polyfilm" in meta["description"]
+    assert "premier polyfilm" in meta["tags"]
+
+
+def test_write_metadata_truncates_long_title(monkeypatch):
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({"title": "x" * 100, "description": "d", "tags": []}),
+    )
+    meta = ss._write_metadata([{"narration": "n"}])
+    assert len(meta["title"]) == 70
+
+
+def test_write_metadata_retries_on_empty_title_then_succeeds(monkeypatch):
+    responses = iter([
+        _mock_llm_response({"title": "", "description": "d", "tags": []}),
+        _mock_llm_response({"title": "Second attempt", "description": "d", "tags": []}),
+    ])
+    monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: next(responses))
+    meta = ss._write_metadata([{"narration": "n"}])
+    assert meta["title"] == "Second attempt"
+
+
+def test_write_metadata_raises_after_three_bad_attempts(monkeypatch):
+    monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: "not json at all")
+    with pytest.raises(RuntimeError, match="3 times in a row"):
+        ss._write_metadata([{"narration": "n"}])

@@ -203,21 +203,41 @@ def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
     }
 
 
-def _derive_title(prompt: str) -> str:
-    m = re.search(r"Topic:\s*[“”\"]([^“”\"]+)[“”\"]", prompt)
-    if m:
-        return m.group(1).strip()[:70]
-    m = re.search(r"about\s+([A-Z][\w&.\s]{2,60}?),", prompt)
-    if m:
-        return f"{m.group(1).strip()}: What You Should Know"[:70]
-    return "Stock Analysis"
+SYSTEM_PROMPT_METADATA = """You write YouTube metadata for a short video, based only on its
+narration below. Output ONLY valid JSON (no markdown fences, no commentary):
+
+{"title": "...", "description": "...", "tags": ["...", "..."]}
+
+Rules:
+- title: punchy, clickable, under 70 characters. Must name the specific subject
+  (company, person, place, event, topic) the narration is actually about — never
+  a generic placeholder like "Stock Analysis" or "Interesting Facts".
+- description: 2-3 sentences summarizing what the video covers.
+- tags: 8-15 relevant search tags.
+- Base this ONLY on the narration given — do not invent facts not present there.
+"""
 
 
-def _derive_subject(prompt: str) -> str:
-    m = re.search(r"about\s+([A-Z][\w&.\s]{2,60}?),", prompt)
-    if m:
-        return m.group(1).strip()
-    return ""
+def _write_metadata(scenes: list) -> dict:
+    narration = "\n".join(scene["narration"] for scene in scenes)
+    user_prompt = f"Narration:\n{narration}\n\nProduce the JSON metadata now."
+
+    last_error = None
+    for attempt in range(3):
+        raw = llm.chat_json(SYSTEM_PROMPT_METADATA, user_prompt, max_tokens=512, timeout=60)
+        try:
+            data = _extract_json(raw)
+            if not (data.get("title") or "").strip():
+                raise ValueError("empty title")
+            return {
+                "title": data["title"].strip()[:70],
+                "description": (data.get("description") or "").strip(),
+                "tags": [t for t in (data.get("tags") or []) if t],
+            }
+        except (ValueError, KeyError, json.JSONDecodeError) as e:
+            last_error = e
+            continue
+    raise RuntimeError(f"Model failed to write video metadata 3 times in a row ({last_error}).")
 
 
 def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) -> dict:
@@ -226,19 +246,7 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) 
         scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"])
         scenes.append(scene)
 
-    subject = _derive_subject(prompt)
-    if subject and scenes:
-        scenes[0]["on_screen_text"] = subject[:40]
+    meta = _write_metadata(scenes)
+    tags = list(dict.fromkeys(meta["tags"] or ["short video"]))
 
-    title = _derive_title(prompt)
-    description = (
-        f"{title}. A factual, research-based look at the numbers"
-        + (f" behind {subject}" if subject else "")
-        + ". This video is for educational purposes only and is not investment advice."
-    )
-    tags = list(dict.fromkeys(
-        ([subject] if subject else [])
-        + ["stock analysis", "NSE", "BSE", "Indian stocks", "fundamental analysis", "long term investing"]
-    ))
-
-    return {"title": title, "description": description, "tags": tags, "scenes": scenes}
+    return {"title": meta["title"], "description": meta["description"], "tags": tags, "scenes": scenes}

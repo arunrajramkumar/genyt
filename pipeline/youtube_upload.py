@@ -30,6 +30,8 @@ def _token_path():
 
 def _load_credentials() -> Credentials:
     token_path = _token_path()
+    if not token_path.exists() and config.YOUTUBE_TOKEN_SEED_FILE and config.YOUTUBE_TOKEN_SEED_FILE.exists():
+        token_path.write_text(config.YOUTUBE_TOKEN_SEED_FILE.read_text())
     if not token_path.exists():
         raise NotConfiguredError(
             "No YouTube credentials found. Run `python3 scripts/youtube_auth.py` once "

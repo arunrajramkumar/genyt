@@ -37,6 +37,13 @@ YOUTUBE_CLIENT_SECRETS_FILE = Path(
 )
 YOUTUBE_DEFAULT_PRIVACY = os.environ.get("YOUTUBE_DEFAULT_PRIVACY", "private")
 YOUTUBE_AUTO_UPLOAD = os.environ.get("YOUTUBE_AUTO_UPLOAD", "true").strip().lower() not in ("0", "false", "no")
+# On hosts with an ephemeral/read-only filesystem (e.g. Render secret files),
+# the live token can't be refreshed in place. Point this at that read-only
+# seed copy and the pipeline will bootstrap a writable copy into CACHE_DIR
+# the first time it's needed, re-seeding on every fresh instance boot.
+YOUTUBE_TOKEN_SEED_FILE = (
+    Path(os.environ["YOUTUBE_TOKEN_SEED_FILE"]) if os.environ.get("YOUTUBE_TOKEN_SEED_FILE") else None
+)
 
 for d in (OUTPUT_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)

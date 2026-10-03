@@ -10,6 +10,46 @@ def test_load_credentials_raises_not_configured_when_no_token_file():
         youtube_upload._load_credentials()
 
 
+def test_load_credentials_bootstraps_writable_copy_from_seed_file(tmp_path, monkeypatch):
+    # Simulates Render: the real token lives on a read-only secret-file mount,
+    # and CACHE_DIR is a fresh/ephemeral instance with no token yet.
+    seed_path = tmp_path / "seed_token.json"
+    seed_path.write_text('{"seeded": true}')
+    monkeypatch.setattr(config, "YOUTUBE_TOKEN_SEED_FILE", seed_path)
+
+    fake_creds = mock.Mock(expired=False)
+    monkeypatch.setattr(youtube_upload.Credentials, "from_authorized_user_file", lambda *a, **k: fake_creds)
+
+    creds = youtube_upload._load_credentials()
+
+    assert creds is fake_creds
+    assert (config.CACHE_DIR / "youtube_token.json").read_text() == '{"seeded": true}'
+
+
+def test_load_credentials_prefers_existing_cache_copy_over_seed_file(tmp_path, monkeypatch):
+    # Once a writable copy exists (e.g. after a refresh), it must win over the
+    # (possibly now-stale) seed file rather than being clobbered on every call.
+    token_path = config.CACHE_DIR / "youtube_token.json"
+    token_path.write_text('{"cached": true}')
+    seed_path = tmp_path / "seed_token.json"
+    seed_path.write_text('{"seeded": true}')
+    monkeypatch.setattr(config, "YOUTUBE_TOKEN_SEED_FILE", seed_path)
+
+    fake_creds = mock.Mock(expired=False)
+    captured = {}
+
+    def fake_from_authorized_user_file(path, scopes):
+        captured["path"] = path
+        return fake_creds
+
+    monkeypatch.setattr(youtube_upload.Credentials, "from_authorized_user_file", fake_from_authorized_user_file)
+
+    youtube_upload._load_credentials()
+
+    assert captured["path"] == str(token_path)
+    assert token_path.read_text() == '{"cached": true}'
+
+
 def test_load_credentials_refreshes_expired_token(monkeypatch):
     token_path = config.CACHE_DIR / "youtube_token.json"
     token_path.write_text("{}")

@@ -53,6 +53,27 @@ Config knobs in `.env`:
 - `YOUTUBE_DEFAULT_PRIVACY=private|unlisted|public` — default `private`
 - `YOUTUBE_CLIENT_SECRETS_FILE=/path/to/file.json` — override the default repo-root path
 
+#### Enabling it on a Render deployment
+
+Run steps 1-3 above locally first (you need a real browser for the Google
+consent screen), then get the two resulting files onto Render **without**
+committing them to git, via Render's **Secret Files**:
+
+1. In the Render dashboard, open your service → **Environment** → **Secret
+   Files** → **Add Secret File**.
+2. Add one with filename `youtube_client_secret.json` and paste in the
+   contents of your local `youtube_client_secret.json`.
+3. Add a second with filename `youtube_token.json` and paste in the contents
+   of your local `cache/youtube_token.json`.
+4. Render mounts Dockerfile-based services' secret files at the repo root
+   inside the container, so set these two environment variables on the
+   service: `YOUTUBE_CLIENT_SECRETS_FILE=/app/youtube_client_secret.json` and
+   `YOUTUBE_TOKEN_SEED_FILE=/app/youtube_token.json` (adjust `/app` if your
+   Dockerfile's `WORKDIR` differs).
+5. Deploy. Secret files are read-only, so the pipeline copies the seed token
+   into a writable spot on first use and refreshes it there — this also means
+   it re-seeds cleanly every time Render spins up a fresh instance.
+
 ## Usage
 
 Edit `themes.yaml` to add topics you want videos for, then:

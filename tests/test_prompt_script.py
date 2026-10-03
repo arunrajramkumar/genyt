@@ -86,7 +86,7 @@ def test_write_freeform_script_rejects_zero_scenes(monkeypatch):
 
 
 def test_write_freeform_script_includes_channel_style_guidance_when_available(monkeypatch):
-    monkeypatch.setattr(prompt_script.youtube_insights, "get_style_guidance", lambda: "- Lead with a number")
+    monkeypatch.setattr(prompt_script.youtube_insights, "get_combined_guidance", lambda: "- Lead with a number")
     captured = {}
 
     def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
@@ -99,7 +99,7 @@ def test_write_freeform_script_includes_channel_style_guidance_when_available(mo
 
 
 def test_write_freeform_script_omits_style_guidance_section_when_unavailable(monkeypatch):
-    monkeypatch.setattr(prompt_script.youtube_insights, "get_style_guidance", lambda: "")
+    monkeypatch.setattr(prompt_script.youtube_insights, "get_combined_guidance", lambda: "")
     captured = {}
 
     def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
@@ -108,4 +108,4 @@ def test_write_freeform_script_omits_style_guidance_section_when_unavailable(mon
 
     monkeypatch.setattr(prompt_script.llm, "chat_json", fake_chat_json)
     prompt_script._write_freeform_script("octopuses")
-    assert "recent-video performance" not in captured["user_prompt"]
+    assert "currently drawing viewers" not in captured["user_prompt"]

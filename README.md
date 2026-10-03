@@ -58,16 +58,23 @@ Config knobs in `.env`:
 
 Every generation also pulls your channel's own recent-video performance (views,
 click-through rate, average view duration, via the YouTube Analytics API) and
-feeds a short "what's hooking viewers" guidance blurb into that video's title/
-description/tag generation — so new videos lean into whatever's actually working
-on your channel instead of guessing blind. This needs no extra setup beyond the
-steps above, but:
+currently-popular videos from other channels in the finance/stock-analysis/
+wealth niche (via public YouTube Data API v3 search), then feeds a short
+"what's hooking viewers" guidance blurb into that video's title/description/
+tag generation — so new videos lean into both your own channel's track record
+and what's working niche-wide right now, instead of guessing blind. This needs
+no extra setup beyond the steps above, but:
 
 - It also requires the **YouTube Analytics API** enabled on the same Google
   Cloud project as the YouTube Data API v3 (step 1 above).
 - It's best-effort and silent: if there aren't at least a handful of uploaded
-  videos yet, or the token predates this feature, generation proceeds normally
-  without the guidance (no error, no blocked video).
+  videos yet, the niche search turns up nothing, or quota runs out, generation
+  proceeds normally without that part of the guidance (no error, no blocked
+  video).
+- The niche-wide search (`pipeline/market_trends.py`) uses a fixed set of
+  finance/stock/wealth search terms and costs YouTube Data API quota (100
+  units per search term, against the 10,000/day free quota) on every single
+  generation — keep that in mind if you're generating many videos a day.
 - If your existing `cache/youtube_token.json` was created before this feature
   was added, it lacks the `yt-analytics.readonly` scope — re-run
   `python3 scripts/youtube_auth.py` once to re-consent and pick it up (and

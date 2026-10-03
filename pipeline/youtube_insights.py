@@ -16,7 +16,7 @@ import re
 
 from googleapiclient.discovery import build
 
-from . import llm, youtube_upload
+from . import llm, market_trends, youtube_upload
 
 ANALYTICS_METRICS_FULL = "views,estimatedMinutesWatched,averageViewDuration,impressions,impressionsClickThroughRate"
 ANALYTICS_METRICS_BASIC = "views,estimatedMinutesWatched,averageViewDuration"
@@ -175,3 +175,18 @@ def get_style_guidance(max_videos: int = 20) -> str:
         return summarize_insights(videos)
     except Exception:
         return ""
+
+
+def get_combined_guidance() -> str:
+    """Merges this channel's own performance guidance with broader
+    finance/stock-analysis niche trend guidance (see market_trends.py) into
+    one blurb for the title/hook prompt. Either half may be empty (e.g. a
+    brand-new channel with no own-channel data yet) — this never raises."""
+    sections = []
+    own = get_style_guidance()
+    if own:
+        sections.append(f"This channel's own recent-video performance:\n{own}")
+    niche = market_trends.get_market_trend_guidance()
+    if niche:
+        sections.append(f"Broader finance/stock-analysis/wealth niche trends right now:\n{niche}")
+    return "\n\n".join(sections)

@@ -38,6 +38,29 @@ def test_get_style_guidance_returns_summary_when_videos_available(monkeypatch):
     assert yi.get_style_guidance() == "- Lead with a number"
 
 
+# -- get_combined_guidance: merges own-channel + niche-wide guidance ----------
+
+def test_get_combined_guidance_merges_both_sources(monkeypatch):
+    monkeypatch.setattr(yi, "get_style_guidance", lambda: "- Own channel bullet")
+    monkeypatch.setattr(yi.market_trends, "get_market_trend_guidance", lambda: "- Niche bullet")
+    combined = yi.get_combined_guidance()
+    assert "Own channel bullet" in combined
+    assert "Niche bullet" in combined
+
+
+def test_get_combined_guidance_omits_empty_sections(monkeypatch):
+    monkeypatch.setattr(yi, "get_style_guidance", lambda: "")
+    monkeypatch.setattr(yi.market_trends, "get_market_trend_guidance", lambda: "- Niche bullet")
+    combined = yi.get_combined_guidance()
+    assert combined == "Broader finance/stock-analysis/wealth niche trends right now:\n- Niche bullet"
+
+
+def test_get_combined_guidance_returns_empty_when_both_sources_empty(monkeypatch):
+    monkeypatch.setattr(yi, "get_style_guidance", lambda: "")
+    monkeypatch.setattr(yi.market_trends, "get_market_trend_guidance", lambda: "")
+    assert yi.get_combined_guidance() == ""
+
+
 # -- fetch_channel_insights: shapes the Data API + Analytics API responses ----
 
 def test_fetch_channel_insights_returns_empty_below_minimum_video_count(monkeypatch):

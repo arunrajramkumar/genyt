@@ -85,11 +85,11 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
         f"Target narration length: about {target_words} words "
         f"(~{duration_sec} seconds spoken).\n\n"
     )
-    style_guidance = youtube_insights.get_style_guidance()
+    style_guidance = youtube_insights.get_combined_guidance()
     if style_guidance:
         user_prompt += (
-            "This channel's own recent-video performance data suggests the "
-            "following for what hooks viewers — apply it to the title and the "
+            "Below is guidance on what's currently drawing viewers — based on this "
+            "channel's own data and/or the wider niche — apply it to the title and the "
             "first scene's hook, without contradicting the facts above:\n"
             f"{style_guidance}\n\n"
         )

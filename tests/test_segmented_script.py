@@ -189,7 +189,7 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
         ss, "_write_segment_scene",
         lambda label, content, duration: {"narration": f"N:{label}", "visual_query": "v", "on_screen_text": ""},
     )
-    monkeypatch.setattr(ss.youtube_insights, "get_style_guidance", lambda: "")
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
     monkeypatch.setattr(
         ss, "_write_metadata",
         lambda scenes, style_guidance="": {"title": "Premier Polyfilm: What Long-Term Investors Watch",
@@ -208,7 +208,7 @@ def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monk
         ss, "_write_segment_scene",
         lambda label, content, duration: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
     )
-    monkeypatch.setattr(ss.youtube_insights, "get_style_guidance", lambda: "- Lead with a number")
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "- Lead with a number")
     captured = {}
 
     def fake_write_metadata(scenes, style_guidance=""):
@@ -285,4 +285,4 @@ def test_write_metadata_omits_style_guidance_section_when_empty(monkeypatch):
 
     monkeypatch.setattr(ss.llm, "chat_json", fake_chat_json)
     ss._write_metadata([{"narration": "n"}])
-    assert "recent-video performance" not in captured["user_prompt"]
+    assert "currently drawing viewers" not in captured["user_prompt"]

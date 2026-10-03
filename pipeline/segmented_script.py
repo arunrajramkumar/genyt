@@ -223,8 +223,8 @@ def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
     user_prompt = f"Narration:\n{narration}"
     if style_guidance:
         user_prompt += (
-            "\n\nThis channel's own recent-video performance data suggests the "
-            f"following for what hooks viewers — apply it to the title (and tags "
+            "\n\nBelow is guidance on what's currently drawing viewers — based on this "
+            "channel's own data and/or the wider niche — apply it to the title (and tags "
             f"where relevant), without contradicting the narration above:\n{style_guidance}"
         )
     user_prompt += "\n\nProduce the JSON metadata now."
@@ -253,7 +253,7 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) 
         scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"])
         scenes.append(scene)
 
-    style_guidance = youtube_insights.get_style_guidance()
+    style_guidance = youtube_insights.get_combined_guidance()
     meta = _write_metadata(scenes, style_guidance)
     tags = list(dict.fromkeys(meta["tags"] or ["short video"]))
 

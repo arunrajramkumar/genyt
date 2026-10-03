@@ -33,9 +33,12 @@ def _load_credentials() -> Credentials:
     if not token_path.exists() and config.YOUTUBE_TOKEN_SEED_FILE and config.YOUTUBE_TOKEN_SEED_FILE.exists():
         token_path.write_text(config.YOUTUBE_TOKEN_SEED_FILE.read_text())
     if not token_path.exists():
+        seed = config.YOUTUBE_TOKEN_SEED_FILE
         raise NotConfiguredError(
             "No YouTube credentials found. Run `python3 scripts/youtube_auth.py` once "
-            "to authorize this app against your channel (see README)."
+            "to authorize this app against your channel (see README). Checked: "
+            f"{token_path} (exists={token_path.exists()}), "
+            f"YOUTUBE_TOKEN_SEED_FILE={seed} (exists={seed.exists() if seed else 'unset'})."
         )
     creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if creds.expired and creds.refresh_token:

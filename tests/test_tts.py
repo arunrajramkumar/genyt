@@ -11,7 +11,14 @@ from pipeline import tts
     ("P/E ratio is 22", "price to earnings ratio is 22"),
     ("Revenue grew 18% YoY", "18% year over year"),
     ("Rs 412 crore", "Rupees 412 crore"),
-    ("ROE of 22% Cr", "ROE of 22% Crore"),
+    ("₹412 crore", "Rupees 412 crore"),
+    ("ROE of 22% Cr", "return on equity of 22% Crore"),
+    ("ROCE stood at 18%", "return on capital employed stood at 18%"),
+    ("CAGR of 15%", "compound annual growth rate of 15%"),
+    ("EBITDA margin improved", "earnings before interest, tax, depreciation and amortization margin improved"),
+    ("NPA ratio fell", "non-performing assets ratio fell"),
+    ("CASA ratio rose", "current account savings account ratio rose"),
+    ("NIM expanded", "net interest margin expanded"),
 ])
 def test_normalize_for_speech_expands_abbreviations(raw, expected_fragment):
     assert expected_fragment in tts._normalize_for_speech(raw)

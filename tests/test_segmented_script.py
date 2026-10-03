@@ -221,6 +221,32 @@ def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monk
     assert captured["style_guidance"] == "- Lead with a number"
 
 
+# -- clean_title: strips hashtags and collapses whitespace ---------------------
+
+def test_clean_title_strips_hashtags():
+    assert ss.clean_title("Premier Polyfilm Stock Analysis #stocks #investing") == "Premier Polyfilm Stock Analysis"
+
+
+def test_clean_title_collapses_double_spaces():
+    assert ss.clean_title("Premier Polyfilm Limited  Stock Analysis") == "Premier Polyfilm Limited Stock Analysis"
+
+
+def test_clean_title_leaves_clean_title_untouched():
+    assert ss.clean_title("What's Next For ITC") == "What's Next For ITC"
+
+
+def test_write_metadata_cleans_hashtags_and_double_spaces_from_title(monkeypatch):
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({
+            "title": "Premier Polyfilm Limited  Stock Analysis #stocks",
+            "description": "d", "tags": [],
+        }),
+    )
+    meta = ss._write_metadata([{"narration": "n"}])
+    assert meta["title"] == "Premier Polyfilm Limited Stock Analysis"
+
+
 # -- _write_metadata: LLM-derived title/description/tags -----------------------
 
 def test_write_metadata_uses_scene_narration_to_name_the_actual_subject(monkeypatch):

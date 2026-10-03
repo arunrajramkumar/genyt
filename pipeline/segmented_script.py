@@ -21,6 +21,14 @@ HEADER_RE = re.compile(
 END_SCREEN_RE = re.compile(r"^\s*end\s*screen\s*:?\s*$", re.IGNORECASE)
 
 QUOTE_RE = re.compile(r"[“”\"]([^“”\"]{15,})[“”\"]")
+HASHTAG_RE = re.compile(r"#\w+")
+
+
+def clean_title(title: str) -> str:
+    """Strips hashtags (they belong in tags/description, not the title) and
+    collapses any double-spacing the model leaves behind after removing them."""
+    title = HASHTAG_RE.sub("", title)
+    return re.sub(r"\s+", " ", title).strip()
 
 FACT_PATTERNS = [
     r"₹\s?[\d,]+(?:\.\d+)?\s*(?:crore|cr\b|lakh)",
@@ -211,7 +219,10 @@ narration below. Output ONLY valid JSON (no markdown fences, no commentary):
 Rules:
 - title: punchy, clickable, under 70 characters. Must name the specific subject
   (company, person, place, event, topic) the narration is actually about — never
-  a generic placeholder like "Stock Analysis" or "Interesting Facts".
+  a generic placeholder like "Stock Analysis" or "Interesting Facts". Use correct
+  English grammar and punctuation, including apostrophes in contractions and
+  possessives (e.g. "What's", "India's"). Never put hashtags in the title —
+  put them in tags instead.
 - description: 2-3 sentences summarizing what the video covers.
 - tags: 8-15 relevant search tags.
 - Base this ONLY on the narration given — do not invent facts not present there.
@@ -237,7 +248,7 @@ def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
             if not (data.get("title") or "").strip():
                 raise ValueError("empty title")
             return {
-                "title": data["title"].strip()[:70],
+                "title": clean_title(data["title"])[:70],
                 "description": (data.get("description") or "").strip(),
                 "tags": [t for t in (data.get("tags") or []) if t],
             }

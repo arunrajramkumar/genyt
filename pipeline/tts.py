@@ -52,7 +52,15 @@ _ABBREVIATIONS = [
     (r"\bYoY\b", "year over year"),
     (r"\bQoQ\b", "quarter over quarter"),
     (r"\bRs\.?(?=\s?\d)", "Rupees"),
+    (r"₹", "Rupees "),
     (r"\bCr\.?\b", "Crore"),
+    (r"\bROCE\b", "return on capital employed"),
+    (r"\bROE\b", "return on equity"),
+    (r"\bCAGR\b", "compound annual growth rate"),
+    (r"\bEBITDA\b", "earnings before interest, tax, depreciation and amortization"),
+    (r"\bNPA\b", "non-performing assets"),
+    (r"\bCASA\b", "current account savings account"),
+    (r"\bNIM\b", "net interest margin"),
 ]
 
 

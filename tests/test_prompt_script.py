@@ -109,3 +109,17 @@ def test_write_freeform_script_omits_style_guidance_section_when_unavailable(mon
     monkeypatch.setattr(prompt_script.llm, "chat_json", fake_chat_json)
     prompt_script._write_freeform_script("octopuses")
     assert "currently drawing viewers" not in captured["user_prompt"]
+
+
+def test_write_freeform_script_cleans_hashtags_and_double_spaces_from_title(monkeypatch):
+    dirty_script = dict(VALID_SCRIPT, title="5 Facts  About Octopuses #ocean #facts")
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(dirty_script))
+    result = prompt_script._write_freeform_script("octopuses")
+    assert result["title"] == "5 Facts About Octopuses"
+
+
+def test_write_freeform_script_falls_back_to_default_tag_when_empty(monkeypatch):
+    untagged_script = dict(VALID_SCRIPT, tags=[])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(untagged_script))
+    result = prompt_script._write_freeform_script("octopuses")
+    assert result["tags"] == ["short video"]

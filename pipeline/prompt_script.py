@@ -29,6 +29,9 @@ commentary) matching this schema:
 }
 
 Rules:
+- The title must use correct English grammar and punctuation, including
+  apostrophes in contractions and possessives (e.g. "What's", "India's").
+  Never put hashtags in the title — put them in tags instead.
 - If the user's prompt includes specific facts, figures, names, or claims, use ONLY
   those — never invent, estimate, or add extra numbers, dates, or claims that were
   not given to you. If the prompt is an analysis of something (e.g. a stock, a
@@ -105,6 +108,8 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
                     raise ValueError(f"Script missing required field: {key}")
             if not script["scenes"]:
                 raise ValueError("Script has zero scenes")
+            script["title"] = segmented_script.clean_title(script["title"])[:70]
+            script["tags"] = list(dict.fromkeys(t for t in (script["tags"] or []) if t)) or ["short video"]
             return script
         except (ValueError, KeyError) as e:
             last_error = e

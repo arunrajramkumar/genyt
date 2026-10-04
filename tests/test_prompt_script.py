@@ -60,14 +60,18 @@ def test_write_script_from_prompt_falls_back_to_freeform_for_plain_prompt(monkey
 def test_write_freeform_script_succeeds_on_valid_response(monkeypatch):
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(VALID_SCRIPT))
     result = prompt_script._write_freeform_script("octopuses")
-    assert result == VALID_SCRIPT
+    assert result["title"] == VALID_SCRIPT["title"]
+    assert result["description"] == VALID_SCRIPT["description"]
+    assert result["tags"] == VALID_SCRIPT["tags"]
+    assert result["scenes"][0]["narration"].startswith(VALID_SCRIPT["scenes"][0]["narration"])
 
 
 def test_write_freeform_script_retries_then_succeeds(monkeypatch):
     responses = iter(["not json", _json_response(VALID_SCRIPT)])
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: next(responses))
     result = prompt_script._write_freeform_script("octopuses")
-    assert result == VALID_SCRIPT
+    assert result["title"] == VALID_SCRIPT["title"]
+    assert result["scenes"][0]["narration"].startswith(VALID_SCRIPT["scenes"][0]["narration"])
 
 
 @pytest.mark.parametrize("missing_key", ["title", "description", "tags", "scenes"])
@@ -123,3 +127,15 @@ def test_write_freeform_script_falls_back_to_default_tag_when_empty(monkeypatch)
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(untagged_script))
     result = prompt_script._write_freeform_script("octopuses")
     assert result["tags"] == ["short video"]
+
+
+def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):
+    two_scene_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "Fact one.", "visual_query": "q1", "on_screen_text": ""},
+        {"narration": "Fact two.", "visual_query": "q2", "on_screen_text": ""},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(two_scene_script))
+    result = prompt_script._write_freeform_script("octopuses")
+    assert result["scenes"][-1]["narration"] == "Fact two. If this helped, subscribe for more stock analysis like it."
+    assert result["scenes"][-1]["on_screen_text"] == "SUBSCRIBE FOR MORE"
+    assert result["scenes"][0]["narration"] == "Fact one."

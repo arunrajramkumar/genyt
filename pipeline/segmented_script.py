@@ -211,6 +211,24 @@ def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
     }
 
 
+SUBSCRIBE_CTA_NARRATION = " If this helped, subscribe for more stock analysis like it."
+SUBSCRIBE_CTA_ON_SCREEN_TEXT = "SUBSCRIBE FOR MORE"
+
+
+def append_subscribe_cta(scenes: list) -> None:
+    """Appends a spoken + on-screen subscribe ask to the final scene. Most Shorts
+    viewers watch muted at first, so the ask needs to be both heard and seen —
+    real channel analytics showed near-zero subscriber conversion despite solid
+    retention on some videos, and no video ever actually asked viewers to
+    subscribe."""
+    if not scenes:
+        return
+    last = scenes[-1]
+    last["narration"] = last["narration"].rstrip() + SUBSCRIBE_CTA_NARRATION
+    if not (last.get("on_screen_text") or "").strip():
+        last["on_screen_text"] = SUBSCRIBE_CTA_ON_SCREEN_TEXT
+
+
 SYSTEM_PROMPT_METADATA = """You write YouTube metadata for a short video, based only on its
 narration below. Output ONLY valid JSON (no markdown fences, no commentary):
 
@@ -267,5 +285,6 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) 
     style_guidance = youtube_insights.get_combined_guidance()
     meta = _write_metadata(scenes, style_guidance)
     tags = list(dict.fromkeys(meta["tags"] or ["short video"]))
+    append_subscribe_cta(scenes)
 
     return {"title": meta["title"], "description": meta["description"], "tags": tags, "scenes": scenes}

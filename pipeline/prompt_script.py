@@ -110,6 +110,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
                 raise ValueError("Script has zero scenes")
             script["title"] = segmented_script.clean_title(script["title"])[:70]
             script["tags"] = list(dict.fromkeys(t for t in (script["tags"] or []) if t)) or ["short video"]
+            segmented_script.append_subscribe_cta(script["scenes"])
             return script
         except (ValueError, KeyError) as e:
             last_error = e

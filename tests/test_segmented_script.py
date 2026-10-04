@@ -200,7 +200,7 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
     assert script["title"] == "Premier Polyfilm: What Long-Term Investors Watch"
     assert script["description"] == "desc"
     assert script["tags"] == ["premier polyfilm", "stock analysis"]
-    assert script["scenes"][0]["narration"] == "N:Hook"
+    assert script["scenes"][0]["narration"].startswith("N:Hook")
 
 
 def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):
@@ -245,6 +245,50 @@ def test_write_metadata_cleans_hashtags_and_double_spaces_from_title(monkeypatch
     )
     meta = ss._write_metadata([{"narration": "n"}])
     assert meta["title"] == "Premier Polyfilm Limited Stock Analysis"
+
+
+# -- append_subscribe_cta: spoken + on-screen subscribe ask on the final scene -
+
+def test_append_subscribe_cta_appends_to_narration_of_last_scene():
+    scenes = [{"narration": "Scene one.", "on_screen_text": ""}, {"narration": "Scene two.", "on_screen_text": "Final fact"}]
+    ss.append_subscribe_cta(scenes)
+    assert scenes[0]["narration"] == "Scene one."
+    assert scenes[1]["narration"] == "Scene two. If this helped, subscribe for more stock analysis like it."
+
+
+def test_append_subscribe_cta_sets_on_screen_text_when_empty():
+    scenes = [{"narration": "Only scene.", "on_screen_text": ""}]
+    ss.append_subscribe_cta(scenes)
+    assert scenes[0]["on_screen_text"] == "SUBSCRIBE FOR MORE"
+
+
+def test_append_subscribe_cta_preserves_existing_on_screen_text():
+    scenes = [{"narration": "Only scene.", "on_screen_text": "Final fact"}]
+    ss.append_subscribe_cta(scenes)
+    assert scenes[0]["on_screen_text"] == "Final fact"
+
+
+def test_append_subscribe_cta_handles_empty_scene_list():
+    scenes = []
+    ss.append_subscribe_cta(scenes)
+    assert scenes == []
+
+
+def test_write_segmented_script_appends_subscribe_cta_to_last_scene(monkeypatch):
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration: {"narration": f"{label} narration.", "visual_query": "q", "on_screen_text": ""},
+    )
+    monkeypatch.setattr(
+        ss, "_write_metadata",
+        lambda scenes, style_guidance="": {"title": "T", "description": "d", "tags": ["a"]},
+    )
+    segments = [{"label": "Hook", "content": "c1", "duration": 5}, {"label": "End screen", "content": "c2", "duration": 5}]
+    result = ss.write_segmented_script("prompt", segments)
+    assert result["scenes"][-1]["narration"].endswith("subscribe for more stock analysis like it.")
+    assert result["scenes"][-1]["on_screen_text"] == "SUBSCRIBE FOR MORE"
+    assert result["scenes"][0]["narration"] == "Hook narration."
 
 
 # -- _write_metadata: LLM-derived title/description/tags -----------------------

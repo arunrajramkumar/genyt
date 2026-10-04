@@ -10,6 +10,7 @@ the same source content, and keeps each scene's spoken duration aligned with
 the section the user asked for.
 """
 import json
+import random
 import re
 
 from . import llm, youtube_insights
@@ -47,17 +48,17 @@ QUALITATIVE_FALLBACKS = [
 ]
 
 VISUAL_FALLBACKS = [
-    ("hook", "industrial factory establishing shot"),
-    ("overview", "steel factory workers"),
-    ("revenue", "factory production line"),
-    ("financial", "stock market chart growth"),
-    ("balance sheet", "financial documents calculator"),
-    ("valuation", "financial documents calculator"),
-    ("growth", "construction site mining equipment"),
-    ("risk", "warning sign caution"),
-    ("conclusion", "investor thinking research"),
-    ("disclaimer", "warning text screen"),
-    ("end screen", "warning text screen"),
+    ("hook", ["industrial factory establishing shot", "city skyline aerial view", "busy trading floor"]),
+    ("overview", ["steel factory workers", "office team meeting", "business professional presentation"]),
+    ("revenue", ["factory production line", "cash counting machine", "warehouse logistics"]),
+    ("financial", ["stock market chart growth", "stock ticker screen", "financial analyst at desk"]),
+    ("balance sheet", ["financial documents calculator", "accountant reviewing ledger", "spreadsheet on laptop screen"]),
+    ("valuation", ["financial documents calculator", "investor analyzing charts", "stock exchange board"]),
+    ("growth", ["construction site mining equipment", "upward arrow graph animation", "factory expansion"]),
+    ("risk", ["warning sign caution", "stormy stock market graph", "red downward chart"]),
+    ("conclusion", ["investor thinking research", "handshake business deal", "person reading newspaper finance"]),
+    ("disclaimer", ["warning text screen", "fine print document", "legal disclaimer text"]),
+    ("end screen", ["warning text screen", "subscribe button animation", "fine print document"]),
 ]
 
 SYSTEM_PROMPT_SEGMENT = """You write ONE scene of a YouTube Shorts video, based only on the
@@ -161,9 +162,9 @@ def _fix_double_escaped_unicode(text: str) -> str:
 
 def _fallback_visual(label: str) -> str:
     label_lower = label.lower()
-    for key, query in VISUAL_FALLBACKS:
+    for key, queries in VISUAL_FALLBACKS:
         if key in label_lower:
-            return query
+            return random.choice(queries)
     return "business professional presentation"
 
 

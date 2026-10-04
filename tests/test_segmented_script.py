@@ -106,15 +106,18 @@ def test_fix_double_escaped_unicode_leaves_normal_text_untouched():
     assert ss._fix_double_escaped_unicode("plain text") == "plain text"
 
 
-@pytest.mark.parametrize("label,expected_fragment", [
-    ("Hook", "factory"),
-    ("Company overview", "steel factory"),
-    ("Financials", "stock market chart growth"),
-    ("Risk factors", "warning"),
-    ("Something unrelated", "business professional presentation"),
+@pytest.mark.parametrize("label,expected_options", [
+    ("Hook", ["industrial factory establishing shot", "city skyline aerial view", "busy trading floor"]),
+    ("Company overview", ["steel factory workers", "office team meeting", "business professional presentation"]),
+    ("Financials", ["stock market chart growth", "stock ticker screen", "financial analyst at desk"]),
+    ("Risk factors", ["warning sign caution", "stormy stock market graph", "red downward chart"]),
 ])
-def test_fallback_visual_matches_label_keywords(label, expected_fragment):
-    assert expected_fragment in ss._fallback_visual(label)
+def test_fallback_visual_matches_label_keywords(label, expected_options):
+    assert ss._fallback_visual(label) in expected_options
+
+
+def test_fallback_visual_defaults_for_unmatched_label():
+    assert ss._fallback_visual("Something unrelated") == "business professional presentation"
 
 
 # -- _write_segment_scene: LLM call shape + grounding enforcement --------------

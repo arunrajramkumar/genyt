@@ -13,7 +13,7 @@ def test_fetch_visual_raises_without_api_key(no_api_keys):
 
 def test_fetch_visual_returns_cached_video_without_network_call(isolated_dirs, monkeypatch):
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
-    cache_path = visuals._cache_path("octopus", "landscape", "mp4")
+    cache_path = visuals._cache_path("octopus", "landscape", "mp4", 0)
     cache_path.write_bytes(b"fake video bytes")
 
     def fail_if_called(*a, **k):
@@ -27,13 +27,24 @@ def test_fetch_visual_returns_cached_video_without_network_call(isolated_dirs, m
 
 def test_fetch_visual_falls_back_to_cached_image(isolated_dirs, monkeypatch):
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
-    image_cache = visuals._cache_path("octopus", "landscape", "jpg")
+    image_cache = visuals._cache_path("octopus", "landscape", "jpg", 0)
     image_cache.write_bytes(b"fake image bytes")
 
     monkeypatch.setattr(visuals.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no network")))
     path, kind = visuals.fetch_visual("octopus", orientation="landscape")
     assert path == image_cache
     assert kind == "image"
+
+
+def test_fetch_visual_picks_randomly_among_cached_pool(isolated_dirs, monkeypatch):
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    pool = visuals._pool_paths("octopus", "landscape", "mp4")
+    for p in pool:
+        p.write_bytes(b"fake video bytes")
+    monkeypatch.setattr(visuals.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no network")))
+
+    seen = {visuals.fetch_visual("octopus", orientation="landscape")[0] for _ in range(30)}
+    assert seen == set(pool)
 
 
 def _fake_get_sequence(responses):
@@ -89,3 +100,28 @@ def test_fetch_visual_raises_when_nothing_found(isolated_dirs, monkeypatch):
 
     with pytest.raises(RuntimeError, match="No Pexels results"):
         visuals.fetch_visual("a very obscure query", orientation="landscape")
+
+
+def test_fetch_visual_seeds_a_pool_of_distinct_clips_for_variety_on_reuse(isolated_dirs, monkeypatch):
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    video_search_response = _ok_response({
+        "videos": [
+            {"video_files": [{"width": 1280, "link": f"https://example.com/clip{i}.mp4"}]}
+            for i in range(visuals.POOL_SIZE)
+        ],
+    })
+    monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([video_search_response]))
+    downloaded_urls = []
+
+    def fake_download(url, dest):
+        downloaded_urls.append(url)
+        dest.write_bytes(b"x")
+        return dest
+
+    monkeypatch.setattr(visuals, "_download", fake_download)
+
+    visuals.fetch_visual("recurring generic query", orientation="landscape", target_width=1280)
+
+    assert len(set(downloaded_urls)) == visuals.POOL_SIZE
+    pool = visuals._pool_paths("recurring generic query", "landscape", "mp4")
+    assert all(p.exists() for p in pool)

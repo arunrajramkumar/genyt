@@ -11,10 +11,11 @@ def test_chat_json_raises_without_api_key(no_api_keys):
         llm.chat_json("system", "user", max_tokens=100, timeout=10)
 
 
-def _fake_response(status_code=200, json_body=None):
+def _fake_response(status_code=200, json_body=None, text=""):
     resp = mock.Mock()
     resp.status_code = status_code
     resp.json.return_value = json_body or {}
+    resp.text = text
     if status_code >= 400:
         resp.raise_for_status.side_effect = requests.HTTPError(f"{status_code} error")
     else:
@@ -51,9 +52,14 @@ def test_chat_json_sends_reasoning_effort_low(monkeypatch):
 
 
 def test_chat_json_raises_on_http_error(monkeypatch):
+    """The raw Groq error body must surface in the message — raise_for_status()
+    alone discards it, which made production 400s undiagnosable."""
     monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
-    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _fake_response(400, {"error": "bad"}))
-    with pytest.raises(requests.HTTPError):
+    monkeypatch.setattr(
+        llm.requests, "post",
+        lambda *a, **k: _fake_response(400, {"error": "bad"}, text='{"error": {"message": "context_length_exceeded"}}'),
+    )
+    with pytest.raises(RuntimeError, match="context_length_exceeded"):
         llm.chat_json("system", "user", max_tokens=100, timeout=10)
 
 

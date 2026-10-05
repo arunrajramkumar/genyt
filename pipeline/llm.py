@@ -39,5 +39,8 @@ def chat_json(system_prompt: str, user_prompt: str, max_tokens: int, timeout: in
         )
     except requests.ConnectionError as e:
         raise RuntimeError(f"Could not reach the Groq API: {e}") from e
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise RuntimeError(f"Groq API error {resp.status_code}: {resp.text}") from e
     return resp.json()["choices"][0]["message"]["content"]

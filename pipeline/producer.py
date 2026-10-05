@@ -14,6 +14,21 @@ def slugify(title: str) -> str:
     return slug[:60] or "video"
 
 
+def _append_hashtags(description: str, tags: list, limit: int = 3) -> str:
+    """YouTube highlights up to 3 hashtags found in a video's description above
+    its title — appending the top tags there gets that for free on every upload."""
+    hashtags = []
+    for tag in tags:
+        cleaned = re.sub(r"[^A-Za-z0-9]", "", tag)
+        if cleaned:
+            hashtags.append(f"#{cleaned}")
+        if len(hashtags) == limit:
+            break
+    if not hashtags:
+        return description
+    return f"{description}\n\n{' '.join(hashtags)}"
+
+
 def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None) -> dict:
     """orientation: config.LANDSCAPE or config.SHORTS (defaults to landscape).
     voice: edge-tts voice ID overriding config.TTS_VOICE for this video (e.g. a
@@ -82,10 +97,12 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         hook_card_path=thumb_path,
     )
 
+    description = _append_hashtags(script["description"], script["tags"])
+
     meta_path = config.OUTPUT_DIR / f"{slug}.metadata.txt"
     meta_path.write_text(
         f"TITLE:\n{script['title']}\n\n"
-        f"DESCRIPTION:\n{script['description']}\n\n"
+        f"DESCRIPTION:\n{description}\n\n"
         f"TAGS:\n{', '.join(script['tags'])}\n",
         encoding="utf-8",
     )
@@ -95,7 +112,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         try:
             on_progress("Uploading to YouTube")
             upload = youtube_upload.upload_video(
-                out_path, script["title"], script["description"], script["tags"],
+                out_path, script["title"], description, script["tags"],
                 captions_path=srt_path,
                 captions_language=(voice or config.TTS_VOICE).split("-")[0],
             )

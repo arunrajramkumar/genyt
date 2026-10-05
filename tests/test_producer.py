@@ -96,6 +96,46 @@ def test_produce_from_script_metadata_file_contains_title_description_tags(mocke
     assert "a, b" in text
 
 
+# -- hashtag appending: every upload's description should end with #hashtags --
+
+def test_append_hashtags_appends_top_tags_as_hashtags():
+    result = producer._append_hashtags("A description.", ["stock analysis", "nifty50", "long term investing"])
+    assert result == "A description.\n\n#stockanalysis #nifty50 #longterminvesting"
+
+
+def test_append_hashtags_caps_at_three_tags():
+    result = producer._append_hashtags("Desc.", ["a", "b", "c", "d", "e"])
+    assert result == "Desc.\n\n#a #b #c"
+
+
+def test_append_hashtags_skips_tags_that_become_empty_after_cleaning():
+    result = producer._append_hashtags("Desc.", ["!!!", "real tag"])
+    assert result == "Desc.\n\n#realtag"
+
+
+def test_append_hashtags_leaves_description_untouched_when_no_tags():
+    assert producer._append_hashtags("Desc.", []) == "Desc."
+
+
+def test_produce_from_script_metadata_file_includes_hashtags_from_tags(mocked_pipeline):
+    script = _stub_script()
+    result = producer.produce_from_script(script, on_progress=lambda m: None)
+    text = result["metadata"].read_text(encoding="utf-8")
+    assert "#a #b" in text
+
+
+def test_produce_from_script_upload_description_includes_hashtags(mocked_pipeline, monkeypatch):
+    captured = {}
+
+    def fake_upload(video_path, title, description, tags, **kwargs):
+        captured["description"] = description
+        return {"video_id": "abc", "url": "https://youtu.be/abc"}
+
+    monkeypatch.setattr(producer.youtube_upload, "upload_video", fake_upload)
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert captured["description"].endswith("#a #b")
+
+
 def test_produce_from_script_picks_first_numeric_on_screen_text_as_stat_for_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
     def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None):

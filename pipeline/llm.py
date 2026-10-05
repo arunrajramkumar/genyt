@@ -8,17 +8,24 @@ import requests
 from . import config
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+MAX_TOKENS_CAP = 2048
 
 
-def chat_json(system_prompt: str, user_prompt: str, max_tokens: int, timeout: int) -> str:
-    """Returns the raw JSON-formatted string content of the model's reply."""
-    if not config.GROQ_API_KEY:
-        raise RuntimeError(
-            "GROQ_API_KEY is not set. Get a free key at https://console.groq.com/keys "
-            "and set it as an environment variable (or a Space secret)."
-        )
+def _is_truncated_generation_error(resp) -> bool:
+    """openai/gpt-oss-120b is a reasoning model: even with reasoning_effort
+    'low', it can occasionally still burn the whole max_tokens budget on
+    hidden chain-of-thought for a fact-dense prompt and return this specific
+    400 instead of the JSON body — retryable with a bigger token budget,
+    unlike a malformed-request 400."""
     try:
-        resp = requests.post(
+        return resp.json().get("error", {}).get("code") == "json_validate_failed"
+    except (ValueError, AttributeError):
+        return False
+
+
+def _post(system_prompt: str, user_prompt: str, max_tokens: int, timeout: int):
+    try:
+        return requests.post(
             GROQ_CHAT_URL,
             headers={"Authorization": f"Bearer {config.GROQ_API_KEY}"},
             json={
@@ -29,16 +36,25 @@ def chat_json(system_prompt: str, user_prompt: str, max_tokens: int, timeout: in
                 ],
                 "response_format": {"type": "json_object"},
                 "max_tokens": max_tokens,
-                # openai/gpt-oss-120b is a reasoning model: without this it can burn
-                # the whole max_tokens budget on hidden chain-of-thought and return
-                # a 400 "max completion tokens reached before generating a valid
-                # document" instead of the actual JSON.
                 "reasoning_effort": "low",
             },
             timeout=timeout,
         )
     except requests.ConnectionError as e:
         raise RuntimeError(f"Could not reach the Groq API: {e}") from e
+
+
+def chat_json(system_prompt: str, user_prompt: str, max_tokens: int, timeout: int) -> str:
+    """Returns the raw JSON-formatted string content of the model's reply."""
+    if not config.GROQ_API_KEY:
+        raise RuntimeError(
+            "GROQ_API_KEY is not set. Get a free key at https://console.groq.com/keys "
+            "and set it as an environment variable (or a Space secret)."
+        )
+    resp = _post(system_prompt, user_prompt, max_tokens, timeout)
+    while resp.status_code == 400 and _is_truncated_generation_error(resp) and max_tokens < MAX_TOKENS_CAP:
+        max_tokens = min(max_tokens * 2, MAX_TOKENS_CAP)
+        resp = _post(system_prompt, user_prompt, max_tokens, timeout)
     try:
         resp.raise_for_status()
     except requests.HTTPError as e:

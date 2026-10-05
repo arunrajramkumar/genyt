@@ -63,6 +63,48 @@ def test_chat_json_raises_on_http_error(monkeypatch):
         llm.chat_json("system", "user", max_tokens=100, timeout=10)
 
 
+def test_chat_json_retries_with_bigger_budget_on_truncated_generation(monkeypatch):
+    """Regression test: reasoning_effort 'low' alone isn't always enough — a
+    fact-dense segment can still burn the whole max_tokens budget on hidden
+    chain-of-thought and get a 400 json_validate_failed. That should be
+    retried with a bigger token budget instead of failing the whole job."""
+    monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
+    truncated = _fake_response(
+        400, {"error": {"code": "json_validate_failed", "message": "max completion tokens reached"}},
+    )
+    success = _fake_response(200, {"choices": [{"message": {"content": '{"ok": true}'}}]})
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(json["max_tokens"])
+        return truncated if len(calls) == 1 else success
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    result = llm.chat_json("system", "user", max_tokens=512, timeout=10)
+
+    assert result == '{"ok": true}'
+    assert calls == [512, 1024]
+
+
+def test_chat_json_gives_up_after_hitting_token_cap(monkeypatch):
+    monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
+    truncated = _fake_response(
+        400, {"error": {"code": "json_validate_failed", "message": "max completion tokens reached"}},
+        text='{"error": {"code": "json_validate_failed"}}',
+    )
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(json["max_tokens"])
+        return truncated
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    with pytest.raises(RuntimeError, match="json_validate_failed"):
+        llm.chat_json("system", "user", max_tokens=1500, timeout=10)
+
+    assert calls == [1500, llm.MAX_TOKENS_CAP]
+
+
 def test_chat_json_wraps_connection_error(monkeypatch):
     monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
 

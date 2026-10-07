@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -49,7 +50,7 @@ def mocked_pipeline(monkeypatch, isolated_dirs, tmp_path):
     monkeypatch.setattr(producer.tts, "synthesize", lambda text, path, voice=None: (path.write_bytes(b"a"), 3.0)[1])
     monkeypatch.setattr(
         producer.visuals, "fetch_visual",
-        lambda query, orientation, target_width: (tmp_path / "visual.jpg", "image"),
+        lambda query, orientation, target_width, exclude=None: (tmp_path / "visual.jpg", "image"),
     )
     (tmp_path / "visual.jpg").write_bytes(b"img")
     monkeypatch.setattr(producer.textcard, "render_hook_card", lambda *a, **k: a[4])
@@ -58,6 +59,24 @@ def mocked_pipeline(monkeypatch, isolated_dirs, tmp_path):
         lambda scenes, narration_paths, visual_paths, out_path, work_dir, width, height, hook_card_path: out_path,
     )
     return {}
+
+
+def test_produce_from_script_excludes_already_used_visuals_for_later_scenes(mocked_pipeline, monkeypatch):
+    """Regression test: scenes sharing a generic query used to be able to land
+    on the exact same cached clip via independent random picks — visuals
+    should avoid repeating within a single video when alternatives exist."""
+    seen_excludes = []
+    responses = [(Path(f"/tmp/visual_{i}.jpg"), "image") for i in range(2)]
+
+    def fake_fetch_visual(query, orientation, target_width, exclude=None):
+        seen_excludes.append(set(exclude or set()))
+        return responses[len(seen_excludes) - 1]
+
+    monkeypatch.setattr(producer.visuals, "fetch_visual", fake_fetch_visual)
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+
+    assert seen_excludes[0] == set()
+    assert seen_excludes[1] == {responses[0][0]}
 
 
 def test_produce_from_script_fills_missing_first_scene_on_screen_text_with_title(mocked_pipeline):

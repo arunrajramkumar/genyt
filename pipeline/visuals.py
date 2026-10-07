@@ -34,25 +34,41 @@ def _download(url: str, dest: Path) -> Path:
     return dest
 
 
-def fetch_visual(query: str, orientation: str = "landscape", target_width: int = None) -> tuple[Path, str]:
+def _pick(paths: list[Path], exclude: set) -> Path:
+    """Random choice that avoids paths already used elsewhere in the same video
+    when possible, falling back to a repeat only if every pooled option has
+    already been used (unavoidable when a query's pool is smaller than the
+    number of scenes that share it)."""
+    unused = [p for p in paths if p not in exclude]
+    return random.choice(unused or paths)
+
+
+def fetch_visual(
+    query: str, orientation: str = "landscape", target_width: int = None, exclude: set = None,
+) -> tuple[Path, str]:
     """Returns (local_file_path, kind) where kind is 'video' or 'image'.
 
     orientation: "landscape" or "portrait" (portrait for YouTube Shorts / 9:16).
+    exclude: file paths already used by other scenes in the same video — two
+    scenes sharing a generic query (e.g. a fallback like "business professional
+    presentation") would otherwise have a real chance of landing on the exact
+    same clip via random.choice over the same small cached pool.
     """
     if not config.PEXELS_API_KEY:
         raise RuntimeError("PEXELS_API_KEY is not set in .env")
 
     target_width = target_width or config.VIDEO_WIDTH
     headers = {"Authorization": config.PEXELS_API_KEY}
+    exclude = exclude or set()
 
     video_pool = _pool_paths(query, orientation, "mp4")
     cached_videos = [p for p in video_pool if p.exists()]
     if cached_videos:
-        return random.choice(cached_videos), "video"
+        return _pick(cached_videos, exclude), "video"
     image_pool = _pool_paths(query, orientation, "jpg")
     cached_images = [p for p in image_pool if p.exists()]
     if cached_images:
-        return random.choice(cached_images), "image"
+        return _pick(cached_images, exclude), "image"
 
     resp = requests.get(
         VIDEO_SEARCH_URL,
@@ -71,7 +87,7 @@ def fetch_visual(query: str, orientation: str = "landscape", target_width: int =
             )
             best = next((f for f in files if f.get("width", 0) >= 720), files[0])
             downloaded.append(_download(best["link"], dest))
-        return random.choice(downloaded), "video"
+        return _pick(downloaded, exclude), "video"
 
     resp = requests.get(
         PHOTO_SEARCH_URL,
@@ -85,6 +101,6 @@ def fetch_visual(query: str, orientation: str = "landscape", target_width: int =
         downloaded = []
         for photo, dest in zip(photos[:POOL_SIZE], image_pool):
             downloaded.append(_download(photo["src"]["large2x"], dest))
-        return random.choice(downloaded), "image"
+        return _pick(downloaded, exclude), "image"
 
     raise RuntimeError(f"No Pexels results (video or photo) for query: {query!r}")

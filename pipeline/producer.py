@@ -56,14 +56,17 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         narration_paths.append(wav_path)
 
     on_progress("Fetching stock visuals")
-    visual_paths = [
-        visuals.fetch_visual(
+    visual_paths = []
+    used_visuals = set()
+    for scene in script["scenes"]:
+        visual_path, kind = visuals.fetch_visual(
             scene.get("visual_query", "").strip() or "abstract background",
             orientation=orientation["orientation"],
             target_width=orientation["width"],
+            exclude=used_visuals,
         )
-        for scene in script["scenes"]
-    ]
+        used_visuals.add(visual_path)
+        visual_paths.append((visual_path, kind))
 
     on_progress("Rendering hook card / thumbnail")
     stat_text = next(

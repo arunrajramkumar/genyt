@@ -47,6 +47,30 @@ def test_fetch_visual_picks_randomly_among_cached_pool(isolated_dirs, monkeypatc
     assert seen == set(pool)
 
 
+def test_fetch_visual_avoids_excluded_paths_when_pool_has_alternatives(isolated_dirs, monkeypatch):
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    pool = visuals._pool_paths("octopus", "landscape", "mp4")
+    for p in pool:
+        p.write_bytes(b"fake video bytes")
+    monkeypatch.setattr(visuals.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no network")))
+
+    exclude = set(pool[:-1])
+    seen = {visuals.fetch_visual("octopus", orientation="landscape", exclude=exclude)[0] for _ in range(30)}
+    assert seen == {pool[-1]}
+
+
+def test_fetch_visual_repeats_only_when_every_pooled_option_is_excluded(isolated_dirs, monkeypatch):
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    pool = visuals._pool_paths("octopus", "landscape", "mp4")
+    for p in pool:
+        p.write_bytes(b"fake video bytes")
+    monkeypatch.setattr(visuals.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no network")))
+
+    path, kind = visuals.fetch_visual("octopus", orientation="landscape", exclude=set(pool))
+    assert path in pool
+    assert kind == "video"
+
+
 def _fake_get_sequence(responses):
     it = iter(responses)
     def fake_get(url, headers=None, params=None, timeout=None):

@@ -19,6 +19,7 @@ from pipeline import tts
     ("NPA ratio fell", "non-performing assets ratio fell"),
     ("CASA ratio rose", "current account savings account ratio rose"),
     ("NIM expanded", "net interest margin expanded"),
+    ("Revenue grew to ~30 crore this year.", "approximately 30 crore"),
 ])
 def test_normalize_for_speech_expands_abbreviations(raw, expected_fragment):
     assert expected_fragment in tts._normalize_for_speech(raw)
@@ -27,6 +28,20 @@ def test_normalize_for_speech_expands_abbreviations(raw, expected_fragment):
 def test_normalize_for_speech_leaves_plain_text_untouched():
     plain = "This is a normal sentence with no abbreviations."
     assert tts._normalize_for_speech(plain) == plain
+
+
+@pytest.mark.parametrize("raw", [
+    "The company completed its Incorporation in 2010.",
+    "Increase in income was incredible, says the incorporated firm.",
+    "The Corporation announced record profits.",
+    "This is a Corporate strategy.",
+])
+def test_normalize_for_speech_does_not_mangle_words_containing_abbreviation_as_prefix(raw):
+    """Regression guard: 'Inc'/'Corp' etc. patterns used to have only a leading
+    \\b with no trailing boundary, so they matched as a bare prefix of longer
+    words like "Incorporation"/"Corporation" and spliced the expansion into
+    the leftover letters, producing garbage like "Incorporatedorporation"."""
+    assert tts._normalize_for_speech(raw) == raw
 
 
 def test_synthesize_raises_without_ffprobe(monkeypatch):

@@ -42,17 +42,25 @@ FFPROBE_BIN = shutil.which("ffprobe")
 
 # Abbreviations that TTS engines tend to spell out letter-by-letter instead of
 # reading as words. Expanded before synthesis so narration sounds natural.
+#
+# These patterns need a trailing (?![a-zA-Z]) (not just a leading \b), because
+# without it "Corp"/"Inc" etc. match as a bare prefix of ordinary words too —
+# "Corp\.?" alone matches the first 4 letters of "Corporation"/"Corporate" and
+# "Inc\.?" matches the first 3 letters of "Incorporation"/"Increase"/"Income"/
+# "Incredible", splicing the expansion into the leftover letters and producing
+# garbage like "Corporationoration" or "Incorporatedorporation".
 _ABBREVIATIONS = [
-    (r"\bLtd\.?", "Limited"),
-    (r"\bPvt\.?", "Private"),
-    (r"\bCorp\.?", "Corporation"),
-    (r"\bInc\.?", "Incorporated"),
-    (r"\bCo\.", "Company"),
+    (r"\bLtd\.?(?![a-zA-Z])", "Limited"),
+    (r"\bPvt\.?(?![a-zA-Z])", "Private"),
+    (r"\bCorp\.?(?![a-zA-Z])", "Corporation"),
+    (r"\bInc\.?(?![a-zA-Z])", "Incorporated"),
+    (r"\bCo\.(?![a-zA-Z])", "Company"),
     (r"\bP/E\b", "price to earnings"),
     (r"\bYoY\b", "year over year"),
     (r"\bQoQ\b", "quarter over quarter"),
     (r"\bRs\.?(?=\s?\d)", "Rupees"),
     (r"₹", "Rupees "),
+    (r"~\s?(?=\d)", "approximately "),
     (r"\bCr\.?\b", "Crore"),
     (r"\bROCE\b", "return on capital employed"),
     (r"\bROE\b", "return on equity"),

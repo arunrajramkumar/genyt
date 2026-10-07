@@ -39,9 +39,24 @@ def test_produce_video_writes_script_then_produces(monkeypatch):
         calls["orientation"] = orientation
         return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
 
-    monkeypatch.setattr(run.script_writer, "write_script", lambda theme, style, duration: {"title": "T", "scenes": []})
+    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec: {"title": "T", "scenes": []})
     monkeypatch.setattr(run.producer, "produce_from_script", fake_produce)
 
     result = run.produce_video("a theme", shorts=True)
     assert calls["orientation"] == config.SHORTS
     assert result == Path("v.mp4")
+
+
+def test_produce_video_folds_style_into_the_prompt(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        run.prompt_script, "write_script_from_prompt",
+        lambda prompt, duration_sec: captured.setdefault("prompt", prompt) or {"title": "T", "scenes": []},
+    )
+    monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress: {
+        "video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t",
+    })
+
+    run.produce_video("a theme", style="curious and upbeat")
+    assert "a theme" in captured["prompt"]
+    assert "curious and upbeat" in captured["prompt"]

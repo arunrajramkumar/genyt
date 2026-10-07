@@ -1,0 +1,83 @@
+name: Auto-generate video
+
+# Runs the fully-automated theme -> script -> video -> YouTube-upload pipeline
+# (run.py) on a schedule, instead of requiring someone to open the web UI or
+# Telegram bot. GitHub's hosted runners (7GB RAM / 2 vCPU / 14GB disk) have far
+# more headroom than the 512MB free-tier host this app also deploys to, and
+# since this is a "run once, then exit" batch job rather than an always-on
+# server, there's no sleep/cold-start tradeoff to manage.
+on:
+  schedule:
+    # 05:00 UTC daily. Cron minute is offset off :00 on purpose — GitHub warns
+    # that jobs scheduled exactly on the hour pile up and can be delayed.
+    - cron: "7 5 * * *"
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: "One-off theme to run instead of the next themes.yaml entry (optional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: auto-video
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to commit themes.yaml's updated done:true flags back
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    environment: common # secrets (PEXELS_API_KEY/GROQ_API_KEY/YOUTUBE_TOKEN_JSON) live in this GitHub Environment, not repo-level secrets
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Seed YouTube OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          mkdir -p /tmp/youtube_seed
+          echo "$YOUTUBE_TOKEN_JSON" > /tmp/youtube_seed/youtube_token.json
+
+      - name: Run pipeline
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          YOUTUBE_TOKEN_SEED_FILE: /tmp/youtube_seed/youtube_token.json
+          YOUTUBE_AUTO_UPLOAD: "true"
+        run: |
+          if [ -n "${{ github.event.inputs.theme }}" ]; then
+            python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts
+          else
+            python3 run.py
+          fi
+
+      - name: Persist updated themes.yaml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add themes.yaml
+          git diff --cached --quiet || git commit -m "Mark generated theme as done [skip ci]"
+          git push
+
+      - name: Upload generated video as a build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-video
+          path: |
+            output/**
+            cache/**/*.mp4
+          retention-days: 7
+          if-no-files-found: ignore

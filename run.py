@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from pipeline import config, script_writer, producer
+from pipeline import config, prompt_script, producer
 
 
 def load_themes() -> list[dict]:
@@ -30,7 +30,13 @@ def save_themes(themes: list[dict]) -> None:
 
 def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: bool = False) -> Path:
     print(f"[1/2] Writing script for: {theme!r}")
-    script = script_writer.write_script(theme, style, duration_sec)
+    # prompt_script (not the older script_writer) pulls in this channel's own
+    # performance guidance plus broader niche trend guidance (see
+    # pipeline/youtube_insights.py / market_trends.py) before writing the
+    # title/hook, so scheduled runs benefit from the same dynamic trend
+    # feedback the web UI already gets.
+    prompt = f"{theme}\n\nStyle/tone: {style}" if style else theme
+    script = prompt_script.write_script_from_prompt(prompt, duration_sec)
     orientation = config.SHORTS if shorts else config.LANDSCAPE
 
     print("[2/2] Producing video")

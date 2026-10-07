@@ -13,6 +13,7 @@ raising, so a missing/incomplete channel history never blocks generation.
 """
 import json
 import re
+from datetime import date
 
 from googleapiclient.discovery import build
 
@@ -78,7 +79,7 @@ def _analytics_rows(analytics, video_ids: list) -> dict:
             resp = analytics.reports().query(
                 ids="channel==MINE",
                 startDate="2000-01-01",
-                endDate="2100-01-01",
+                endDate=date.today().isoformat(),
                 metrics=metrics,
                 dimensions="video",
                 filters=filters,

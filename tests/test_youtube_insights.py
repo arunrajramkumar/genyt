@@ -97,6 +97,24 @@ def test_fetch_channel_insights_combines_snippet_and_analytics_data(monkeypatch)
 
 # -- _analytics_rows: falls back when the full metric set isn't queryable -----
 
+def test_analytics_rows_queries_a_valid_end_date():
+    """endDate must be a real, already-elapsed date -- the Analytics API
+    rejects a future end date outright (e.g. the old hardcoded 2100-01-01),
+    which silently zeroed out all channel-performance guidance."""
+    from datetime import date
+
+    analytics = mock.Mock()
+    analytics.reports.return_value.query.return_value.execute.return_value = {
+        "columnHeaders": [{"name": "video"}, {"name": "views"}],
+        "rows": [],
+    }
+
+    yi._analytics_rows(analytics, ["v1"])
+
+    _, kwargs = analytics.reports.return_value.query.call_args
+    assert kwargs["endDate"] == date.today().isoformat()
+
+
 def test_analytics_rows_falls_back_to_basic_metrics_on_failure():
     analytics = mock.Mock()
     full_query = mock.Mock(execute=mock.Mock(side_effect=Exception("403 insufficient access")))

@@ -1,0 +1,26 @@
+name: Hello World
+
+# The simplest possible workflow, just to see GitHub Actions mechanics end to
+# end: trigger it manually from the Actions tab (or `gh workflow run`), watch
+# it run on a GitHub-hosted Ubuntu VM, and see its output in the logs.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Name to greet"
+        required: false
+        default: "world"
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say hello
+        run: echo "Hello, ${{ github.event.inputs.name }}!"
+
+      - name: Show where this is running
+        run: |
+          echo "Repo: ${{ github.repository }}"
+          echo "Branch/ref: ${{ github.ref }}"
+          uname -a
+          python3 --version

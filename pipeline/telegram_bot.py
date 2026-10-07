@@ -18,6 +18,14 @@ ALLOWED_CHAT_IDS = {
 
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
+# Lets /generate kick off the scheduled GitHub Actions pipeline (auto-video.yml)
+# instead of generating in-process here — useful to run it on GitHub's bigger
+# runners, or to consume the next themes.yaml entry, on demand rather than
+# waiting for the daily cron.
+GITHUB_DISPATCH_TOKEN = os.environ.get("GITHUB_DISPATCH_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "arunrajramkumar/genyt")
+GITHUB_WORKFLOW_FILE = os.environ.get("GITHUB_WORKFLOW_FILE", "auto-video.yml")
+
 # Some Telegram clients (e.g. Desktop with the default "Enter sends message"
 # setting) send each line of a multi-paragraph prompt as a separate message
 # rather than one message with embedded newlines. Without buffering, each
@@ -34,7 +42,9 @@ HELP_TEXT = (
     "Send me a topic or prompt (e.g. \"5 facts about octopuses\" or a stock's "
     "name + numbers) and I'll generate a vertical YouTube Short and send it "
     "back here — usually takes a few minutes.\n\n"
-    "Want a different narration language? Send /voice to see your options."
+    "Want a different narration language? Send /voice to see your options.\n\n"
+    "Send /generate to run the scheduled GitHub Actions pipeline right now "
+    "(next themes.yaml entry), or /generate <theme> for a one-off topic."
 )
 
 # Friendly name -> edge-tts voice ID, for the handful of languages most likely
@@ -129,6 +139,26 @@ def _send_document(chat_id, path, caption: str = "") -> None:
         ))
 
 
+def _trigger_github_workflow(theme: str = "") -> None:
+    """Fires a workflow_dispatch event for auto-video.yml via GitHub's REST
+    API. Raises on any failure (missing token, bad response) so the caller
+    can report it back to the chat rather than silently doing nothing."""
+    if not GITHUB_DISPATCH_TOKEN:
+        raise RuntimeError("GITHUB_DISPATCH_TOKEN is not configured.")
+    resp = requests.post(
+        f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{GITHUB_WORKFLOW_FILE}/dispatches",
+        headers={
+            "Authorization": f"Bearer {GITHUB_DISPATCH_TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        json={"ref": "main", "inputs": {"theme": theme}},
+        timeout=30,
+    )
+    if resp.status_code != 204:
+        raise RuntimeError(f"GitHub API error ({resp.status_code}): {resp.text}")
+
+
 def _run_job(chat_id, prompt: str) -> None:
     try:
         _send_message(chat_id, "Got it — generating your video now, this can take a few minutes.")
@@ -200,6 +230,18 @@ def handle_update(update: dict) -> None:
             return
         chat_prefs.set_voice(chat_id, voice)
         _send_message(chat_id, f"Voice set to {voice}. Your next video will use it.")
+        return
+
+    if text == "/generate" or text.startswith("/generate "):
+        theme = text[len("/generate "):].strip() if text.startswith("/generate ") else ""
+        try:
+            _trigger_github_workflow(theme)
+            confirmation = "Triggered the scheduled pipeline on GitHub Actions"
+            confirmation += f" for theme: \"{theme}\"." if theme else " for the next themes.yaml entry."
+            confirmation += " Check the repo's Actions tab for progress."
+            _send_message(chat_id, confirmation)
+        except Exception as e:
+            _send_message(chat_id, f"Couldn't trigger the GitHub Actions run: {e}")
         return
 
     _queue_prompt(chat_id, text)

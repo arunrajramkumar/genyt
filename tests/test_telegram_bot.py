@@ -128,6 +128,70 @@ def test_handle_update_voice_set_rejects_unknown_language(sent_messages, isolate
     assert "Didn't recognize" in sent_messages[-1][1]
 
 
+# -- /generate: dispatches the GitHub Actions workflow instead of running in-process --
+
+def test_trigger_github_workflow_posts_expected_request(monkeypatch):
+    captured = {}
+
+    class _Resp:
+        status_code = 204
+        text = ""
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        return _Resp()
+
+    monkeypatch.setattr(telegram_bot, "GITHUB_DISPATCH_TOKEN", "ghp_test")
+    monkeypatch.setattr(telegram_bot, "GITHUB_REPO", "someone/somerepo")
+    monkeypatch.setattr(telegram_bot, "GITHUB_WORKFLOW_FILE", "auto-video.yml")
+    monkeypatch.setattr(telegram_bot.requests, "post", fake_post)
+
+    telegram_bot._trigger_github_workflow("a one-off theme")
+
+    assert captured["url"] == "https://api.github.com/repos/someone/somerepo/actions/workflows/auto-video.yml/dispatches"
+    assert captured["headers"]["Authorization"] == "Bearer ghp_test"
+    assert captured["json"] == {"ref": "main", "inputs": {"theme": "a one-off theme"}}
+
+
+def test_trigger_github_workflow_raises_without_a_token(monkeypatch):
+    monkeypatch.setattr(telegram_bot, "GITHUB_DISPATCH_TOKEN", "")
+    with pytest.raises(RuntimeError, match="GITHUB_DISPATCH_TOKEN"):
+        telegram_bot._trigger_github_workflow()
+
+
+def test_trigger_github_workflow_raises_on_non_204_response(monkeypatch):
+    class _Resp:
+        status_code = 404
+        text = "Not Found"
+
+    monkeypatch.setattr(telegram_bot, "GITHUB_DISPATCH_TOKEN", "ghp_test")
+    monkeypatch.setattr(telegram_bot.requests, "post", lambda *a, **k: _Resp())
+    with pytest.raises(RuntimeError, match="404"):
+        telegram_bot._trigger_github_workflow()
+
+
+def test_handle_update_generate_confirms_dispatch_with_theme(sent_messages, isolated_prefs, monkeypatch):
+    monkeypatch.setattr(telegram_bot, "_trigger_github_workflow", lambda theme="": None)
+    telegram_bot.handle_update({"message": {"chat": {"id": 42}, "text": "/generate a theme about IPOs"}})
+    assert "a theme about IPOs" in sent_messages[-1][1]
+
+
+def test_handle_update_generate_confirms_dispatch_without_theme(sent_messages, isolated_prefs, monkeypatch):
+    monkeypatch.setattr(telegram_bot, "_trigger_github_workflow", lambda theme="": None)
+    telegram_bot.handle_update({"message": {"chat": {"id": 42}, "text": "/generate"}})
+    assert "next themes.yaml entry" in sent_messages[-1][1]
+
+
+def test_handle_update_generate_reports_dispatch_failure(sent_messages, isolated_prefs, monkeypatch):
+    def fail(theme=""):
+        raise RuntimeError("GITHUB_DISPATCH_TOKEN is not configured.")
+    monkeypatch.setattr(telegram_bot, "_trigger_github_workflow", fail)
+    telegram_bot.handle_update({"message": {"chat": {"id": 42}, "text": "/generate"}})
+    assert "Couldn't trigger" in sent_messages[-1][1]
+
+
 def test_handle_update_blocks_unauthorized_chat(sent_messages, isolated_prefs, monkeypatch):
     monkeypatch.setattr(telegram_bot, "ALLOWED_CHAT_IDS", {"1"})
     telegram_bot.handle_update({"message": {"chat": {"id": 999}, "text": "hello"}})

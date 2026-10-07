@@ -1,9 +1,59 @@
+# Themes to generate videos for.
+# Each run of `python3 run.py` picks the first theme not yet marked done
+# and produces a full video for it, then marks it done.
+#
+# Fields:
+#   theme:        the topic/prompt for the video (required)
+#   style:        tone/format guidance for the script writer (optional)
+#   duration_sec: target spoken length in seconds (optional, default 180)
+#   shorts:       true for vertical 9:16 YouTube Shorts (optional, default false)
+#   done:         set to true automatically once a video has been produced
+
 themes:
-- theme: 5 surprising facts about the deep ocean
-  style: curious, upbeat, family-friendly narration
-  duration_sec: 180
-  done: true
-- theme: How compound interest quietly makes people rich
-  style: clear, practical, personal-finance explainer
-  duration_sec: 240
-  done: false
+  - theme: "How compound interest quietly makes people rich"
+    style: "clear, practical, personal-finance explainer"
+    duration_sec: 150
+    shorts: true
+    done: false
+
+  - theme: "3 red flags to check before investing in any IPO"
+    style: "confident, no-nonsense stock-market explainer"
+    duration_sec: 120
+    shorts: true
+    done: false
+
+  - theme: "How to read a stock's balance sheet in under a minute"
+    style: "clear, practical, beginner-friendly stock analysis"
+    duration_sec: 150
+    shorts: true
+    done: false
+
+  - theme: "The 50/30/20 rule for building wealth on a normal salary"
+    style: "relatable, practical personal-finance explainer"
+    duration_sec: 120
+    shorts: true
+    done: false
+
+  - theme: "Why most people lose money in IPOs on listing day"
+    style: "confident, slightly contrarian stock-market explainer"
+    duration_sec: 150
+    shorts: true
+    done: false
+
+  - theme: "3 wealth creation habits of people who retire early"
+    style: "motivating, practical personal-finance explainer"
+    duration_sec: 120
+    shorts: true
+    done: false
+
+  - theme: "P/E ratio explained: is a stock actually cheap or expensive"
+    style: "clear, practical, beginner-friendly stock analysis"
+    duration_sec: 150
+    shorts: true
+    done: false
+
+  - theme: "How to build an emergency fund before you start investing"
+    style: "calm, practical personal-finance explainer"
+    duration_sec: 120
+    shorts: true
+    done: false

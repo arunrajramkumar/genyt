@@ -100,8 +100,10 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
 
     edge-tts talks to an unofficial Microsoft endpoint that occasionally drops
     the connection without sending audio (NoAudioReceived/WebSocketError) —
-    seen more often from cloud/datacenter IPs (e.g. Render) than from home
-    networks. Retry a few times before giving up, since it's usually transient.
+    seen more often from cloud/datacenter IPs (e.g. Render, GitHub Actions)
+    than from home networks. Retry several times with growing backoff before
+    giving up, since outages/throttling on that endpoint can last past a few
+    seconds.
     """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
@@ -109,7 +111,7 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_for_speech(text)
 
-    attempts = 4
+    attempts = 6
     for attempt in range(1, attempts + 1):
         try:
             asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
@@ -117,4 +119,4 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
         except edge_tts.exceptions.EdgeTTSException:
             if attempt == attempts:
                 raise
-            time.sleep(2 ** (attempt - 1))
+            time.sleep(min(2 ** (attempt - 1), 30))

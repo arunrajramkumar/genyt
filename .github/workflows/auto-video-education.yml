@@ -66,5 +66,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add themes_education.yaml
-          git diff --cached --quiet || git commit -m "Mark generated theme as done (education) [skip ci]"
-          git push
+          git diff --cached --quiet && exit 0
+          git commit -m "Mark generated theme as done (education) [skip ci]"
+          # The pipeline run above can take close to an hour, so origin/main may
+          # have moved (e.g. a manual push, or the sibling auto-video.yml run)
+          # since this job's checkout -- rebase onto the latest before pushing
+          # instead of failing outright on a non-fast-forward rejection.
+          for i in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main && git push && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep 5
+          done
+          exit 1

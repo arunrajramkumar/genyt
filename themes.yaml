@@ -8,7 +8,7 @@ themes:
   style: confident, no-nonsense stock-market explainer
   duration_sec: 120
   shorts: true
-  done: false
+  done: true
 - theme: How to read a stock's balance sheet in under a minute
   style: clear, practical, beginner-friendly stock analysis
   duration_sec: 150

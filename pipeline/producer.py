@@ -30,10 +30,13 @@ def _append_hashtags(description: str, tags: list, limit: int = 3) -> str:
     return f"{description}\n\n{' '.join(hashtags)}"
 
 
-def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None) -> dict:
+def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None,
+                         thumbnail_badge: str = None) -> dict:
     """orientation: config.LANDSCAPE or config.SHORTS (defaults to landscape).
     voice: edge-tts voice ID overriding config.TTS_VOICE for this video (e.g. a
     per-chat language preference) — defaults to the configured voice.
+    thumbnail_badge: short corner label stamped on the thumbnail/hook card,
+    e.g. "CBSE | Grade 6 Maths" for a syllabus-specific channel.
     Returns {"video": Path, "srt": Path, "metadata": Path, "slug": str}.
     """
     orientation = orientation or config.LANDSCAPE
@@ -89,7 +92,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
     textcard.render_hook_card(
         script["title"], stat_text, orientation["width"], orientation["height"],
-        thumb_path, background_path=hook_bg_path,
+        thumb_path, background_path=hook_bg_path, badge_text=thumbnail_badge,
     )
 
     on_progress("Building captions")
@@ -129,6 +132,10 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
             )
             youtube_url = upload["url"]
             on_progress(f"Uploaded: {youtube_url}")
+            try:
+                youtube_upload.set_thumbnail(upload["video_id"], thumb_path)
+            except Exception as e:
+                on_progress(f"Thumbnail upload failed (video still published): {e}")
         except youtube_upload.NotConfiguredError:
             on_progress("YouTube upload skipped (not configured — see README)")
         except Exception as e:

@@ -151,6 +151,7 @@ def render_hook_card(
     height: int,
     out_path: Path,
     background_path: Path = None,
+    badge_text: str = None,
 ) -> Path:
     """Renders a bold, full-bleed branded "hook card": used as both the opening
     ~2s clip of a video (to grab attention before the narration starts) and as
@@ -158,6 +159,9 @@ def render_hook_card(
 
     `background_path` (optional): a still image to crop/cover behind the text,
     e.g. the video's own first-scene visual, darkened for text contrast.
+    `badge_text` (optional): a short label stamped in a corner pill, e.g.
+    "CBSE | GRADE 6 MATHS" for an education-channel video, so series/syllabus
+    identity is visible even in the small thumbnail grid on a channel page.
     """
     if background_path and Path(background_path).exists():
         bg = Image.open(background_path).convert("RGB")
@@ -196,6 +200,18 @@ def render_hook_card(
         stat_y0 = height - stat_block_h - int(height * 0.08)
         draw.rectangle([0, stat_y0 - int(height * 0.02), width, height], fill=(5, 10, 18, 210))
         _draw_centered_lines(draw, stat_lines, stat_font, (60, 230, 110, 255), stat_y0, width, 8)
+
+    if badge_text:
+        badge_font = _load_font(max(22, width // 28), badge_text)
+        text_bbox = draw.textbbox((0, 0), badge_text.upper(), font=badge_font)
+        text_w, text_h = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+        pad_x, pad_y = int(width * 0.025), int(width * 0.015)
+        badge_x0, badge_y0 = int(width * 0.03), int(width * 0.03)
+        draw.rectangle(
+            [badge_x0, badge_y0, badge_x0 + text_w + pad_x * 2, badge_y0 + text_h + pad_y * 2],
+            fill=(230, 60, 50, 255),
+        )
+        draw.text((badge_x0 + pad_x, badge_y0 + pad_y), badge_text.upper(), font=badge_font, fill=(255, 255, 255, 255))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out_path)

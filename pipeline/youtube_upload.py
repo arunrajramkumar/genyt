@@ -97,3 +97,13 @@ def upload_video(
         ).execute()
 
     return {"video_id": video_id, "url": f"https://youtu.be/{video_id}"}
+
+
+def set_thumbnail(video_id: str, thumbnail_path) -> None:
+    """Sets the custom thumbnail for an already-uploaded video. Requires the
+    channel to be phone-verified (YouTube restricts custom thumbnails to
+    verified channels) -- otherwise the API call raises, which callers should
+    treat as non-fatal the same way a failed upload_video() call is."""
+    youtube = _client()
+    media = MediaFileUpload(str(thumbnail_path), mimetype="image/png")
+    youtube.thumbnails().set(videoId=video_id, media_body=media).execute()

@@ -91,3 +91,16 @@ def test_rupee_glyph_font_candidates_exist_on_at_least_one_platform():
     # Regression guard for the known Arial-Bold-tofu rupee glyph bug: at least
     # one of the configured Latin fallback fonts must actually be present.
     assert any(Path(p).exists() for p, _ in textcard.FONT_CANDIDATES)
+
+
+def test_render_hook_card_with_badge_text_produces_a_nonempty_png(tmp_path):
+    out = textcard.render_hook_card(
+        "Patterns in Mathematics", "", 1280, 720, tmp_path / "badge.png",
+        badge_text="CBSE | Grade 6 Maths",
+    )
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_hook_card_without_badge_text_still_works(tmp_path):
+    out = textcard.render_hook_card("Title", "", 1280, 720, tmp_path / "no_badge.png")
+    assert out.exists() and out.stat().st_size > 0

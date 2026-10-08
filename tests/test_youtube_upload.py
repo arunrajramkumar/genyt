@@ -130,3 +130,25 @@ def test_upload_video_respects_explicit_privacy_status(tmp_path, monkeypatch):
     youtube_upload.upload_video(video_path, "T", "D", [], privacy_status="unlisted")
 
     assert captured["body"]["status"]["privacyStatus"] == "unlisted"
+
+
+def test_set_thumbnail_calls_thumbnails_set_with_video_id(tmp_path, monkeypatch):
+    thumbnail_path = tmp_path / "thumb.png"
+    thumbnail_path.write_bytes(b"fake png")
+
+    captured = {}
+    execute = mock.Mock(return_value={})
+
+    def fake_thumbnails_set(videoId, media_body):
+        captured["videoId"] = videoId
+        captured["media_body"] = media_body
+        return mock.Mock(execute=execute)
+
+    fake_youtube = mock.Mock()
+    fake_youtube.thumbnails.return_value.set.side_effect = fake_thumbnails_set
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    youtube_upload.set_thumbnail("abc123", thumbnail_path)
+
+    assert captured["videoId"] == "abc123"
+    execute.assert_called_once()

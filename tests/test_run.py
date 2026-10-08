@@ -32,7 +32,7 @@ def test_save_themes_preserves_non_ascii_text(tmp_path):
 def test_produce_video_writes_script_then_produces(monkeypatch):
     calls = {}
 
-    def fake_produce(script, orientation, on_progress):
+    def fake_produce(script, orientation, on_progress, thumbnail_badge=None):
         calls["orientation"] = orientation
         return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
 
@@ -50,13 +50,27 @@ def test_produce_video_folds_style_into_the_prompt(monkeypatch):
         run.prompt_script, "write_script_from_prompt",
         lambda prompt, duration_sec, extra_tags=None: captured.setdefault("prompt", prompt) or {"title": "T", "scenes": []},
     )
-    monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress: {
+    monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress, thumbnail_badge=None: {
         "video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t",
     })
 
     run.produce_video("a theme", style="curious and upbeat")
     assert "a theme" in captured["prompt"]
     assert "curious and upbeat" in captured["prompt"]
+
+
+def test_produce_video_passes_thumbnail_badge_to_producer(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None: {"title": "T", "scenes": []})
+
+    def fake_produce(script, orientation, on_progress, thumbnail_badge=None):
+        captured["thumbnail_badge"] = thumbnail_badge
+        return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
+
+    monkeypatch.setattr(run.producer, "produce_from_script", fake_produce)
+
+    run.produce_video("a theme", thumbnail_badge="CBSE | Grade 6 Maths")
+    assert captured["thumbnail_badge"] == "CBSE | Grade 6 Maths"
 
 
 def test_main_processes_the_given_themes_file_not_the_default(monkeypatch, tmp_path):
@@ -66,7 +80,7 @@ def test_main_processes_the_given_themes_file_not_the_default(monkeypatch, tmp_p
     run.save_themes(themes_file, [{"theme": "Other channel theme", "done": False}])
 
     produced = []
-    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts, extra_tags=None: produced.append(theme))
+    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme))
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
 
     run.main()
@@ -82,10 +96,26 @@ def test_main_passes_each_themes_extra_tags_through(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(
         run, "produce_video",
-        lambda theme, style, duration, shorts, extra_tags=None: captured.setdefault("extra_tags", extra_tags),
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: captured.setdefault("extra_tags", extra_tags),
     )
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
 
     run.main()
 
     assert captured["extra_tags"] == ["NCERT", "CBSE"]
+
+
+def test_main_passes_each_themes_thumbnail_badge_through(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes_education.yaml"
+    run.save_themes(themes_file, [{"theme": "Ch 1", "done": False, "thumbnail_badge": "CBSE | Grade 6 Maths"}])
+
+    captured = {}
+    monkeypatch.setattr(
+        run, "produce_video",
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: captured.setdefault("thumbnail_badge", thumbnail_badge),
+    )
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
+
+    run.main()
+
+    assert captured["thumbnail_badge"] == "CBSE | Grade 6 Maths"

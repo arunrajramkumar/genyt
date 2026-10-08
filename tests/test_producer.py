@@ -157,7 +157,7 @@ def test_produce_from_script_upload_description_includes_hashtags(mocked_pipelin
 
 def test_produce_from_script_picks_first_numeric_on_screen_text_as_stat_for_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
         captured["stat_text"] = stat_text
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
@@ -214,3 +214,45 @@ def test_produce_from_script_respects_youtube_auto_upload_flag(mocked_pipeline, 
     result = producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
     assert called == []
     assert result["youtube_url"] is None
+
+
+def test_produce_from_script_sets_thumbnail_after_successful_upload(mocked_pipeline, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    monkeypatch.setattr(
+        producer.youtube_upload, "set_thumbnail",
+        lambda video_id, thumbnail_path: captured.update(video_id=video_id, thumbnail_path=thumbnail_path),
+    )
+    result = producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert captured["video_id"] == "abc"
+    assert captured["thumbnail_path"] == result["thumbnail"]
+
+
+def test_produce_from_script_thumbnail_upload_failure_does_not_fail_the_job(mocked_pipeline, monkeypatch):
+    logs = []
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    monkeypatch.setattr(
+        producer.youtube_upload, "set_thumbnail",
+        mock.Mock(side_effect=RuntimeError("channel not verified")),
+    )
+    result = producer.produce_from_script(_stub_script(), on_progress=logs.append)
+    assert result["youtube_url"] == "https://youtu.be/abc"
+    assert any("channel not verified" in msg for msg in logs)
+
+
+def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline, monkeypatch):
+    captured = {}
+
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+        captured["badge_text"] = badge_text
+        return out_path
+
+    monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None, thumbnail_badge="CBSE | Grade 6 Maths")
+    assert captured["badge_text"] == "CBSE | Grade 6 Maths"

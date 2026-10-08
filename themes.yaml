@@ -39,3 +39,461 @@ themes:
   duration_sec: 120
   shorts: true
   done: false
+- theme: How to screen high-growth small and midcap stocks using revenue, profit,
+    ROCE, debt, and cash flow
+  style: data-driven, practical small and midcap stock analysis
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 3 traits of genuinely high-growth smallcap stocks, and how to verify them
+    yourself before investing
+  style: confident, research-driven stock-market explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 3 promising midcap stocks with strong earnings growth and the risks investors
+    must verify
+  style: balanced, evidence-based stock analysis
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 'Smallcap stock deep dive: revenue growth, margins, cash flow, debt, valuation,
+    and risks'
+  style: structured, fundamentals-first stock analysis
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: How to separate a genuine growth stock from a story stock
+  style: sharp, no-nonsense stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: Can high sales growth create wealth if cash flow is weak?
+  style: clear, contrarian, beginner-friendly stock analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: How to compare two smallcap stocks in the same industry
+  style: practical, side-by-side stock analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: Promoter holding, pledging, and governance checks before buying a smallcap
+  style: confident, risk-focused stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: How to analyze an order-book-driven company without overestimating future
+    growth
+  style: clear, practical, investor-focused stock analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'P/E versus earnings growth: when can a high-growth stock justify a premium
+    valuation?'
+  style: clear, valuation-focused stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Upcoming IPO analysis: business model, growth, profitability, valuation,
+    and risks'
+  style: structured, no-hype IPO analysis
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: How to read a DRHP before applying for an IPO
+  style: clear, practical, beginner-friendly IPO explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 'IPO valuation explained: compare price-to-earnings, price-to-sales, and
+    listed peers'
+  style: data-driven, practical IPO analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'IPO GMP versus fundamentals: what matters for listing gains and long-term
+    returns?'
+  style: balanced, slightly contrarian IPO explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Mainboard versus SME IPOs: eligibility, liquidity, risk, and reward'
+  style: clear, risk-focused stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'OFS versus fresh issue: where the IPO money is really going'
+  style: concise, no-nonsense IPO explainer
+  duration_sec: 120
+  shorts: true
+  done: false
+- theme: How to evaluate promoter quality, debt, and cash flows in an upcoming IPO
+  style: practical, fundamentals-first IPO analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Upcoming IPO watchlist: 5 questions to answer before applying'
+  style: confident, checklist-based IPO explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: IPO listing gains versus long-term wealth creation
+  style: balanced, investor-focused stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'High-dividend stocks: yield, payout sustainability, and growth'
+  style: clear, practical dividend-investing explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Dividend yield trap: when a high yield is a warning sign'
+  style: confident, risk-focused stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Dividend growth versus high current yield: which creates more wealth?'
+  style: balanced, long-term dividend-investing analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: How to check dividend coverage using earnings and free cash flow
+  style: clear, practical, beginner-friendly stock analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: Building a diversified dividend portfolio for long-term income
+  style: practical, goal-based personal-finance explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 'PSU dividend stocks: attractive income or cyclical risk?'
+  style: balanced, evidence-based dividend-stock analysis
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'REITs and InvITs versus dividend-paying stocks: comparing income and risks'
+  style: clear, comparative investing explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: How taxes and price volatility affect dividend income
+  style: practical, India-focused personal-finance explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: How to build your own screened high-dividend stock watchlist step by step
+  style: data-driven, research-focused dividend analysis
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 'SIP versus lump sum: which approach works better in different market conditions?'
+  style: clear, practical personal-finance explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: How to invest a ₹10 lakh lump sum for long-term wealth without trying to
+    time the market
+  style: calm, practical wealth-building explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: How to build a ₹1 crore portfolio with monthly investing and realistic returns
+  style: motivating, numbers-driven personal-finance explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: Core-satellite portfolio strategy for long-term wealth creation
+  style: clear, practical portfolio-building explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: Asset allocation by age, goal, and risk tolerance
+  style: calm, practical personal-finance explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'The three-bucket strategy: emergency fund, medium-term goals, and long-term
+    investing'
+  style: relatable, practical wealth-building explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: Why increasing your savings rate can matter more than chasing higher returns
+  style: motivating, practical personal-finance explainer
+  duration_sec: 120
+  shorts: true
+  done: false
+- theme: How inflation silently destroys purchasing power and how to plan for it
+  style: clear, practical personal-finance explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Rebalancing your portfolio: when to sell winners and add to laggards'
+  style: practical, disciplined investing explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Wealth creation for children: a simple 10 to 15 year investing framework'
+  style: relatable, goal-based personal-finance explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: 'FIRE investing: corpus calculation, withdrawal rate, and common mistakes'
+  style: practical, numbers-driven personal-finance explainer
+  duration_sec: 180
+  shorts: true
+  done: false
+- theme: How to avoid leverage, F&O losses, and emotional investing
+  style: direct, risk-focused stock-market explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Compounding versus concentration: how much diversification is enough?'
+  style: balanced, practical investing explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Goal-based investing: align every investment with a time horizon'
+  style: clear, practical personal-finance explainer
+  duration_sec: 150
+  shorts: true
+  done: false
+- theme: 'Create an exactly 60-second vertical YouTube Short in 9:16 format about
+    Central Depository Services India Limited (NSE: CDSL).
+
+
+    Use ONLY the verified data below (sourced from CDSL filings and exchange disclosures
+    as of early October 2026). State the data date on screen. Do not invent or update
+    any figures beyond what is given here.
+
+
+    0-5 seconds - Hook
+
+    "CDSL has over 18 crore demat accounts and a strong market position, but is its
+    premium valuation justified?"
+
+
+    5-22 seconds - Key metrics
+
+    "CDSL was trading at approximately ₹1,260-₹1,275 per share in early October 2026.
+    Its market capitalisation was approximately ₹26,000-₹26,500 crore and its trailing
+    P/E ratio was approximately 56 times."
+
+    "In Q1 FY27, consolidated revenue from operations was approximately ₹292.8 crore,
+    up 13.1% year-on-year, while consolidated profit after tax was approximately ₹117.7
+    crore, up 14.8%."
+
+    Also mention: ROE approximately 25%, ROCE approximately 33%, debt-to-equity approximately
+    zero, demat accounts approximately 18.6 crore, market share approximately 80%,
+    assets under custody approximately ₹88 lakh crore.
+
+
+    22-40 seconds - Business drivers
+
+    CDSL earns revenue from demat account services, annual issuer charges, transaction
+    fees, KYC services, insurance repository services and other data-related services.
+    Its growth is supported by increasing financial participation, demat-account additions,
+    IPO activity and market infrastructure demand.
+
+
+    40-50 seconds - Risks
+
+    Key risks include dependence on capital-market activity, lower IPO or trading
+    volumes, regulatory changes, technology disruption, cybersecurity risks and competition
+    from NSDL.
+
+
+    50-60 seconds - Neutral conclusion
+
+    "CDSL has a strong market position, high profitability and a debt-free balance
+    sheet, but its long-term returns will depend on earnings growth keeping pace with
+    its premium valuation."
+
+
+    End screen:
+
+    "This is educational content, not investment advice. Research before investing."'
+  style: neutral, data-driven, fundamentals-first stock analysis
+  duration_sec: 60
+  shorts: true
+  done: false
+- theme: 'Create an exactly 60-second vertical YouTube Short in 9:16 format about
+    Arrow Greentech Limited (NSE: ARROWGREEN).
+
+
+    Use ONLY the verified data below (sourced from quarterly results, annual report
+    and market data as of October 2026). State the data date on screen. Clearly separate
+    recurring operating revenue from patent income, licensing income or other one-time
+    income. Do not include any metric beyond what is given here.
+
+
+    0-5 seconds - Hook
+
+    "Arrow Greentech operates in biodegradable products and green technologies, but
+    can its earnings growth become consistent?"
+
+
+    5-22 seconds - Key metrics
+
+    "Arrow Greentech was trading at approximately ₹845-₹895 per share in October 2026.
+    Its market capitalisation was approximately ₹1,350 crore and its P/E ratio was
+    approximately 21 times."
+
+    Also mention, only where confirmed: revenue and revenue growth, operating profit
+    and margin, net profit and net margin, ROE and ROCE, debt-to-equity, cash flow
+    from operations, patent or licensing income, export contribution, and five-year
+    revenue/profit CAGR if verified. Explain how much revenue comes from regular product
+    sales versus patents, licensing or other non-recurring sources.
+
+
+    22-40 seconds - Business drivers
+
+    Arrow Greentech develops biodegradable and water-soluble products, high-tech materials
+    and patented green technologies. Its business may benefit from demand for sustainable
+    packaging, environmental regulations, industrial applications and technology licensing.
+
+
+    40-50 seconds - Risks
+
+    Key risks include inconsistent quarterly earnings, dependence on patent or licensing
+    income, small-company liquidity, limited scale, competition, raw-material costs,
+    execution risk and uncertainty around commercialising new technologies.
+
+
+    50-60 seconds - Neutral conclusion
+
+    "Arrow Greentech has exposure to sustainability and green-material opportunities,
+    but long-term investors should focus on recurring revenue, cash flow, margin stability
+    and the quality of reported profits."
+
+
+    End screen:
+
+    "This is educational content, not investment advice. Research before investing."'
+  style: neutral, data-driven, fundamentals-first stock analysis
+  duration_sec: 60
+  shorts: true
+  done: false
+- theme: 'Create an exactly 60-second vertical YouTube Short in 9:16 format about
+    Kalyan Jewellers India Limited (NSE: KALYANKJIL).
+
+
+    Use ONLY the verified data below (sourced from company results and market data
+    as of 8 October 2026). State the data date on screen. Clearly identify provisional
+    business updates separately from audited quarterly results. Do not invent or update
+    any figures beyond what is given here.
+
+
+    0-5 seconds - Hook
+
+    "Kalyan Jewellers reported more than 26% revenue growth in Q2 FY27, with same-store
+    sales rising about 20%. What does this mean for long-term investors?"
+
+
+    5-22 seconds - Key metrics
+
+    "Kalyan Jewellers was trading at approximately ₹554 per share on 8 October 2026.
+    Its market capitalisation was approximately ₹58,700 crore, and its trailing P/E
+    ratio was approximately 39 times."
+
+    "In Q1 FY27, consolidated revenue increased approximately 45% year-on-year to
+    ₹10,589 crore, while consolidated profit after tax increased approximately 32%
+    to ₹349 crore."
+
+    "Q2 FY27 provisional consolidated revenue grew more than 26% year-on-year. India
+    revenue increased about 27%, same-store sales grew approximately 20%, international
+    revenue increased about 18% and Candere revenue rose approximately 64%."
+
+
+    22-40 seconds - Business drivers
+
+    Kalyan Jewellers is an organised jewellery retailer selling gold, diamond and
+    studded jewellery through its Kalyan and Candere brands. As of September 2026,
+    it operated approximately 546 showrooms globally. Growth is being supported by
+    showroom expansion, strong same-store sales, premiumisation, festive and wedding
+    demand, international expansion and online jewellery growth.
+
+
+    40-50 seconds - Risks
+
+    Investors should monitor margins, working capital, inventory, gold-price volatility
+    and debt. The company reported that non-GML debt had reduced to zero, but this
+    should not automatically be interpreted as zero total consolidated debt.
+
+
+    50-60 seconds - Neutral conclusion
+
+    "Kalyan Jewellers has strong brand visibility and recent sales momentum, but long-term
+    returns will depend on sustainable earnings growth, margin protection and disciplined
+    balance-sheet management."
+
+
+    End screen:
+
+    "This is educational content, not investment advice. Research before investing."'
+  style: neutral, data-driven, fundamentals-first stock analysis
+  duration_sec: 60
+  shorts: true
+  done: false
+- theme: 'Create an exactly 60-second vertical YouTube Short in 9:16 format about
+    TD Power Systems Limited (NSE: TDPOWERSYS).
+
+
+    Use ONLY the verified data below (sourced from results, investor presentation
+    and market data as of October 2026). State the data date on screen. Do not use
+    analyst estimates as reported company financials, and do not invent or update
+    any figures beyond what is given here.
+
+
+    0-5 seconds - Hook
+
+    "TD Power Systems grew Q1 FY27 revenue by more than 70% and has an order book
+    above ₹2,200 crore, but is the valuation already pricing in strong growth?"
+
+
+    5-22 seconds - Key metrics
+
+    "The stock''s trailing P/E has been reported at approximately 93 times based on
+    October 2026 data."
+
+    "In Q1 FY27, revenue from operations was approximately ₹640 crore, up about 72%
+    year-on-year. Net profit increased approximately 72% to ₹86 crore. The order book
+    stood at approximately ₹2,207 crore as of June 2026."
+
+    Also mention, only where confirmed: EBITDA and EBITDA margin, net profit margin,
+    ROE and ROCE, debt-to-equity, export contribution, order inflow, five-year revenue/profit
+    CAGR, and capacity expansion plans.
+
+
+    22-40 seconds - Business drivers
+
+    TD Power Systems manufactures generators and alternators used in gas-based power
+    plants, hydro projects, industrial facilities, renewable-energy applications and
+    data-centre infrastructure. Growth is being supported by export demand, industrial
+    power requirements, data-centre investment, capacity expansion and a strong order
+    pipeline. Approximately 93% of Q1 FY27 orders came from exports and deemed exports.
+
+
+    40-50 seconds - Risks
+
+    Key risks include high valuation, dependence on exports, currency movements, project
+    delays, raw-material costs, customer concentration, execution capacity and the
+    possibility that order-book growth may not immediately convert into revenue.
+
+
+    50-60 seconds - Neutral conclusion
+
+    "TD Power Systems has strong revenue momentum and order visibility, but investors
+    should compare its valuation with sustainable earnings growth, cash flow, margins
+    and execution capacity."
+
+
+    End screen:
+
+    "This is educational content, not investment advice. Research before investing."'
+  style: neutral, data-driven, fundamentals-first stock analysis
+  duration_sec: 60
+  shorts: true
+  done: false

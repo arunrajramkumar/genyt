@@ -15,15 +15,15 @@ import yaml
 from pipeline import config, prompt_script, producer
 
 
-def load_themes() -> list[dict]:
-    if not config.THEMES_FILE.exists():
+def load_themes(themes_file: Path) -> list[dict]:
+    if not themes_file.exists():
         return []
-    data = yaml.safe_load(config.THEMES_FILE.read_text()) or {}
+    data = yaml.safe_load(themes_file.read_text()) or {}
     return data.get("themes", [])
 
 
-def save_themes(themes: list[dict]) -> None:
-    config.THEMES_FILE.write_text(
+def save_themes(themes_file: Path, themes: list[dict]) -> None:
+    themes_file.write_text(
         yaml.safe_dump({"themes": themes}, sort_keys=False, allow_unicode=True)
     )
 
@@ -53,16 +53,21 @@ def main():
     parser.add_argument("--duration", type=int, default=180, help="Target seconds for --theme")
     parser.add_argument("--shorts", action="store_true", help="Produce vertical 9:16 output for YouTube Shorts")
     parser.add_argument("--all", action="store_true", help="Process every un-done theme in themes.yaml")
+    parser.add_argument(
+        "--themes-file", default=str(config.THEMES_FILE),
+        help="Path to the theme queue YAML (default: themes.yaml) -- use a different file to run a separate channel's queue",
+    )
     args = parser.parse_args()
 
     if args.theme:
         produce_video(args.theme, args.style, args.duration, args.shorts)
         return
 
-    themes = load_themes()
+    themes_file = Path(args.themes_file)
+    themes = load_themes(themes_file)
     pending = [t for t in themes if not t.get("done")]
     if not pending:
-        print("No pending themes in themes.yaml. Add one or use --theme.")
+        print(f"No pending themes in {themes_file}. Add one or use --theme.")
         return
 
     to_run = pending if args.all else pending[:1]
@@ -74,7 +79,7 @@ def main():
             entry.get("shorts", False),
         )
         entry["done"] = True
-        save_themes(themes)
+        save_themes(themes_file, themes)
 
 
 if __name__ == "__main__":

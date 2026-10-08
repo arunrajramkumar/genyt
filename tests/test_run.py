@@ -4,31 +4,28 @@ import run
 from pipeline import config
 
 
-def test_load_themes_returns_empty_list_when_file_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr(config, "THEMES_FILE", tmp_path / "missing.yaml")
-    assert run.load_themes() == []
+def test_load_themes_returns_empty_list_when_file_missing(tmp_path):
+    assert run.load_themes(tmp_path / "missing.yaml") == []
 
 
-def test_save_then_load_themes_round_trips(monkeypatch, tmp_path):
+def test_save_then_load_themes_round_trips(tmp_path):
     themes_file = tmp_path / "themes.yaml"
-    monkeypatch.setattr(config, "THEMES_FILE", themes_file)
 
     themes = [
         {"theme": "History of Rome", "done": False},
         {"theme": "Octopus facts", "done": True, "duration_sec": 45},
     ]
-    run.save_themes(themes)
+    run.save_themes(themes_file, themes)
     assert themes_file.exists()
-    loaded = run.load_themes()
+    loaded = run.load_themes(themes_file)
     assert loaded == themes
 
 
-def test_save_themes_preserves_non_ascii_text(monkeypatch, tmp_path):
+def test_save_themes_preserves_non_ascii_text(tmp_path):
     themes_file = tmp_path / "themes.yaml"
-    monkeypatch.setattr(config, "THEMES_FILE", themes_file)
     themes = [{"theme": "गोपाल की कहानी", "done": False}]
-    run.save_themes(themes)
-    loaded = run.load_themes()
+    run.save_themes(themes_file, themes)
+    loaded = run.load_themes(themes_file)
     assert loaded[0]["theme"] == "गोपाल की कहानी"
 
 
@@ -60,3 +57,19 @@ def test_produce_video_folds_style_into_the_prompt(monkeypatch):
     run.produce_video("a theme", style="curious and upbeat")
     assert "a theme" in captured["prompt"]
     assert "curious and upbeat" in captured["prompt"]
+
+
+def test_main_processes_the_given_themes_file_not_the_default(monkeypatch, tmp_path):
+    """--themes-file lets a second channel's queue run through the same script
+    without touching themes.yaml, so two channels can share one codebase."""
+    themes_file = tmp_path / "themes_other_channel.yaml"
+    run.save_themes(themes_file, [{"theme": "Other channel theme", "done": False}])
+
+    produced = []
+    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts: produced.append(theme))
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
+
+    run.main()
+
+    assert produced == ["Other channel theme"]
+    assert run.load_themes(themes_file)[0]["done"] is True

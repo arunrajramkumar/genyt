@@ -110,6 +110,7 @@ Edit `themes.yaml` to add topics you want videos for, then:
 python3 run.py            # produce a video for the next un-done theme
 python3 run.py --all      # produce videos for every un-done theme
 python3 run.py --theme "3 weird facts about octopuses" --duration 120   # one-off, skip themes.yaml
+python3 run.py --themes-file themes_education.yaml   # run a different channel's queue
 ```
 
 Each theme in `themes.yaml` is marked `done: true` after its video is produced, so

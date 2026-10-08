@@ -1,0 +1,70 @@
+name: Auto-generate video (education channel)
+
+# Same pipeline as auto-video.yml, but for the second "education & learning for
+# school students" channel -- a separate YouTube channel under the same Gmail
+# account, with its own OAuth token and its own theme queue, sharing this
+# repo's codebase instead of forking it.
+on:
+  schedule:
+    # 05:37 UTC daily -- offset from auto-video.yml's 05:07 run so the two
+    # don't contend for the same GitHub-hosted runner pool at once.
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: "One-off theme to run instead of the next themes_education.yaml entry (optional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: auto-video-education
+  cancel-in-progress: false
+
+permissions:
+  contents: write # to commit themes_education.yaml's updated done:true flags back
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    environment: education # secrets (PEXELS_API_KEY/GROQ_API_KEY/YOUTUBE_TOKEN_JSON) live in this GitHub Environment, scoped to the education channel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Seed YouTube OAuth token
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          mkdir -p /tmp/youtube_seed
+          echo "$YOUTUBE_TOKEN_JSON" > /tmp/youtube_seed/youtube_token.json
+
+      - name: Run pipeline
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          YOUTUBE_TOKEN_SEED_FILE: /tmp/youtube_seed/youtube_token.json
+          YOUTUBE_AUTO_UPLOAD: "true"
+        run: |
+          if [ -n "${{ github.event.inputs.theme }}" ]; then
+            python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts
+          else
+            python3 run.py --themes-file themes_education.yaml
+          fi
+
+      - name: Persist updated themes_education.yaml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add themes_education.yaml
+          git diff --cached --quiet || git commit -m "Mark generated theme as done (education) [skip ci]"
+          git push

@@ -99,11 +99,13 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     preference from the Telegram bot) — defaults to the configured voice.
 
     edge-tts talks to an unofficial Microsoft endpoint that occasionally drops
-    the connection without sending audio (NoAudioReceived/WebSocketError) —
-    seen more often from cloud/datacenter IPs (e.g. Render, GitHub Actions)
-    than from home networks. Retry several times with growing backoff before
-    giving up, since outages/throttling on that endpoint can last past a few
-    seconds.
+    the connection without sending audio (NoAudioReceived/WebSocketError).
+    Reproduced locally: isolated calls fail intermittently (~1 in 10) and
+    normally recover on the very next attempt, but on GitHub Actions runners
+    a video's 6th-or-so consecutive call would fail and then *every* retry
+    for the next ~31s would also fail — consistent with a short burst-rate
+    limit on that IP that outlasts our old backoff window. Retry with a
+    backoff long enough to ride out that kind of sustained throttle.
     """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
@@ -111,7 +113,7 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_for_speech(text)
 
-    attempts = 6
+    attempts = 8
     for attempt in range(1, attempts + 1):
         try:
             asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
@@ -119,4 +121,4 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
         except edge_tts.exceptions.EdgeTTSException:
             if attempt == attempts:
                 raise
-            time.sleep(min(2 ** (attempt - 1), 30))
+            time.sleep(min(2 ** (attempt - 1), 45))

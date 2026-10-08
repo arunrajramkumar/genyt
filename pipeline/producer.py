@@ -4,6 +4,7 @@ Used by both run.py (CLI/theme pipeline) and webapp.py (form-driven pipeline).
 """
 import re
 import shutil
+import time
 from pathlib import Path
 
 from . import config, tts, visuals, assemble, captions, textcard, youtube_upload
@@ -50,6 +51,12 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     on_progress("Synthesizing narration")
     narration_paths = []
     for i, scene in enumerate(script["scenes"]):
+        if i > 0:
+            # edge-tts's unofficial endpoint applies a short burst-rate limit on
+            # cloud/datacenter IPs (GitHub Actions) -- firing scenes back-to-back
+            # with no gap reliably tripped it after ~5-6 calls. A small gap keeps
+            # us under it without meaningfully slowing down generation.
+            time.sleep(1.5)
         wav_path = work_dir / f"narration_{i:02d}.mp3"
         on_progress(f"  scene {i}: {scene['narration']!r}")
         duration = tts.synthesize(scene["narration"], wav_path, voice=voice)

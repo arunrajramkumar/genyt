@@ -216,6 +216,26 @@ SUBSCRIBE_CTA_NARRATION = " If this helped, subscribe for more videos like it."
 SUBSCRIBE_CTA_ON_SCREEN_TEXT = "SUBSCRIBE FOR MORE"
 
 
+def merge_tags(required: list, generated: list, char_budget: int = 460) -> list:
+    """Combines a channel/theme's must-have tags with the LLM's generated ones.
+    `required` goes first so it survives YouTube's ~500-character total tag
+    limit even if the LLM's own list is long; `generated` fills the rest.
+    Dedupes case-insensitively."""
+    merged, seen, total = [], set(), 0
+    for tag in list(required) + list(generated):
+        tag = tag.strip()
+        key = tag.lower()
+        if not tag or key in seen:
+            continue
+        cost = len(tag) + (2 if merged else 0)
+        if total + cost > char_budget:
+            continue
+        seen.add(key)
+        merged.append(tag)
+        total += cost
+    return merged
+
+
 def append_subscribe_cta(scenes: list) -> None:
     """Appends a spoken + on-screen subscribe ask to the final scene. Most Shorts
     viewers watch muted at first, so the ask needs to be both heard and seen —
@@ -277,7 +297,7 @@ def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
     raise RuntimeError(f"Model failed to write video metadata 3 times in a row ({last_error}).")
 
 
-def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) -> dict:
+def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, extra_tags: list = None) -> dict:
     scenes = []
     for seg in segments:
         scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"])
@@ -285,7 +305,7 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60) 
 
     style_guidance = youtube_insights.get_combined_guidance()
     meta = _write_metadata(scenes, style_guidance)
-    tags = list(dict.fromkeys(meta["tags"] or ["short video"]))
+    tags = merge_tags(extra_tags or [], meta["tags"] or ["short video"])
     append_subscribe_cta(scenes)
 
     return {"title": meta["title"], "description": meta["description"], "tags": tags, "scenes": scenes}

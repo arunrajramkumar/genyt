@@ -28,7 +28,7 @@ def save_themes(themes_file: Path, themes: list[dict]) -> None:
     )
 
 
-def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: bool = False) -> Path:
+def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: bool = False, extra_tags: list = None) -> Path:
     print(f"[1/2] Writing script for: {theme!r}")
     # prompt_script (not the older script_writer) pulls in this channel's own
     # performance guidance plus broader niche trend guidance (see
@@ -36,7 +36,7 @@ def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: 
     # title/hook, so scheduled runs benefit from the same dynamic trend
     # feedback the web UI already gets.
     prompt = f"{theme}\n\nStyle/tone: {style}" if style else theme
-    script = prompt_script.write_script_from_prompt(prompt, duration_sec)
+    script = prompt_script.write_script_from_prompt(prompt, duration_sec, extra_tags)
     orientation = config.SHORTS if shorts else config.LANDSCAPE
 
     print("[2/2] Producing video")
@@ -77,6 +77,7 @@ def main():
             entry.get("style", ""),
             entry.get("duration_sec", 180),
             entry.get("shorts", False),
+            entry.get("extra_tags"),
         )
         entry["done"] = True
         save_themes(themes_file, themes)

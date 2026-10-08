@@ -36,7 +36,7 @@ def test_extract_json_extracts_object_from_surrounding_prose():
 def test_write_script_from_prompt_dispatches_to_segmented_for_structured_prompt(monkeypatch):
     called = {}
 
-    def fake_write_segmented(prompt, segments, duration_sec):
+    def fake_write_segmented(prompt, segments, duration_sec, extra_tags=None):
         called["ran"] = True
         return VALID_SCRIPT
 
@@ -52,7 +52,7 @@ def test_write_script_from_prompt_dispatches_to_segmented_for_structured_prompt(
 
 
 def test_write_script_from_prompt_falls_back_to_freeform_for_plain_prompt(monkeypatch):
-    monkeypatch.setattr(prompt_script, "_write_freeform_script", lambda prompt, duration_sec: VALID_SCRIPT)
+    monkeypatch.setattr(prompt_script, "_write_freeform_script", lambda prompt, duration_sec, extra_tags=None: VALID_SCRIPT)
     result = prompt_script.write_script_from_prompt("Tell me about octopuses")
     assert result == VALID_SCRIPT
 
@@ -127,6 +127,13 @@ def test_write_freeform_script_falls_back_to_default_tag_when_empty(monkeypatch)
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(untagged_script))
     result = prompt_script._write_freeform_script("octopuses")
     assert result["tags"] == ["short video"]
+
+
+def test_write_freeform_script_merges_extra_tags_ahead_of_generated_ones(monkeypatch):
+    tagged_script = dict(VALID_SCRIPT, tags=["octopuses", "ocean facts"])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(tagged_script))
+    result = prompt_script._write_freeform_script("octopuses", extra_tags=["NCERT", "CBSE"])
+    assert result["tags"] == ["NCERT", "CBSE", "octopuses", "ocean facts"]
 
 
 def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):

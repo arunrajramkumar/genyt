@@ -36,7 +36,7 @@ def test_produce_video_writes_script_then_produces(monkeypatch):
         calls["orientation"] = orientation
         return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
 
-    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec: {"title": "T", "scenes": []})
+    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None: {"title": "T", "scenes": []})
     monkeypatch.setattr(run.producer, "produce_from_script", fake_produce)
 
     result = run.produce_video("a theme", shorts=True)
@@ -48,7 +48,7 @@ def test_produce_video_folds_style_into_the_prompt(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         run.prompt_script, "write_script_from_prompt",
-        lambda prompt, duration_sec: captured.setdefault("prompt", prompt) or {"title": "T", "scenes": []},
+        lambda prompt, duration_sec, extra_tags=None: captured.setdefault("prompt", prompt) or {"title": "T", "scenes": []},
     )
     monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress: {
         "video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t",
@@ -66,10 +66,26 @@ def test_main_processes_the_given_themes_file_not_the_default(monkeypatch, tmp_p
     run.save_themes(themes_file, [{"theme": "Other channel theme", "done": False}])
 
     produced = []
-    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts: produced.append(theme))
+    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts, extra_tags=None: produced.append(theme))
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
 
     run.main()
 
     assert produced == ["Other channel theme"]
     assert run.load_themes(themes_file)[0]["done"] is True
+
+
+def test_main_passes_each_themes_extra_tags_through(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes_education.yaml"
+    run.save_themes(themes_file, [{"theme": "Ch 1", "done": False, "extra_tags": ["NCERT", "CBSE"]}])
+
+    captured = {}
+    monkeypatch.setattr(
+        run, "produce_video",
+        lambda theme, style, duration, shorts, extra_tags=None: captured.setdefault("extra_tags", extra_tags),
+    )
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
+
+    run.main()
+
+    assert captured["extra_tags"] == ["NCERT", "CBSE"]

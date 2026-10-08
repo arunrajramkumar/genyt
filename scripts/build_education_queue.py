@@ -8,7 +8,8 @@ explains the actual syllabus content rather than inventing its own curriculum.
 Usage:
     python3 scripts/build_education_queue.py <pdf_folder> <output_yaml> \
         --subject "Grade 6 CBSE Maths (NCERT Ganita Prakash)" \
-        --chapter-titles '{"1": "Patterns in Mathematics", "2": "Lines and Angles", ...}'
+        --chapter-titles '{"1": "Patterns in Mathematics", "2": "Lines and Angles", ...}' \
+        --base-tags "NCERT,CBSE,Grade 6,6th Grade,School Maths,India,Learning,Students"
 """
 import argparse
 import glob
@@ -57,7 +58,7 @@ def group_sections(sections: list[dict]) -> list[list[dict]]:
 
 
 def build_theme_entry(subject: str, chapter_num: int, chapter_title: str,
-                       part_num: int, total_parts: int, group: list[dict]) -> dict:
+                       part_num: int, total_parts: int, group: list[dict], base_tags: list[str]) -> dict:
     section_titles = " & ".join(s["title"] for s in group)
     source_text = "\n\n".join(f'{s["id"]} {s["title"]}\n{s["body"]}' for s in group)[:MAX_SOURCE_CHARS_PER_PART]
 
@@ -79,6 +80,10 @@ def build_theme_entry(subject: str, chapter_num: int, chapter_title: str,
         "duration_sec": duration_sec,
         "shorts": False,
         "done": False,
+        # Tags that must appear on every video regardless of what the LLM comes
+        # up with (see segmented_script.merge_tags) -- the chapter title is
+        # appended so each video is also tagged with its specific topic.
+        "extra_tags": [*base_tags, f"Chapter {chapter_num}", chapter_title],
         # Not read by run.py -- just makes the generated queue file human-readable.
         "_label": f"Ch {chapter_num} ({chapter_title}) - Part {part_num}/{total_parts}: {section_titles}",
     }
@@ -91,8 +96,13 @@ def main():
     parser.add_argument("--subject", required=True)
     parser.add_argument("--chapter-titles", required=True, help='JSON map of chapter number (as string) -> title')
     parser.add_argument("--pattern", default="*.pdf")
+    parser.add_argument(
+        "--base-tags", default="",
+        help="Comma-separated tags added to every video's extra_tags, e.g. 'NCERT,CBSE,Grade 6,India'",
+    )
     args = parser.parse_args()
 
+    base_tags = [t.strip() for t in args.base_tags.split(",") if t.strip()]
     chapter_titles = json.loads(args.chapter_titles)
     entries = []
     for pdf_path in sorted(glob.glob(f"{args.pdf_folder}/{args.pattern}")):
@@ -110,7 +120,7 @@ def main():
         groups = group_sections(sections)
         print(f"Chapter {chapter_num} ({chapter_title}): {len(sections)} sections -> {len(groups)} parts")
         for part_num, group in enumerate(groups, start=1):
-            entries.append(build_theme_entry(args.subject, chapter_num, chapter_title, part_num, len(groups), group))
+            entries.append(build_theme_entry(args.subject, chapter_num, chapter_title, part_num, len(groups), group, base_tags))
 
     with open(args.output_yaml, "w") as f:
         yaml.safe_dump({"themes": entries}, f, sort_keys=False, allow_unicode=True, width=100)

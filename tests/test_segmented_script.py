@@ -359,3 +359,38 @@ def test_write_metadata_omits_style_guidance_section_when_empty(monkeypatch):
     monkeypatch.setattr(ss.llm, "chat_json", fake_chat_json)
     ss._write_metadata([{"narration": "n"}])
     assert "currently drawing viewers" not in captured["user_prompt"]
+
+
+# -- merge_tags: required tags must survive even if the LLM's list is long -----
+
+def test_merge_tags_puts_required_tags_first_and_dedupes():
+    result = ss.merge_tags(["NCERT", "CBSE"], ["cbse", "number patterns", "NCERT"])
+    assert result == ["NCERT", "CBSE", "number patterns"]
+
+
+def test_merge_tags_with_no_required_tags_just_dedupes_generated():
+    assert ss.merge_tags([], ["a", "a", "b"]) == ["a", "b"]
+
+
+def test_merge_tags_trims_to_character_budget_keeping_required_tags():
+    required = ["NCERT", "CBSE"]
+    generated = ["x" * 100, "y" * 100, "z" * 100, "w" * 100, "v" * 100]
+    result = ss.merge_tags(required, generated, char_budget=250)
+    assert result[0] == "NCERT"
+    assert result[1] == "CBSE"
+    assert sum(len(t) for t in result) <= 250
+
+
+def test_write_segmented_script_includes_extra_tags(monkeypatch):
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
+    )
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
+    monkeypatch.setattr(
+        ss, "_write_metadata",
+        lambda scenes, style_guidance="": {"title": "T", "description": "d", "tags": ["number theory"]},
+    )
+    segments = [{"label": "Hook", "content": "c", "duration": 5}]
+    script = ss.write_segmented_script("prompt", segments, extra_tags=["NCERT", "CBSE"])
+    assert script["tags"] == ["NCERT", "CBSE", "number theory"]

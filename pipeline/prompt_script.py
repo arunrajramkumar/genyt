@@ -67,20 +67,24 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-def write_script_from_prompt(prompt: str, duration_sec: int = 60) -> dict:
+def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:
     """If the prompt already lays out a timed, section-by-section script (e.g.
     "0-5 seconds - Hook", "5-15 seconds - Overview", ...), each section becomes
     its own scene via a narrow per-section LLM call, keeping narration, visual
     and on-screen text tightly bound to the same source facts. Otherwise falls
     back to a single freeform generation call for the whole prompt.
+
+    extra_tags: tags that must appear regardless of what the LLM comes up with
+    (e.g. "NCERT", "CBSE" for a school-syllabus channel) — see
+    segmented_script.merge_tags.
     """
     segments = segmented_script.parse_segments(prompt)
     if segments:
-        return segmented_script.write_segmented_script(prompt, segments, duration_sec)
-    return _write_freeform_script(prompt, duration_sec)
+        return segmented_script.write_segmented_script(prompt, segments, duration_sec, extra_tags)
+    return _write_freeform_script(prompt, duration_sec, extra_tags)
 
 
-def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
+def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:
     target_words = int(duration_sec / 60 * 140)
 
     user_prompt = (
@@ -109,7 +113,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60) -> dict:
             if not script["scenes"]:
                 raise ValueError("Script has zero scenes")
             script["title"] = segmented_script.clean_title(script["title"])[:70]
-            script["tags"] = list(dict.fromkeys(t for t in (script["tags"] or []) if t)) or ["short video"]
+            script["tags"] = segmented_script.merge_tags(extra_tags or [], script["tags"] or ["short video"])
             segmented_script.append_subscribe_cta(script["scenes"])
             return script
         except (ValueError, KeyError) as e:

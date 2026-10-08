@@ -212,7 +212,7 @@ def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
     }
 
 
-SUBSCRIBE_CTA_NARRATION = " If this helped, subscribe for more stock analysis like it."
+SUBSCRIBE_CTA_NARRATION = " If this helped, subscribe for more videos like it."
 SUBSCRIBE_CTA_ON_SCREEN_TEXT = "SUBSCRIBE FOR MORE"
 
 

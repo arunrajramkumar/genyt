@@ -136,6 +136,6 @@ def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):
     ])
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(two_scene_script))
     result = prompt_script._write_freeform_script("octopuses")
-    assert result["scenes"][-1]["narration"] == "Fact two. If this helped, subscribe for more stock analysis like it."
+    assert result["scenes"][-1]["narration"] == "Fact two. If this helped, subscribe for more videos like it."
     assert result["scenes"][-1]["on_screen_text"] == "SUBSCRIBE FOR MORE"
     assert result["scenes"][0]["narration"] == "Fact one."

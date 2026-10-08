@@ -256,7 +256,7 @@ def test_append_subscribe_cta_appends_to_narration_of_last_scene():
     scenes = [{"narration": "Scene one.", "on_screen_text": ""}, {"narration": "Scene two.", "on_screen_text": "Final fact"}]
     ss.append_subscribe_cta(scenes)
     assert scenes[0]["narration"] == "Scene one."
-    assert scenes[1]["narration"] == "Scene two. If this helped, subscribe for more stock analysis like it."
+    assert scenes[1]["narration"] == "Scene two. If this helped, subscribe for more videos like it."
 
 
 def test_append_subscribe_cta_sets_on_screen_text_when_empty():
@@ -289,7 +289,7 @@ def test_write_segmented_script_appends_subscribe_cta_to_last_scene(monkeypatch)
     )
     segments = [{"label": "Hook", "content": "c1", "duration": 5}, {"label": "End screen", "content": "c2", "duration": 5}]
     result = ss.write_segmented_script("prompt", segments)
-    assert result["scenes"][-1]["narration"].endswith("subscribe for more stock analysis like it.")
+    assert result["scenes"][-1]["narration"].endswith("subscribe for more videos like it.")
     assert result["scenes"][-1]["on_screen_text"] == "SUBSCRIBE FOR MORE"
     assert result["scenes"][0]["narration"] == "Hook narration."
 

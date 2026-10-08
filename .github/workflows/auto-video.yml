@@ -70,14 +70,3 @@ jobs:
           git add themes.yaml
           git diff --cached --quiet || git commit -m "Mark generated theme as done [skip ci]"
           git push
-
-      - name: Upload generated video as a build artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-video
-          path: |
-            output/**
-            cache/**/*.mp4
-          retention-days: 7
-          if-no-files-found: ignore

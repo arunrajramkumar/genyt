@@ -51,6 +51,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     narration_paths = []
     for i, scene in enumerate(script["scenes"]):
         wav_path = work_dir / f"narration_{i:02d}.mp3"
+        on_progress(f"  scene {i}: {scene['narration']!r}")
         duration = tts.synthesize(scene["narration"], wav_path, voice=voice)
         scene["_duration"] = duration
         narration_paths.append(wav_path)

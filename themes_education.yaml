@@ -52,7 +52,7 @@ themes:
     Ganita Prakash) to 11-12 year olds
   duration_sec: 270
   shorts: false
-  done: false
+  done: true
   _label: 'Ch 1 (Patterns in Mathematics) - Part 1/3: What is Mathematics? & Patterns
     in Numbers'
 - theme: "Explain these Grade 6 CBSE Maths (NCERT Ganita Prakash) concepts from Chapter\

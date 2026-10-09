@@ -78,7 +78,7 @@ themes:
     Ganita Prakash) to 11-12 year olds
   duration_sec: 270
   shorts: false
-  done: false
+  done: true
   extra_tags:
   - NCERT
   - CBSE

@@ -26,6 +26,13 @@ TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 TAVILY_MONTHLY_CALL_CAP = int(os.environ.get("TAVILY_MONTHLY_CALL_CAP", "40"))
 TAVILY_USAGE_FILE = ROOT / "tavily_usage.json"
 
+# Primary guardrail: stop calling Tavily once the account's real remaining
+# credits (per Tavily's own GET /usage) drop below this buffer, so a month
+# never runs the account to zero (or into paid overage) even if other tools
+# share the same key. The call-count cap above only kicks in if this live
+# check itself is unreachable.
+TAVILY_SAFETY_BUFFER_CREDITS = int(os.environ.get("TAVILY_SAFETY_BUFFER_CREDITS", "50"))
+
 THEMES_FILE = ROOT / "themes.yaml"
 OUTPUT_DIR = ROOT / "output"
 CACHE_DIR = ROOT / "cache"

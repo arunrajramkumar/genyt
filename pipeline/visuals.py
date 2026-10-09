@@ -15,7 +15,13 @@ PHOTO_SEARCH_URL = "https://api.pexels.com/v1/search"
 # top Pexels result per query meant every video with that query got the exact
 # same clip forever. Caching a small pool instead and picking randomly from it
 # gives visual variety on reuse without paying for a fresh API search each time.
-POOL_SIZE = 4
+# A single education video can easily have 5+ scenes sharing a near-identical
+# query (e.g. several "mathematics"/"numbers" scenes in one chapter) -- a
+# pool of 4 was getting exhausted mid-video, forcing _pick()'s repeat
+# fallback and producing the "same visuals repeating" symptom. 8 keeps one
+# search call's cost the same (still a single Pexels API request) while
+# giving `exclude` enough headroom to avoid repeats in most real videos.
+POOL_SIZE = 8
 
 
 def _cache_path(query: str, orientation: str, suffix: str, index: int = 0) -> Path:

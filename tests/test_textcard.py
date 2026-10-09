@@ -104,3 +104,28 @@ def test_render_hook_card_with_badge_text_produces_a_nonempty_png(tmp_path):
 def test_render_hook_card_without_badge_text_still_works(tmp_path):
     out = textcard.render_hook_card("Title", "", 1280, 720, tmp_path / "no_badge.png")
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_hook_card_badge_does_not_overlap_title_bar(tmp_path):
+    # Regression for a real generated video's opening frame: the red corner
+    # badge sat at a fixed top-left position while the white title bar always
+    # started at a fixed 0.08*height regardless of the badge, so a badge tall
+    # enough overlapped/obscured the first line of the centered title text.
+    # The title bar must now start below the badge's bottom edge whenever a
+    # badge is present.
+    from PIL import Image
+
+    width, height = 1280, 720
+    out = textcard.render_hook_card(
+        "Discovering Patterns: From Fibonacci To Squares In Everyday Math", "",
+        width, height, tmp_path / "badge_overlap.png",
+        badge_text="CBSE | Grade 6 Maths",
+    )
+    img = Image.open(out).convert("RGB")
+    badge_y0 = int(width * 0.03)
+    # Sample a row through the middle of the badge's vertical band, but far to
+    # the right where the badge itself doesn't reach -- this pixel must still
+    # be the plain background color, not the white title bar, otherwise the
+    # title bar's top edge has crept up into the badge's row.
+    pixel = img.getpixel((width - 10, badge_y0 + 5))
+    assert pixel != (255, 255, 255), "title bar overlaps the badge's vertical band"

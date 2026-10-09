@@ -9,7 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-from . import llm, research, segmented_script, youtube_insights
+from . import diagrams, llm, research, segmented_script, youtube_insights
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -23,7 +23,8 @@ commentary) matching this schema:
     {
       "narration": "1-3 sentences of spoken narration for this scene",
       "visual_query": "2-4 word English search query for stock footage/photos that visually matches this scene",
-      "on_screen_text": "SHORT text overlay for this scene, under 6 words, or empty string if none needed"
+      "on_screen_text": "SHORT text overlay for this scene, under 6 words, or empty string if none needed",
+      "diagram": null
     }
   ]
 }
@@ -53,6 +54,17 @@ Rules:
 - The very first scene's on_screen_text MUST be the name of the main subject of the
   video (e.g. the company name, the person's name, the place/topic name) if the user's
   prompt names one — always show it, even though scene 1 is the hook/intro.
+- diagram: ONLY set this (instead of leaving it null) when a scene's concept is a
+  numeric comparison, trend, or sequence that has NO real filmable stock-footage
+  equivalent (e.g. comparing two companies' P/E ratios, a revenue trend over time).
+  Use ONLY numbers that literally appear in this scene's own narration — never invent
+  new ones. Must be one of:
+    {"kind": "number_line", "min": <int>, "max": <int>, "highlight": [<int>, ...]}
+    {"kind": "triangular_dots", "rows": <int>, "label": "<short string>"}
+    {"kind": "sequence_boxes", "items": ["<str>", ...], "highlight_index": <int or null>}
+    {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...]}
+    {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
+  Leave diagram as null for anything else, including every hook/intro/outro scene.
 """
 
 
@@ -136,6 +148,12 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 raise ValueError("Script has zero scenes")
             script["title"] = segmented_script.clean_title(script["title"])[:70]
             script["tags"] = segmented_script.merge_tags(extra_tags or [], script["tags"] or ["short video"])
+            for scene in script["scenes"]:
+                diagram = scene.get("diagram")
+                if diagram:
+                    ok, _reason = diagrams.validate_diagram_spec(diagram, source_text=scene.get("narration", ""))
+                    if not ok:
+                        scene["diagram"] = None
             segmented_script.append_subscribe_cta(script["scenes"])
             return script
         except (ValueError, KeyError) as e:

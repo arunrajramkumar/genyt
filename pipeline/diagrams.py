@@ -19,6 +19,14 @@ BG_COLOR = (16, 22, 36)
 ACCENT_COLOR = (60, 230, 110)
 TEXT_COLOR = (230, 230, 230)
 
+# textcard.render_text_card's caption bar starts at 0.68*height (see
+# pipeline/textcard.py) and is overlaid on top of a scene's clip -- including
+# diagram scenes, since a diagram is the scene's entire visual (see
+# producer.py/assemble.py). Confining all diagram content to this box keeps a
+# diagram's own baked-in labels from landing underneath/overlapping that
+# caption text.
+CONTENT_HEIGHT_FRACTION = 0.62
+
 DIAGRAM_KINDS = {
     "number_line": {"required": {"min": int, "max": int}, "optional": {"highlight": list}},
     "triangular_dots": {"required": {"rows": int}, "optional": {"label": str}},
@@ -69,6 +77,29 @@ def validate_diagram_spec(spec: dict, source_text: str = "") -> tuple:
     return True, ""
 
 
+def _fit_text(draw, text: str, max_width: int, start_size: int, min_size: int = 11):
+    """Returns (font, text) sized/truncated so it renders within max_width.
+
+    sequence_boxes/bar_compare were built assuming short items (numbers like
+    "1", "10"), but an LLM-authored diagram can put a whole category name
+    ("Triangular numbers") in the same slot -- at the fixed, box-width-derived
+    font size used before this helper, that text drew far wider than its box
+    and smeared into neighbouring boxes/bars. Shrinking the font first (down
+    to min_size) and only then truncating with an ellipsis keeps every label
+    inside its own slot instead of overlapping its neighbours."""
+    size = start_size
+    while size > min_size:
+        font = _load_font(size, text)
+        if draw.textbbox((0, 0), text, font=font)[2] <= max_width:
+            return font, text
+        size -= 2
+    font = _load_font(min_size, text)
+    truncated = text
+    while truncated and draw.textbbox((0, 0), truncated + "…", font=font)[2] > max_width:
+        truncated = truncated[:-1]
+    return font, (truncated + "…" if truncated != text else text)
+
+
 def render_diagram(spec: dict, width: int, height: int, out_path: Path) -> Path:
     kind = spec["kind"]
     renderer = {
@@ -83,7 +114,12 @@ def render_diagram(spec: dict, width: int, height: int, out_path: Path) -> Path:
 
     img = Image.new("RGB", (width, height), BG_COLOR)
     draw = ImageDraw.Draw(img)
-    renderer(draw, spec, width, height)
+    # Confine the diagram itself to the band above the caption bar (see
+    # CONTENT_HEIGHT_FRACTION) -- renderers lay their content out as if this
+    # smaller height were the whole frame, which keeps it centered in the
+    # free space above where on_screen_text gets overlaid afterwards.
+    content_height = int(height * CONTENT_HEIGHT_FRACTION)
+    renderer(draw, spec, width, content_height)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(out_path)
     return out_path
@@ -119,26 +155,33 @@ def _render_triangular_dots(draw, spec, width, height):
             x = start_x + c * gap
             draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=ACCENT_COLOR)
     if label:
-        font = _load_font(max(28, width // 20))
-        draw.text((width // 2, top_y + rows * gap + radius * 2), label, font=font, fill=TEXT_COLOR, anchor="ma")
+        font_size = max(28, width // 20)
+        font, label = _fit_text(draw, label, int(width * 0.92), font_size)
+        label_y = min(top_y + rows * gap + radius * 2, height - font_size - 4)
+        draw.text((width // 2, label_y), label, font=font, fill=TEXT_COLOR, anchor="ma")
 
 
 def _render_sequence_boxes(draw, spec, width, height):
     items = [str(i) for i in spec["items"]][:8]
     hi_idx = spec.get("highlight_index")
     n = len(items)
-    box_w = min(int(width * 0.8 / max(1, n)), int(width * 0.18))
+    # box_w is sized so that n boxes PLUS the (n-1) gaps between them (each
+    # gap = 0.3*box_w) fit within width*0.8 -- sizing box_w off box count
+    # alone and adding gaps afterwards (the old formula) ignored the gaps'
+    # own width, so e.g. n=8 overflowed the frame by ~10px on each side,
+    # clipping the first/last box at the frame edge.
+    box_w = min(int(width * 0.8 / max(1, n + 0.3 * (n - 1))), int(width * 0.18))
     box_h = box_w
     gap = int(box_w * 0.3)
     total_w = n * box_w + (n - 1) * gap
     x0 = (width - total_w) // 2
     y0 = height // 2 - box_h // 2
-    font = _load_font(max(24, box_w // 3))
     for i, item in enumerate(items):
         x = x0 + i * (box_w + gap)
         fill = ACCENT_COLOR if i == hi_idx else (40, 50, 70)
         draw.rectangle([x, y0, x + box_w, y0 + box_h], fill=fill, outline=TEXT_COLOR, width=3)
-        draw.text((x + box_w // 2, y0 + box_h // 2), item, font=font, fill=(255, 255, 255), anchor="mm")
+        font, label = _fit_text(draw, item, int(box_w * 0.85), max(24, box_w // 3))
+        draw.text((x + box_w // 2, y0 + box_h // 2), label, font=font, fill=(255, 255, 255), anchor="mm")
 
 
 def _render_bar_compare(draw, spec, width, height):
@@ -151,13 +194,14 @@ def _render_bar_compare(draw, spec, width, height):
     x0 = (width - total_w) // 2
     base_y = int(height * 0.75)
     max_h = int(height * 0.5)
-    font = _load_font(max(22, bar_w // 4))
     for i, (label, v) in enumerate(zip(labels, values)):
         h = int(max_h * (v / max_v)) if max_v else 0
         x = x0 + i * (bar_w + gap)
         draw.rectangle([x, base_y - h, x + bar_w, base_y], fill=ACCENT_COLOR)
-        draw.text((x + bar_w // 2, base_y + 10), str(label), font=font, fill=TEXT_COLOR, anchor="ma")
-        draw.text((x + bar_w // 2, base_y - h - 10), str(v), font=font, fill=(255, 255, 255), anchor="ms")
+        label_font, label_text = _fit_text(draw, str(label), int(bar_w * 0.9), max(22, bar_w // 4))
+        draw.text((x + bar_w // 2, base_y + 10), label_text, font=label_font, fill=TEXT_COLOR, anchor="ma")
+        value_font, value_text = _fit_text(draw, str(v), int(bar_w * 0.9), max(22, bar_w // 4))
+        draw.text((x + bar_w // 2, base_y - h - 10), value_text, font=value_font, fill=(255, 255, 255), anchor="ms")
 
 
 def _render_shape_progression(draw, spec, width, height):

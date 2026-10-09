@@ -14,14 +14,17 @@ Either guard tripping skips the call (not charged) and the caller falls back
 to the "don't invent numbers" instruction.
 """
 import json
+import re
 from datetime import datetime, timezone
 
 import requests
 
-from . import config
+from . import config, fundamentals
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 TAVILY_USAGE_URL = "https://api.tavily.com/usage"
+
+NSE_SYMBOL_RE = re.compile(r"NSE:\s*([A-Z0-9&\-]+)")
 
 # Keeps the search call opt-in to themes that plausibly reference verifiable
 # real-world facts -- generic/creative topics skip this and go straight to
@@ -91,7 +94,14 @@ def _fetch_remaining_credits():
     return max(0, plan_limit - (account.get("plan_usage") or 0))
 
 
-def fetch_grounding_facts(topic: str) -> str:
+def _extract_nse_symbol(theme: str):
+    """Pulls a literal "NSE: SYMBOL" ticker out of a theme, when the theme
+    names one explicitly (see themes.yaml's company-specific entries)."""
+    m = NSE_SYMBOL_RE.search(theme.upper())
+    return m.group(1) if m else None
+
+
+def _fetch_tavily_facts(topic: str) -> str:
     """Returns a block of sourced facts/snippets about topic from a live web
     search, or "" if Tavily isn't configured, either credit guardrail has
     tripped, or the search fails -- callers must treat "" as "no verified data
@@ -127,4 +137,31 @@ def fetch_grounding_facts(topic: str) -> str:
         for r in results if r.get("content", "").strip()
     ]
     return "\n".join(lines)
+
+
+def fetch_grounding_facts(topic: str) -> str:
+    """Returns a block of sourced facts about topic, or "" if nothing could be
+    verified -- callers must treat "" as "no verified data available" and must
+    not fabricate specifics in its place.
+
+    When the topic names an NSE-listed company (e.g. "NSE: CDSL"), real
+    scraped fundamentals (P/E, ROE, ROCE, revenue/profit growth -- see
+    pipeline/fundamentals.py) are fetched first and take priority, since
+    they're precise numbers rather than search-snippet prose. Tavily's
+    web-search snippets are appended after for qualitative/news context that
+    fundamentals data alone doesn't cover (no API key needed for the
+    fundamentals half, so this works even without Tavily configured)."""
+    parts = []
+
+    symbol = _extract_nse_symbol(topic)
+    if symbol:
+        facts = fundamentals.format_fundamentals_facts(fundamentals.fetch_fundamentals(symbol))
+        if facts:
+            parts.append(facts)
+
+    tavily_facts = _fetch_tavily_facts(topic)
+    if tavily_facts:
+        parts.append(tavily_facts)
+
+    return "\n".join(parts)
 

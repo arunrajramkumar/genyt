@@ -169,6 +169,45 @@ def test_fetch_grounding_facts_skips_the_search_when_live_credits_below_safety_b
     assert calls == []
 
 
+# -- real fundamentals data (scraped, no API key) take priority over Tavily ---
+
+def test_fetch_grounding_facts_uses_real_fundamentals_for_nse_named_companies(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(
+        research.fundamentals, "fetch_fundamentals",
+        lambda symbol: {"symbol": symbol, "ratios": {"Stock P/E": "57.2"}},
+    )
+    result = research.fetch_grounding_facts("NSE: CDSL quarterly results breakdown")
+    assert "Stock P/E: 57.2" in result
+
+
+def test_fetch_grounding_facts_combines_fundamentals_with_tavily_snippets(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        research.fundamentals, "fetch_fundamentals",
+        lambda symbol: {"symbol": symbol, "ratios": {"Stock P/E": "57.2"}},
+    )
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(_SEARCH_RESULTS_PAYLOAD))
+    result = research.fetch_grounding_facts("NSE: CDSL quarterly results breakdown")
+
+    assert "Stock P/E: 57.2" in result
+    assert "Revenue grew 12%." in result
+
+
+def test_fetch_grounding_facts_falls_back_to_tavily_when_no_nse_symbol_named(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    fundamentals_calls = []
+    monkeypatch.setattr(
+        research.fundamentals, "fetch_fundamentals",
+        lambda symbol: fundamentals_calls.append(symbol) or {},
+    )
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(_SEARCH_RESULTS_PAYLOAD))
+    result = research.fetch_grounding_facts("Tata Motors stock")
+
+    assert fundamentals_calls == []
+    assert "Revenue grew 12%." in result
+
+
 def test_fetch_grounding_facts_proceeds_when_live_credits_comfortably_above_buffer(monkeypatch):
     monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
     monkeypatch.setattr(config, "TAVILY_SAFETY_BUFFER_CREDITS", 50)

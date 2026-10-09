@@ -179,10 +179,24 @@ def render_hook_card(
 
     draw = ImageDraw.Draw(img)
 
+    # Badge geometry is needed before laying out the title bar (below) so the
+    # title can start clear of it -- previously the title bar always started
+    # at a fixed 0.08*height regardless of the badge, so a badge tall enough
+    # (e.g. a two-word syllabus label) visually overlapped the first line of
+    # the title text drawn on top of it.
+    badge_bottom = 0
+    if badge_text:
+        badge_font = _load_font(max(22, width // 28), badge_text)
+        text_bbox = draw.textbbox((0, 0), badge_text.upper(), font=badge_font)
+        text_w, text_h = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+        pad_x, pad_y = int(width * 0.025), int(width * 0.015)
+        badge_x0, badge_y0 = int(width * 0.03), int(width * 0.03)
+        badge_bottom = badge_y0 + text_h + pad_y * 2
+
     # Bold white title bar near the top, like a headline.
     title_font = _load_font(max(36, width // 14), title)
     title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.88))
-    title_bar_y0 = int(height * 0.08)
+    title_bar_y0 = max(int(height * 0.08), badge_bottom + int(height * 0.02))
     line_h = draw.textbbox((0, 0), "A", font=title_font)[3]
     title_bar_h = len(title_lines) * (line_h + 10) + int(width * 0.05)
     draw.rectangle([0, title_bar_y0, width, title_bar_y0 + title_bar_h], fill=(255, 255, 255, 235))
@@ -202,11 +216,6 @@ def render_hook_card(
         _draw_centered_lines(draw, stat_lines, stat_font, (60, 230, 110, 255), stat_y0, width, 8)
 
     if badge_text:
-        badge_font = _load_font(max(22, width // 28), badge_text)
-        text_bbox = draw.textbbox((0, 0), badge_text.upper(), font=badge_font)
-        text_w, text_h = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
-        pad_x, pad_y = int(width * 0.025), int(width * 0.015)
-        badge_x0, badge_y0 = int(width * 0.03), int(width * 0.03)
         draw.rectangle(
             [badge_x0, badge_y0, badge_x0 + text_w + pad_x * 2, badge_y0 + text_h + pad_y * 2],
             fill=(230, 60, 50, 255),

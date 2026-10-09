@@ -43,7 +43,10 @@ def test_fetch_visual_picks_randomly_among_cached_pool(isolated_dirs, monkeypatc
         p.write_bytes(b"fake video bytes")
     monkeypatch.setattr(visuals.requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no network")))
 
-    seen = {visuals.fetch_visual("octopus", orientation="landscape")[0] for _ in range(30)}
+    # POOL_SIZE draws uniformly at random: 30 samples made this flaky once
+    # POOL_SIZE grew from 4 to 8 (~1-in-5 chance some item never comes up);
+    # 200 samples keeps the odds of missing an item astronomically small.
+    seen = {visuals.fetch_visual("octopus", orientation="landscape")[0] for _ in range(200)}
     assert seen == set(pool)
 
 

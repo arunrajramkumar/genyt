@@ -1,0 +1,140 @@
+"""Fetches real stock fundamentals (valuation ratios + quarterly revenue/profit
+trend) for a given NSE symbol by scraping Screener.in's public company page --
+no API key, no paid dependency. This is what lets finance themes get CDSL/
+Kalyan-Jewellers-level depth (P/E, ROE, ROCE, revenue growth) automatically,
+instead of relying on a human to hand-research and hand-write those numbers
+into themes.yaml.
+
+Best-effort throughout: any parsing failure (unknown symbol, site layout
+change, network issue) returns {} / "" -- callers must treat that as "no
+verified fundamentals available" and fall back to the existing
+"don't invent numbers" instruction, never fabricate a number in its place.
+"""
+import re
+
+import requests
+
+SCREENER_URL = "https://www.screener.in/company/{symbol}/"
+USER_AGENT = "Mozilla/5.0 (compatible; ytagent-fundamentals/1.0)"
+
+RATIO_ROW_RE = re.compile(
+    r'<li class="flex flex-space-between"[^>]*>\s*<span class="name">\s*(.*?)\s*</span>(.*?)</li>',
+    re.DOTALL,
+)
+NUMBER_RE = re.compile(r"[\d,]+\.?\d*")
+
+
+def _strip_tags(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+
+
+def _parse_ratios(html: str) -> dict:
+    match = re.search(r'<ul id="top-ratios">(.*?)</ul>', html, re.DOTALL)
+    if not match:
+        return {}
+    ratios = {}
+    for name_html, value_html in RATIO_ROW_RE.findall(match.group(1)):
+        name = _strip_tags(name_html)
+        value = _strip_tags(value_html)
+        if name and value:
+            ratios[name] = value
+    return ratios
+
+
+def _extract_quarterly_row(table_html: str, label: str) -> list:
+    pattern = re.compile(
+        r'<tr[^>]*>\s*<td class="text">.*?' + re.escape(label) + r'.*?</td>(.*?)</tr>',
+        re.DOTALL,
+    )
+    m = pattern.search(table_html)
+    if not m:
+        return []
+    return re.findall(r'<td[^>]*>\s*([\-\d,\.]+)\s*</td>', m.group(1))
+
+
+def _parse_quarterly(html: str) -> dict:
+    match = re.search(r'id="quarters".*?</table>\s*</div>', html, re.DOTALL)
+    if not match:
+        return {}
+    table = match.group(0)
+    dates = re.findall(r'data-date-key="(\d{4}-\d{2}-\d{2})"', table)
+    sales = _extract_quarterly_row(table, "Sales")
+    if not dates or not sales:
+        return {}
+    data = {"quarter_dates": dates, "sales_cr": sales}
+    profit = _extract_quarterly_row(table, "Net Profit")
+    if profit:
+        data["net_profit_cr"] = profit
+    return data
+
+
+def _yoy_growth(values: list):
+    """% growth of the latest quarter vs. the same quarter a year ago (the
+    screener.in quarterly table lists one column per quarter, so 4 quarters
+    back is the year-ago comparison)."""
+    if len(values) < 5:
+        return None
+    try:
+        latest = float(values[-1].replace(",", ""))
+        year_ago = float(values[-5].replace(",", ""))
+    except ValueError:
+        return None
+    if year_ago == 0:
+        return None
+    return round((latest - year_ago) / abs(year_ago) * 100, 1)
+
+
+def fetch_fundamentals(symbol: str) -> dict:
+    """Returns {} on any failure. On success:
+    {"symbol": str, "ratios": {name: value, ...},
+     "quarterly": {"quarter_dates": [...], "sales_cr": [...], "net_profit_cr": [...]},
+     "revenue_growth_yoy_pct": float, "profit_growth_yoy_pct": float}
+    (the last four keys are omitted when they can't be computed)."""
+    try:
+        resp = requests.get(
+            SCREENER_URL.format(symbol=symbol.upper()),
+            headers={"User-Agent": USER_AGENT}, timeout=15,
+        )
+        resp.raise_for_status()
+        html = resp.text
+    except requests.RequestException:
+        return {}
+
+    ratios = _parse_ratios(html)
+    if not ratios:
+        return {}
+
+    data = {"symbol": symbol.upper(), "ratios": ratios}
+    quarterly = _parse_quarterly(html)
+    if quarterly:
+        data["quarterly"] = quarterly
+        revenue_growth = _yoy_growth(quarterly.get("sales_cr", []))
+        profit_growth = _yoy_growth(quarterly.get("net_profit_cr", []))
+        if revenue_growth is not None:
+            data["revenue_growth_yoy_pct"] = revenue_growth
+        if profit_growth is not None:
+            data["profit_growth_yoy_pct"] = profit_growth
+    return data
+
+
+def format_fundamentals_facts(data: dict) -> str:
+    """Formats fetched fundamentals into the same "- fact" bullet-list shape
+    research.fetch_grounding_facts() produces, so callers can drop it straight
+    into a grounding-facts prompt block."""
+    if not data:
+        return ""
+    lines = [f"- {name}: {value}" for name, value in data["ratios"].items()]
+
+    quarterly = data.get("quarterly", {})
+    dates = quarterly.get("quarter_dates", [])
+    if quarterly.get("sales_cr"):
+        suffix = f" (quarter ending {dates[-1]})" if dates else ""
+        lines.append(f"- Latest quarterly revenue: Rs {quarterly['sales_cr'][-1]} crore{suffix}")
+    if quarterly.get("net_profit_cr"):
+        lines.append(f"- Latest quarterly net profit: Rs {quarterly['net_profit_cr'][-1]} crore")
+    if "revenue_growth_yoy_pct" in data:
+        lines.append(f"- Revenue grew {data['revenue_growth_yoy_pct']}% year-on-year")
+    if "profit_growth_yoy_pct" in data:
+        lines.append(f"- Net profit grew {data['profit_growth_yoy_pct']}% year-on-year")
+
+    return "\n".join(lines)

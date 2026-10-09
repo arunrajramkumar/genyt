@@ -278,7 +278,7 @@ themes:
     Ganita Prakash) to 11-12 year olds
   duration_sec: 270
   shorts: false
-  done: false
+  done: true
   _label: 'Ch 1 (Patterns in Mathematics) - Part 3/3: Patterns in Shapes & Relation
     to Number Sequences'
   extra_tags:

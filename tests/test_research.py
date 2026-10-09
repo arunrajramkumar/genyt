@@ -60,3 +60,63 @@ def test_fetch_grounding_facts_returns_empty_string_on_request_failure(monkeypat
 
     monkeypatch.setattr(research.requests, "post", fake_post)
     assert research.fetch_grounding_facts("Tata Motors stock") == ""
+
+
+# -- monthly credit guardrail --------------------------------------------------
+
+class _FakeResponse:
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"results": [{"title": "T", "content": "Some fact.", "url": "https://example.com"}]}
+
+
+def test_fetch_grounding_facts_uses_basic_search_depth_to_minimize_credit_cost(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    captured = {}
+
+    def fake_post(url, json, timeout):
+        captured["search_depth"] = json["search_depth"]
+        return _FakeResponse()
+
+    monkeypatch.setattr(research.requests, "post", fake_post)
+    research.fetch_grounding_facts("Tata Motors stock")
+    assert captured["search_depth"] == "basic"
+
+
+def test_fetch_grounding_facts_stops_calling_tavily_once_monthly_cap_reached(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "TAVILY_MONTHLY_CALL_CAP", 2)
+    calls = []
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: (calls.append(1), _FakeResponse())[1])
+
+    assert research.fetch_grounding_facts("a") != ""
+    assert research.fetch_grounding_facts("b") != ""
+    assert research.fetch_grounding_facts("c") == ""  # cap hit -- no third call
+    assert len(calls) == 2
+
+
+def test_fetch_grounding_facts_records_each_call_in_the_usage_file(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse())
+
+    research.fetch_grounding_facts("a")
+    research.fetch_grounding_facts("b")
+
+    import json
+    usage = json.loads(config.TAVILY_USAGE_FILE.read_text())
+    assert usage["calls"] == 2
+    assert usage["month"] == research._current_month()
+
+
+def test_usage_counter_resets_for_a_new_calendar_month(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "TAVILY_MONTHLY_CALL_CAP", 1)
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse())
+
+    import json
+    config.TAVILY_USAGE_FILE.write_text(json.dumps({"month": "2000-01", "calls": 1}))
+
+    assert research.fetch_grounding_facts("a") != ""  # old month's count doesn't carry over
+

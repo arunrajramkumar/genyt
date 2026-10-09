@@ -18,6 +18,14 @@ GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 # instruction instead of a hard failure. See pipeline/research.py.
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
+# Hard guardrail so this never burns past Tavily's free monthly credit quota
+# (~1,500-2,000/month on the $0 plan). Tracked in a git-committed file (not
+# cache/, which is gitignored/ephemeral in CI) so the count survives across
+# scheduled GitHub Actions runs. Kept deliberately far below the free quota —
+# see pipeline/research.py for the enforcement logic.
+TAVILY_MONTHLY_CALL_CAP = int(os.environ.get("TAVILY_MONTHLY_CALL_CAP", "40"))
+TAVILY_USAGE_FILE = ROOT / "tavily_usage.json"
+
 THEMES_FILE = ROOT / "themes.yaml"
 OUTPUT_DIR = ROOT / "output"
 CACHE_DIR = ROOT / "cache"

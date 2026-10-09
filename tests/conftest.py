@@ -26,6 +26,7 @@ def isolated_dirs(tmp_path, monkeypatch):
     output_dir.mkdir()
     monkeypatch.setattr(config, "CACHE_DIR", cache_dir)
     monkeypatch.setattr(config, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(config, "TAVILY_USAGE_FILE", tmp_path / "tavily_usage.json")
     yield cache_dir, output_dir
 
 

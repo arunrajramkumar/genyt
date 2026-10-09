@@ -13,7 +13,7 @@ themes:
   style: clear, practical, beginner-friendly stock analysis
   duration_sec: 150
   shorts: true
-  done: false
+  done: true
 - theme: The 50/30/20 rule for building wealth on a normal salary
   style: relatable, practical personal-finance explainer
   duration_sec: 120

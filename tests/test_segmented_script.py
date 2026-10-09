@@ -56,9 +56,20 @@ def test_parse_segments_skips_empty_sections():
 
 # -- grounding / no-fabrication guardrails -------------------------------------
 
-def test_extract_verbatim_pulls_quoted_sentence():
-    content = 'Some lead-in text. "This steel company just signed a huge deal." More text.'
+def test_extract_verbatim_pulls_quote_that_starts_its_own_line():
+    # Real themes wrap a whole pre-written narration paragraph in quotes on its
+    # own line (see CDSL/Kalyan Jewellers entries in themes.yaml).
+    content = 'Some lead-in text.\n\n"This steel company just signed a huge deal."\n\nMore text.'
     assert ss._extract_verbatim(content) == "This steel company just signed a huge deal."
+
+
+def test_extract_verbatim_ignores_quote_embedded_mid_sentence():
+    # A section/chapter title quoted inline (e.g. 'Section 1.1 "What is
+    # Mathematics?" -- explain this...') is not a pre-written narration to
+    # reproduce verbatim -- regression test for a bug that collapsed education
+    # scene narration down to just the section title.
+    content = 'Section 1.1 "What is Mathematics?" -- explain this step by step.'
+    assert ss._extract_verbatim(content) == ""
 
 
 def test_extract_verbatim_returns_empty_when_no_quote():

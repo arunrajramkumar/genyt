@@ -21,7 +21,7 @@ HEADER_RE = re.compile(
 )
 END_SCREEN_RE = re.compile(r"^\s*end\s*screen\s*:?\s*$", re.IGNORECASE)
 
-QUOTE_RE = re.compile(r"[“”\"]([^“”\"]{15,})[“”\"]")
+QUOTE_RE = re.compile(r'(?:^|\n)[ \t]*[“”"]([^“”"]{15,})[“”"]')
 HASHTAG_RE = re.compile(r"#\w+")
 
 

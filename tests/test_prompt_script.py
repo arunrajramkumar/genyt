@@ -136,6 +136,45 @@ def test_write_freeform_script_merges_extra_tags_ahead_of_generated_ones(monkeyp
     assert result["tags"] == ["NCERT", "CBSE", "octopuses", "ocean facts"]
 
 
+def test_write_freeform_script_injects_grounding_facts_for_finance_themes(monkeypatch):
+    monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: True)
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme: "- Revenue grew 12% (source: example.com)")
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _json_response(VALID_SCRIPT)
+
+    monkeypatch.setattr(prompt_script.llm, "chat_json", fake_chat_json)
+    prompt_script._write_freeform_script("Tata Motors stock analysis")
+    assert "Revenue grew 12%" in captured["user_prompt"]
+    assert "use ONLY" in captured["user_prompt"]
+
+
+def test_write_freeform_script_warns_against_fabrication_when_grounding_unavailable(monkeypatch):
+    monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: True)
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme: "")
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _json_response(VALID_SCRIPT)
+
+    monkeypatch.setattr(prompt_script.llm, "chat_json", fake_chat_json)
+    prompt_script._write_freeform_script("Tata Motors stock analysis")
+    assert "Do NOT" in captured["user_prompt"]
+    assert "invent specific numbers" in captured["user_prompt"]
+
+
+def test_write_freeform_script_skips_grounding_for_non_finance_themes(monkeypatch):
+    called = []
+    monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: False)
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme: called.append(theme))
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(VALID_SCRIPT))
+    prompt_script._write_freeform_script("octopuses")
+    assert called == []
+
+
 def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):
     two_scene_script = dict(VALID_SCRIPT, scenes=[
         {"narration": "Fact one.", "visual_query": "q1", "on_screen_text": ""},

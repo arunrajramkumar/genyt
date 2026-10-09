@@ -12,6 +12,12 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
+# Tavily search API — free tier, used to ground fact-dependent freeform themes
+# (e.g. named-company stock analysis) in real web data before Groq writes the
+# script. Optional: if unset, those themes fall back to a no-fabrication
+# instruction instead of a hard failure. See pipeline/research.py.
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+
 THEMES_FILE = ROOT / "themes.yaml"
 OUTPUT_DIR = ROOT / "output"
 CACHE_DIR = ROOT / "cache"

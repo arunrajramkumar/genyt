@@ -9,7 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-from . import llm, segmented_script, youtube_insights
+from . import llm, research, segmented_script, youtube_insights
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -87,8 +87,25 @@ def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: li
 def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:
     target_words = int(duration_sec / 60 * 140)
 
-    user_prompt = (
-        f"{prompt.strip()}\n\n"
+    user_prompt = f"{prompt.strip()}\n\n"
+
+    if research.needs_grounding(prompt):
+        facts = research.fetch_grounding_facts(prompt)
+        if facts:
+            user_prompt += (
+                "Below are real, sourced facts from a live web search -- use ONLY "
+                "these specific numbers, names, and claims; do not invent or add any "
+                "other specific figures:\n"
+                f"{facts}\n\n"
+            )
+        else:
+            user_prompt += (
+                "No verified real-world data could be retrieved for this topic. Do NOT "
+                "invent specific numbers, prices, percentages, or dates -- keep the "
+                "narration general and educational instead.\n\n"
+            )
+
+    user_prompt += (
         f"Target narration length: about {target_words} words "
         f"(~{duration_sec} seconds spoken).\n\n"
     )

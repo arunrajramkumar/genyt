@@ -61,25 +61,53 @@ def group_sections(sections: list[dict]) -> list[list[dict]]:
 def build_theme_entry(subject: str, chapter_num: int, chapter_title: str,
                        part_num: int, total_parts: int, group: list[dict], base_tags: list[str],
                        thumbnail_badge: str = None) -> dict:
+    """Builds a timed, section-by-section prompt (Hook + one labeled section per
+    textbook subsection + Recap) instead of a single paragraph. A prompt with
+    fewer than 3 "N-M seconds - Label" headers falls through to the generic
+    freeform script path (see pipeline/prompt_script.py), which has no
+    pedagogy enforcement and is identical for every channel -- emitting real
+    headers here routes education videos into segmented_script.py's narrower,
+    per-section LLM calls instead, so each concept gets its own grounded scene."""
     section_titles = " & ".join(s["title"] for s in group)
-    source_text = "\n\n".join(f'{s["id"]} {s["title"]}\n{s["body"]}' for s in group)[:MAX_SOURCE_CHARS_PER_PART]
+    total_duration = min(360, max(180, 90 * len(group) + 90))
 
-    theme = (
-        f'Explain these {subject} concepts from Chapter {chapter_num} "{chapter_title}": '
-        f"{section_titles}.\n\n"
-        "Use ONLY the mathematical facts, definitions, and rules described in the "
-        "textbook excerpt below -- do not introduce incorrect or additional "
-        "mathematical claims. Make it very easy to understand for an 11-12 year old: "
-        "explain each idea simply, step by step, and illustrate every concept with "
-        "your own original real-life example a school student would relate to.\n\n"
-        f'Textbook excerpt:\n"""\n{source_text}\n"""'
+    hook_dur = max(8, round(total_duration * 0.10))
+    recap_dur = max(8, round(total_duration * 0.08))
+    remaining = max(len(group) * 15, total_duration - hook_dur - recap_dur)
+    total_body_chars = sum(len(s["body"]) for s in group) or 1
+    section_durs = [max(15, round(remaining * len(s["body"]) / total_body_chars)) for s in group]
+
+    char_budget_per_section = MAX_SOURCE_CHARS_PER_PART // max(1, len(group))
+    lines, cursor = [], 0
+
+    lines.append(f"{cursor}-{cursor + hook_dur} seconds - Hook")
+    lines.append(
+        f'Chapter {chapter_num} "{chapter_title}": {section_titles}. Write an exciting, '
+        "curiosity-sparking opening for 11-12 year old students -- no facts/figures needed here."
     )
+    lines.append("")
+    cursor += hook_dur
 
-    duration_sec = min(360, max(180, 90 * len(group) + 90))
+    for section, dur in zip(group, section_durs):
+        lines.append(f"{cursor}-{cursor + dur} seconds - {section['title']}")
+        lines.append(
+            f'Section {section["id"]} "{section["title"]}" -- explain this step by step, simply '
+            "enough for an 11-12 year old, and illustrate it with your own original real-life "
+            f'example a school student would relate to. Textbook facts:\n{section["body"][:char_budget_per_section]}'
+        )
+        lines.append("")
+        cursor += dur
+
+    lines.append(f"{cursor}-{cursor + recap_dur} seconds - Recap")
+    lines.append(f"Briefly restate the key ideas from {section_titles} so students remember them.")
+    cursor += recap_dur
+
+    theme = "\n".join(lines)
+
     return {
         "theme": theme,
         "style": f"clear, patient, example-rich teacher explaining {subject} to 11-12 year olds",
-        "duration_sec": duration_sec,
+        "duration_sec": cursor,
         "shorts": False,
         "done": False,
         # Tags that must appear on every video regardless of what the LLM comes

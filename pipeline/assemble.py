@@ -50,6 +50,16 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
             "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
             "-pix_fmt", "yuv420p", str(out_path),
         ]
+    elif kind == "diagram":
+        # Static diagram PNG: no Ken-Burns zoompan -- a slow crop would eventually
+        # clip diagram boxes/dots/labels off-frame, unlike photographic stock
+        # where it's harmless.
+        cmd = [
+            FFMPEG_BIN, "-y", "-loop", "1", "-i", str(visual_path),
+            "-t", str(duration), "-vf", scale_crop,
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
+            "-pix_fmt", "yuv420p", str(out_path),
+        ]
     else:
         # Pexels source clips vary in native frame rate (25/30/59.94fps). The
         # scenes are concatenated later with stream copy (-c copy), which

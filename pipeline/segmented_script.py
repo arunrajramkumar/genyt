@@ -13,7 +13,7 @@ import json
 import random
 import re
 
-from . import llm, youtube_insights
+from . import diagrams, llm, youtube_insights
 
 HEADER_RE = re.compile(
     r"(\d+)\s*[-–—]\s*(\d+)\s*sec(?:ond)?s?\s*[-–—]\s*(.+)",
@@ -64,7 +64,7 @@ VISUAL_FALLBACKS = [
 SYSTEM_PROMPT_SEGMENT = """You write ONE scene of a YouTube Shorts video, based only on the
 facts given below. Output ONLY valid JSON (no markdown fences, no commentary):
 
-{"narration": "...", "visual_query": "...", "on_screen_text": "..."}
+{"narration": "...", "visual_query": "...", "on_screen_text": "...", "diagram": null}
 
 Rules:
 - Use ONLY the facts given. Never invent, estimate, or add any number, date, or claim
@@ -74,9 +74,22 @@ Rules:
   already contain a fully-written narration passage, reproduce it exactly, word for word.
 - visual_query: 2-4 word English search term for stock video/photo footage that visually
   matches this scene's topic ("{label}"). Must describe a concrete, filmable subject.
+  Leave this as a reasonable generic fallback (e.g. "student writing notebook") if you
+  set "diagram" below instead.
 - on_screen_text: the single most important number, name, or fact from the given
   content, copied exactly as given, under 8 words (e.g. "Revenue: Rs 423 Cr FY26").
   Empty string only if the content truly has no concrete fact to show.
+- diagram: ONLY set this (instead of leaving it null) when this scene's concept is a
+  number pattern, sequence, shape progression, or numeric comparison that has NO real
+  filmable stock-footage equivalent. Use ONLY numbers/words that literally appear in
+  the facts given above -- never invent new ones. Must be one of:
+    {"kind": "number_line", "min": <int>, "max": <int>, "highlight": [<int>, ...]}
+    {"kind": "triangular_dots", "rows": <int>, "label": "<short string>"}
+    {"kind": "sequence_boxes", "items": ["<str>", ...], "highlight_index": <int or null>}
+    {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...]}
+    {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
+  If none of these fit, or the scene has no literal facts to draw a diagram from
+  (e.g. a Hook or Recap scene), leave diagram as null.
 """
 
 def _segment_system_prompt(target_words: int, label: str) -> str:
@@ -168,10 +181,12 @@ def _fallback_visual(label: str) -> str:
     return "business professional presentation"
 
 
-def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
+def _write_segment_scene(label: str, content: str, duration_sec: float, global_instructions: str = None) -> dict:
     target_words = max(6, int(duration_sec / 60 * 140))
     system_prompt = _segment_system_prompt(target_words, label)
     user_prompt = f"Scene topic: {label}\n\nFacts:\n{content}\n\nProduce the JSON now."
+    if global_instructions:
+        user_prompt += f"\n\nOverall tone/style for this video: {global_instructions}"
 
     verbatim = _extract_verbatim(content)
     fact_fallback = _extract_fact(content)
@@ -205,10 +220,17 @@ def _write_segment_scene(label: str, content: str, duration_sec: float) -> dict:
     if not on_screen_text and fact_fallback:
         on_screen_text = fact_fallback
 
+    diagram = scene.get("diagram")
+    if diagram:
+        ok, _reason = diagrams.validate_diagram_spec(diagram, source_text=content)
+        if not ok:
+            diagram = None
+
     return {
         "narration": _fix_double_escaped_unicode(scene["narration"].strip()),
         "visual_query": _fix_double_escaped_unicode(scene["visual_query"].strip()),
         "on_screen_text": _fix_double_escaped_unicode(on_screen_text),
+        "diagram": diagram,
     }
 
 
@@ -297,10 +319,11 @@ def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
     raise RuntimeError(f"Model failed to write video metadata 3 times in a row ({last_error}).")
 
 
-def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, extra_tags: list = None) -> dict:
+def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, extra_tags: list = None,
+                            global_instructions: str = None) -> dict:
     scenes = []
     for seg in segments:
-        scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"])
+        scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"], global_instructions)
         scenes.append(scene)
 
     style_guidance = youtube_insights.get_combined_guidance()

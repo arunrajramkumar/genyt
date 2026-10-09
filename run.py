@@ -36,8 +36,7 @@ def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: 
     # pipeline/youtube_insights.py / market_trends.py) before writing the
     # title/hook, so scheduled runs benefit from the same dynamic trend
     # feedback the web UI already gets.
-    prompt = f"{theme}\n\nStyle/tone: {style}" if style else theme
-    script = prompt_script.write_script_from_prompt(prompt, duration_sec, extra_tags)
+    script = prompt_script.write_script_from_prompt(theme, duration_sec, extra_tags, style=style)
     orientation = config.SHORTS if shorts else config.LANDSCAPE
 
     print("[2/2] Producing video")

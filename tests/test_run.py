@@ -36,7 +36,7 @@ def test_produce_video_writes_script_then_produces(monkeypatch):
         calls["orientation"] = orientation
         return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
 
-    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None: {"title": "T", "scenes": []})
+    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None, style=None: {"title": "T", "scenes": []})
     monkeypatch.setattr(run.producer, "produce_from_script", fake_produce)
 
     result = run.produce_video("a theme", shorts=True)
@@ -44,24 +44,23 @@ def test_produce_video_writes_script_then_produces(monkeypatch):
     assert result == Path("v.mp4")
 
 
-def test_produce_video_folds_style_into_the_prompt(monkeypatch):
+def test_produce_video_passes_style_through_to_write_script_from_prompt(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         run.prompt_script, "write_script_from_prompt",
-        lambda prompt, duration_sec, extra_tags=None: captured.setdefault("prompt", prompt) or {"title": "T", "scenes": []},
+        lambda prompt, duration_sec, extra_tags=None, style=None: captured.setdefault("style", style) or {"title": "T", "scenes": []},
     )
     monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress, thumbnail_badge=None: {
         "video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t",
     })
 
     run.produce_video("a theme", style="curious and upbeat")
-    assert "a theme" in captured["prompt"]
-    assert "curious and upbeat" in captured["prompt"]
+    assert captured["style"] == "curious and upbeat"
 
 
 def test_produce_video_passes_thumbnail_badge_to_producer(monkeypatch):
     captured = {}
-    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None: {"title": "T", "scenes": []})
+    monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None, style=None: {"title": "T", "scenes": []})
 
     def fake_produce(script, orientation, on_progress, thumbnail_badge=None):
         captured["thumbnail_badge"] = thumbnail_badge

@@ -1,0 +1,181 @@
+"""Renders a small, fixed vocabulary of concept diagrams for education-video
+scenes whose topic has no real filmable stock-footage equivalent (number
+patterns, sequences, shape progressions, comparisons) — e.g. dots forming a
+triangular number, or a number line with a highlighted point.
+
+Pure Pillow, no new dependency (textcard.py already uses it). Diagram specs
+are validated against the same source text the LLM was given, mirroring
+segmented_script._is_grounded's no-fabrication check for narration numbers,
+so an on-screen diagram can never show a number the source material didn't.
+"""
+import re
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+from .textcard import _load_font
+
+BG_COLOR = (16, 22, 36)
+ACCENT_COLOR = (60, 230, 110)
+TEXT_COLOR = (230, 230, 230)
+
+DIAGRAM_KINDS = {
+    "number_line": {"required": {"min": int, "max": int}, "optional": {"highlight": list}},
+    "triangular_dots": {"required": {"rows": int}, "optional": {"label": str}},
+    "sequence_boxes": {"required": {"items": list}, "optional": {"highlight_index": (int, type(None))}},
+    "bar_compare": {"required": {"labels": list, "values": list}, "optional": {}},
+    "shape_progression": {"required": {"shape": str, "counts": list}, "optional": {}},
+}
+
+_DIGIT_RE = re.compile(r"\d{2,}")
+
+
+def _numeric_labels(spec: dict) -> list:
+    """All 2+-digit numeric tokens anywhere in the spec's values — single
+    digits are too common (row counts, indices) to usefully ground."""
+    out = []
+    for v in spec.values():
+        if isinstance(v, (int, float)):
+            if len(re.sub(r"\D", "", str(v))) >= 2:
+                out.append(str(v))
+        elif isinstance(v, str):
+            out += _DIGIT_RE.findall(v)
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, (int, float)):
+                    if len(re.sub(r"\D", "", str(item))) >= 2:
+                        out.append(str(item))
+                elif isinstance(item, str):
+                    out += _DIGIT_RE.findall(item)
+    return out
+
+
+def validate_diagram_spec(spec: dict, source_text: str = "") -> tuple:
+    """Returns (ok, reason). Rejects an unknown kind, a missing/mistyped
+    required field, or any 2+-digit number that doesn't literally appear in
+    source_text — a diagram must never show a fabricated figure."""
+    if not isinstance(spec, dict) or "kind" not in spec:
+        return False, "missing kind"
+    kind = spec["kind"]
+    if kind not in DIAGRAM_KINDS:
+        return False, f"unknown kind {kind!r}"
+    schema = DIAGRAM_KINDS[kind]
+    for field, typ in schema["required"].items():
+        if field not in spec or not isinstance(spec[field], typ):
+            return False, f"missing/bad-typed required field {field!r}"
+    for num in _numeric_labels(spec):
+        if num not in source_text:
+            return False, f"ungrounded number {num!r}"
+    return True, ""
+
+
+def render_diagram(spec: dict, width: int, height: int, out_path: Path) -> Path:
+    kind = spec["kind"]
+    renderer = {
+        "number_line": _render_number_line,
+        "triangular_dots": _render_triangular_dots,
+        "sequence_boxes": _render_sequence_boxes,
+        "bar_compare": _render_bar_compare,
+        "shape_progression": _render_shape_progression,
+    }.get(kind)
+    if renderer is None:
+        raise ValueError(f"Unknown diagram kind: {kind!r}")
+
+    img = Image.new("RGB", (width, height), BG_COLOR)
+    draw = ImageDraw.Draw(img)
+    renderer(draw, spec, width, height)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_path)
+    return out_path
+
+
+def _render_number_line(draw, spec, width, height):
+    lo, hi = spec["min"], spec["max"]
+    highlight = set(spec.get("highlight") or [])
+    y = height // 2
+    x0, x1 = int(width * 0.08), int(width * 0.92)
+    draw.line([(x0, y), (x1, y)], fill=TEXT_COLOR, width=4)
+    n = max(1, hi - lo)
+    font = _load_font(max(28, width // 22))
+    for i in range(lo, hi + 1):
+        x = x0 + int((x1 - x0) * (i - lo) / n)
+        fill = ACCENT_COLOR if i in highlight else TEXT_COLOR
+        draw.line([(x, y - 14), (x, y + 14)], fill=fill, width=4)
+        draw.text((x, y + 24), str(i), font=font, fill=fill, anchor="ma")
+
+
+def _render_triangular_dots(draw, spec, width, height):
+    rows = spec["rows"]
+    label = spec.get("label", "")
+    radius = max(6, min(width, height) // (rows * 6 + 4))
+    gap = radius * 3
+    total_h = rows * gap
+    top_y = height // 2 - total_h // 2
+    for r in range(1, rows + 1):
+        row_w = (r - 1) * gap
+        start_x = width // 2 - row_w // 2
+        y = top_y + (r - 1) * gap
+        for c in range(r):
+            x = start_x + c * gap
+            draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=ACCENT_COLOR)
+    if label:
+        font = _load_font(max(28, width // 20))
+        draw.text((width // 2, top_y + rows * gap + radius * 2), label, font=font, fill=TEXT_COLOR, anchor="ma")
+
+
+def _render_sequence_boxes(draw, spec, width, height):
+    items = [str(i) for i in spec["items"]][:8]
+    hi_idx = spec.get("highlight_index")
+    n = len(items)
+    box_w = min(int(width * 0.8 / max(1, n)), int(width * 0.18))
+    box_h = box_w
+    gap = int(box_w * 0.3)
+    total_w = n * box_w + (n - 1) * gap
+    x0 = (width - total_w) // 2
+    y0 = height // 2 - box_h // 2
+    font = _load_font(max(24, box_w // 3))
+    for i, item in enumerate(items):
+        x = x0 + i * (box_w + gap)
+        fill = ACCENT_COLOR if i == hi_idx else (40, 50, 70)
+        draw.rectangle([x, y0, x + box_w, y0 + box_h], fill=fill, outline=TEXT_COLOR, width=3)
+        draw.text((x + box_w // 2, y0 + box_h // 2), item, font=font, fill=(255, 255, 255), anchor="mm")
+
+
+def _render_bar_compare(draw, spec, width, height):
+    labels, values = spec["labels"][:6], spec["values"][:6]
+    max_v = max(values) if values else 1
+    n = len(values)
+    bar_w = int(width * 0.7 / max(1, n))
+    gap = int(bar_w * 0.4)
+    total_w = n * bar_w + (n - 1) * gap
+    x0 = (width - total_w) // 2
+    base_y = int(height * 0.75)
+    max_h = int(height * 0.5)
+    font = _load_font(max(22, bar_w // 4))
+    for i, (label, v) in enumerate(zip(labels, values)):
+        h = int(max_h * (v / max_v)) if max_v else 0
+        x = x0 + i * (bar_w + gap)
+        draw.rectangle([x, base_y - h, x + bar_w, base_y], fill=ACCENT_COLOR)
+        draw.text((x + bar_w // 2, base_y + 10), str(label), font=font, fill=TEXT_COLOR, anchor="ma")
+        draw.text((x + bar_w // 2, base_y - h - 10), str(v), font=font, fill=(255, 255, 255), anchor="ms")
+
+
+def _render_shape_progression(draw, spec, width, height):
+    shape, counts = spec["shape"], spec["counts"][:5]
+    n = len(counts)
+    cell_w = width // max(1, n)
+    font = _load_font(max(24, cell_w // 8))
+    for i, count in enumerate(counts):
+        cx = cell_w * i + cell_w // 2
+        cy = height // 2
+        r = max(8, min(cell_w, height) // 10)
+        cols = max(1, int(count ** 0.5))
+        for k in range(count):
+            row, col = divmod(k, cols)
+            x = cx - (cols * r) + col * 2 * r
+            y = cy - r * 2 + row * 2 * r
+            if shape == "square":
+                draw.rectangle([x - r // 2, y - r // 2, x + r // 2, y + r // 2], fill=ACCENT_COLOR)
+            else:
+                draw.ellipse([x - r // 2, y - r // 2, x + r // 2, y + r // 2], fill=ACCENT_COLOR)
+        draw.text((cx, cy + r * 3), str(count), font=font, fill=TEXT_COLOR, anchor="ma")

@@ -67,7 +67,7 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
-def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:
+def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: list = None, style: str = None) -> dict:
     """If the prompt already lays out a timed, section-by-section script (e.g.
     "0-5 seconds - Hook", "5-15 seconds - Overview", ...), each section becomes
     its own scene via a narrow per-section LLM call, keeping narration, visual
@@ -77,11 +77,16 @@ def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: li
     extra_tags: tags that must appear regardless of what the LLM comes up with
     (e.g. "NCERT", "CBSE" for a school-syllabus channel) — see
     segmented_script.merge_tags.
+
+    style: overall tone/style guidance for the video. Threaded into both paths
+    so a segmented (structured) prompt gets the same style guidance a freeform
+    one does, instead of silently dropping it.
     """
     segments = segmented_script.parse_segments(prompt)
     if segments:
-        return segmented_script.write_segmented_script(prompt, segments, duration_sec, extra_tags)
-    return _write_freeform_script(prompt, duration_sec, extra_tags)
+        return segmented_script.write_segmented_script(prompt, segments, duration_sec, extra_tags, global_instructions=style)
+    freeform_prompt = f"{prompt}\n\nStyle/tone: {style}" if style else prompt
+    return _write_freeform_script(freeform_prompt, duration_sec, extra_tags)
 
 
 def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:

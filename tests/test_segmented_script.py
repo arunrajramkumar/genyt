@@ -187,10 +187,75 @@ def test_write_segment_scene_raises_after_three_bad_attempts(monkeypatch):
         ss._write_segment_scene("Overview", "Some facts.", 10)
 
 
+def test_write_segment_scene_keeps_grounded_diagram(monkeypatch):
+    diagram = {"kind": "number_line", "min": 1, "max": 10, "highlight": [5]}
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({
+            "narration": "The numbers go from 1 to 10.",
+            "visual_query": "classroom",
+            "on_screen_text": "",
+            "diagram": diagram,
+        }),
+    )
+    scene = ss._write_segment_scene("Numbers", "Numbers from 1 to 10, with 5 in the middle.", 10)
+    assert scene["diagram"] == diagram
+
+
+def test_write_segment_scene_drops_ungrounded_diagram(monkeypatch):
+    # 999 never appears in the source content -> the diagram must be rejected
+    # entirely rather than shipping a fabricated number on screen.
+    diagram = {"kind": "number_line", "min": 1, "max": 999}
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({
+            "narration": "The numbers go from 1 to 10.",
+            "visual_query": "classroom",
+            "on_screen_text": "",
+            "diagram": diagram,
+        }),
+    )
+    scene = ss._write_segment_scene("Numbers", "Numbers from 1 to 10.", 10)
+    assert scene["diagram"] is None
+
+
+def test_write_segment_scene_defaults_diagram_to_none_when_absent(monkeypatch):
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({"narration": "Plain scene.", "visual_query": "classroom", "on_screen_text": ""}),
+    )
+    scene = ss._write_segment_scene("Overview", "Some facts.", 10)
+    assert scene["diagram"] is None
+
+
+def test_write_segment_scene_includes_global_instructions_in_user_prompt(monkeypatch):
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _mock_llm_response({"narration": "n", "visual_query": "v", "on_screen_text": ""})
+
+    monkeypatch.setattr(ss.llm, "chat_json", fake_chat_json)
+    ss._write_segment_scene("Overview", "Some facts.", 10, global_instructions="curious and upbeat teacher tone")
+    assert "curious and upbeat teacher tone" in captured["user_prompt"]
+
+
+def test_write_segment_scene_omits_global_instructions_section_when_not_given(monkeypatch):
+    captured = {}
+
+    def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
+        captured["user_prompt"] = user_prompt
+        return _mock_llm_response({"narration": "n", "visual_query": "v", "on_screen_text": ""})
+
+    monkeypatch.setattr(ss.llm, "chat_json", fake_chat_json)
+    ss._write_segment_scene("Overview", "Some facts.", 10)
+    assert "Overall tone/style" not in captured["user_prompt"]
+
+
 def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
     monkeypatch.setattr(
         ss, "_write_segment_scene",
-        lambda label, content, duration: {"narration": f"N:{label}", "visual_query": "v", "on_screen_text": ""},
+        lambda label, content, duration, global_instructions=None: {"narration": f"N:{label}", "visual_query": "v", "on_screen_text": ""},
     )
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
     monkeypatch.setattr(
@@ -209,7 +274,7 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
 def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):
     monkeypatch.setattr(
         ss, "_write_segment_scene",
-        lambda label, content, duration: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
+        lambda label, content, duration, global_instructions=None: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
     )
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "- Lead with a number")
     captured = {}
@@ -222,6 +287,20 @@ def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monk
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
     ss.write_segmented_script("some prompt", segments)
     assert captured["style_guidance"] == "- Lead with a number"
+
+
+def test_write_segmented_script_threads_global_instructions_into_every_scene_call(monkeypatch):
+    captured = []
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration, global_instructions=None: captured.append(global_instructions) or
+        {"narration": "n", "visual_query": "v", "on_screen_text": ""},
+    )
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
+    monkeypatch.setattr(ss, "_write_metadata", lambda scenes, style_guidance="": {"title": "T", "description": "d", "tags": []})
+    segments = [{"label": "Hook", "content": "c1", "duration": 5}, {"label": "Body", "content": "c2", "duration": 10}]
+    ss.write_segmented_script("some prompt", segments, global_instructions="curious and upbeat teacher tone")
+    assert captured == ["curious and upbeat teacher tone", "curious and upbeat teacher tone"]
 
 
 # -- clean_title: strips hashtags and collapses whitespace ---------------------
@@ -281,7 +360,7 @@ def test_write_segmented_script_appends_subscribe_cta_to_last_scene(monkeypatch)
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
     monkeypatch.setattr(
         ss, "_write_segment_scene",
-        lambda label, content, duration: {"narration": f"{label} narration.", "visual_query": "q", "on_screen_text": ""},
+        lambda label, content, duration, global_instructions=None: {"narration": f"{label} narration.", "visual_query": "q", "on_screen_text": ""},
     )
     monkeypatch.setattr(
         ss, "_write_metadata",
@@ -384,7 +463,7 @@ def test_merge_tags_trims_to_character_budget_keeping_required_tags():
 def test_write_segmented_script_includes_extra_tags(monkeypatch):
     monkeypatch.setattr(
         ss, "_write_segment_scene",
-        lambda label, content, duration: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
+        lambda label, content, duration, global_instructions=None: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
     )
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
     monkeypatch.setattr(

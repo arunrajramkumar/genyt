@@ -76,6 +76,15 @@ def test_build_scene_clip_video_shorter_than_duration_loops(monkeypatch, tmp_pat
     assert loop_count >= 2  # ceil(5/2) + 1 margin, must fully cover target duration
 
 
+def test_build_scene_clip_diagram_is_static_no_zoompan(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    assemble._build_scene_clip(tmp_path / "diagram.png", "diagram", 5.0, tmp_path / "out.mp4", 720, 1280)
+    cmd = calls[0]
+    assert not any("zoompan" in arg for arg in cmd)
+    assert "-loop" in cmd and "1" in cmd
+    assert "-t" in cmd and "5.0" in cmd
+
+
 def test_all_ffmpeg_calls_apply_the_bitrate_cap(monkeypatch, tmp_path):
     """Regression guard for the Telegram 50MB-upload-limit fix: every encode
     path must include the bitrate cap, not just some of them."""

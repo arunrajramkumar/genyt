@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import config, tts, visuals, assemble, captions, textcard, youtube_upload
+from . import config, diagrams, tts, visuals, assemble, captions, textcard, youtube_upload
 
 
 def slugify(title: str) -> str:
@@ -69,7 +69,16 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     on_progress("Fetching stock visuals")
     visual_paths = []
     used_visuals = set()
-    for scene in script["scenes"]:
+    for i, scene in enumerate(script["scenes"]):
+        diagram_spec = scene.get("diagram")
+        if diagram_spec:
+            try:
+                diagram_path = work_dir / f"diagram_{i:02d}.png"
+                diagrams.render_diagram(diagram_spec, orientation["width"], orientation["height"], diagram_path)
+                visual_paths.append((diagram_path, "diagram"))
+                continue
+            except Exception as e:
+                on_progress(f"  scene {i}: diagram render failed ({e}), falling back to stock")
         visual_path, kind = visuals.fetch_visual(
             scene.get("visual_query", "").strip() or "abstract background",
             orientation=orientation["orientation"],
@@ -88,7 +97,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         ),
         "",
     )
-    hook_bg_path = visual_paths[0][0] if visual_paths and visual_paths[0][1] == "image" else None
+    hook_bg_path = visual_paths[0][0] if visual_paths and visual_paths[0][1] in ("image", "diagram") else None
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
     textcard.render_hook_card(
         script["title"], stat_text, orientation["width"], orientation["height"],

@@ -36,7 +36,7 @@ def test_extract_json_extracts_object_from_surrounding_prose():
 def test_write_script_from_prompt_dispatches_to_segmented_for_structured_prompt(monkeypatch):
     called = {}
 
-    def fake_write_segmented(prompt, segments, duration_sec, extra_tags=None):
+    def fake_write_segmented(prompt, segments, duration_sec, extra_tags=None, global_instructions=None):
         called["ran"] = True
         return VALID_SCRIPT
 
@@ -55,6 +55,36 @@ def test_write_script_from_prompt_falls_back_to_freeform_for_plain_prompt(monkey
     monkeypatch.setattr(prompt_script, "_write_freeform_script", lambda prompt, duration_sec, extra_tags=None: VALID_SCRIPT)
     result = prompt_script.write_script_from_prompt("Tell me about octopuses")
     assert result == VALID_SCRIPT
+
+
+def test_write_script_from_prompt_threads_style_into_segmented_path(monkeypatch):
+    captured = {}
+
+    def fake_write_segmented(prompt, segments, duration_sec, extra_tags=None, global_instructions=None):
+        captured["global_instructions"] = global_instructions
+        return VALID_SCRIPT
+
+    monkeypatch.setattr(prompt_script.segmented_script, "write_segmented_script", fake_write_segmented)
+    structured_prompt = (
+        "0-5 seconds - Hook\nFact one.\n\n"
+        "5-10 seconds - Body\nFact two.\n\n"
+        "10-15 seconds - End\nFact three.\n"
+    )
+    prompt_script.write_script_from_prompt(structured_prompt, style="curious and upbeat")
+    assert captured["global_instructions"] == "curious and upbeat"
+
+
+def test_write_script_from_prompt_folds_style_into_freeform_prompt(monkeypatch):
+    captured = {}
+
+    def fake_freeform(prompt, duration_sec, extra_tags=None):
+        captured["prompt"] = prompt
+        return VALID_SCRIPT
+
+    monkeypatch.setattr(prompt_script, "_write_freeform_script", fake_freeform)
+    prompt_script.write_script_from_prompt("Tell me about octopuses", style="curious and upbeat")
+    assert "Tell me about octopuses" in captured["prompt"]
+    assert "curious and upbeat" in captured["prompt"]
 
 
 def test_write_freeform_script_succeeds_on_valid_response(monkeypatch):

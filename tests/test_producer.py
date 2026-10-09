@@ -256,3 +256,46 @@ def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
     producer.produce_from_script(_stub_script(), on_progress=lambda m: None, thumbnail_badge="CBSE | Grade 6 Maths")
     assert captured["badge_text"] == "CBSE | Grade 6 Maths"
+
+
+# -- diagram-first visual fetching ----------------------------------------------
+
+def test_produce_from_script_renders_diagram_instead_of_fetching_stock_visual(mocked_pipeline, monkeypatch):
+    script = _stub_script()
+    script["scenes"][0]["diagram"] = {"kind": "number_line", "min": 1, "max": 5, "highlight": [3]}
+
+    fetch_calls = []
+    monkeypatch.setattr(producer.visuals, "fetch_visual", lambda *a, **k: fetch_calls.append(1) or (Path("/tmp/x.jpg"), "image"))
+
+    rendered = []
+    def fake_render_diagram(spec, width, height, out_path):
+        rendered.append(spec)
+        out_path.write_bytes(b"png")
+        return out_path
+    monkeypatch.setattr(producer.diagrams, "render_diagram", fake_render_diagram)
+
+    producer.produce_from_script(script, on_progress=lambda m: None)
+
+    assert rendered == [script["scenes"][0]["diagram"]]
+    assert len(fetch_calls) == 1  # only scene 1 (no diagram) hits Pexels
+
+
+def test_produce_from_script_falls_back_to_stock_visual_when_diagram_render_fails(mocked_pipeline, monkeypatch):
+    script = _stub_script()
+    script["scenes"][0]["diagram"] = {"kind": "number_line", "min": 1, "max": 5}
+
+    def failing_render(spec, width, height, out_path):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(producer.diagrams, "render_diagram", failing_render)
+
+    fetch_calls = []
+    def fake_fetch_visual(query, orientation, target_width, exclude=None):
+        fetch_calls.append(query)
+        return (Path("/tmp/x.jpg"), "image")
+    monkeypatch.setattr(producer.visuals, "fetch_visual", fake_fetch_visual)
+
+    logs = []
+    producer.produce_from_script(script, on_progress=logs.append)
+
+    assert len(fetch_calls) == 2  # both scenes fell through to Pexels
+    assert any("diagram render failed" in msg for msg in logs)

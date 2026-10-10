@@ -173,7 +173,7 @@ themes:
     Ganita Prakash) to 11-12 year olds
   duration_sec: 270
   shorts: false
-  done: false
+  done: true
   _label: 'Ch 1 (Patterns in Mathematics) - Part 2/3: Visualising Number Sequences
     & Relations among Number Sequences'
   extra_tags:

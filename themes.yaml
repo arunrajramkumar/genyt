@@ -18,7 +18,7 @@ themes:
   style: relatable, practical personal-finance explainer
   duration_sec: 120
   shorts: true
-  done: false
+  done: true
 - theme: Why most people lose money in IPOs on listing day
   style: confident, slightly contrarian stock-market explainer
   duration_sec: 150

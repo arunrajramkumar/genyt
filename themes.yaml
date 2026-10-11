@@ -23,7 +23,7 @@ themes:
   style: confident, slightly contrarian stock-market explainer
   duration_sec: 150
   shorts: true
-  done: false
+  done: true
 - theme: 3 wealth creation habits of people who retire early
   style: motivating, practical personal-finance explainer
   duration_sec: 120

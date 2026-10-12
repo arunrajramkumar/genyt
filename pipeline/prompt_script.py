@@ -38,6 +38,9 @@ Rules:
   not given to you. If the prompt is an analysis of something (e.g. a stock, a
   product, a place), stay neutral and do not add a recommendation/verdict unless
   the user explicitly asked for one.
+- If the prompt poses an open question (e.g. an exercise/"figure it out" style
+  question) without also stating its answer, never invent a resolution — narrate it
+  as a question for the viewer to think about instead of asserting a specific answer.
 - If the user's prompt is a general/creative topic with no specific facts to
   protect, write naturally and engagingly using your own knowledge.
 - Break the narration into scenes so each scene is a single visual beat (aim for

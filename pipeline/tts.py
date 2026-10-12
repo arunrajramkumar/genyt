@@ -37,6 +37,7 @@ for _bundle in _PROXY_CA_CANDIDATES:
         break
 
 import edge_tts
+import aiohttp
 
 FFPROBE_BIN = shutil.which("ffprobe")
 
@@ -106,6 +107,12 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     for the next ~31s would also fail — consistent with a short burst-rate
     limit on that IP that outlasts our old backoff window. Retry with a
     backoff long enough to ride out that kind of sustained throttle.
+
+    On a sustained block (e.g. a GitHub Actions runner IP getting a run of
+    403s), edge-tts's own single built-in retry-after-token-refresh can also
+    fail, which raises aiohttp's own exception (e.g. WSServerHandshakeError)
+    rather than one of edge_tts's wrapped EdgeTTSException types -- caught
+    here too so our longer backoff still applies instead of crashing the run.
     """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
@@ -118,7 +125,7 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
         try:
             asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
             return _probe_duration(out_path)
-        except edge_tts.exceptions.EdgeTTSException:
+        except (edge_tts.exceptions.EdgeTTSException, aiohttp.ClientError):
             if attempt == attempts:
                 raise
             time.sleep(min(2 ** (attempt - 1), 45))

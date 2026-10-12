@@ -109,6 +109,16 @@ def test_is_grounded_allows_text_with_no_digits():
     assert ss._is_grounded("Debt-free balance sheet", "Some unrelated content") is True
 
 
+def test_segment_system_prompt_forbids_answering_unanswered_exercise_questions():
+    # Regression for a real production bug: source textbook content posed an
+    # unanswered "Figure it Out" question ("Which sequence do you get when you
+    # add the All 1's sequence up and down?") and the model invented a
+    # plausible-but-wrong answer ("gives square numbers") rather than treating
+    # it as an open question for the viewer.
+    prompt = ss._segment_system_prompt(target_words=40, label="Exercises")
+    assert "never invent a resolution" in prompt.lower()
+
+
 def test_fix_double_escaped_unicode_decodes_literal_escapes():
     assert ss._fix_double_escaped_unicode("\\u20b9412 crore") == "₹412 crore"
 

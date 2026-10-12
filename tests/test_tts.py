@@ -101,6 +101,31 @@ def test_synthesize_retries_on_edge_tts_exception_then_succeeds(tmp_path, monkey
     assert duration == 2.0
 
 
+def test_synthesize_retries_on_raw_aiohttp_websocket_handshake_error(tmp_path, monkeypatch):
+    # Regression for a real GitHub Actions failure: a sustained 403 block
+    # exhausts edge-tts's own single built-in retry and leaks a raw
+    # aiohttp.WSServerHandshakeError (not an EdgeTTSException subclass) --
+    # our retry loop must still catch it instead of crashing the whole run.
+    monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    attempts = {"count": 0}
+
+    async def flaky_synthesize_async(text, voice, out_path):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise tts.aiohttp.WSServerHandshakeError(
+                request_info=mock.Mock(), history=(), status=403, message="Invalid response status"
+            )
+        out_path.write_bytes(b"fake-mp3")
+
+    monkeypatch.setattr(tts, "_synthesize_async", flaky_synthesize_async)
+    monkeypatch.setattr(tts, "_probe_duration", lambda path: 2.0)
+
+    duration = tts.synthesize("hello", tmp_path / "out.mp3")
+    assert attempts["count"] == 3
+    assert duration == 2.0
+
+
 def test_synthesize_gives_up_after_max_attempts(tmp_path, monkeypatch):
     monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
     monkeypatch.setattr(tts.time, "sleep", lambda s: None)

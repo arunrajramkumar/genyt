@@ -69,6 +69,11 @@ facts given below. Output ONLY valid JSON (no markdown fences, no commentary):
 Rules:
 - Use ONLY the facts given. Never invent, estimate, or add any number, date, or claim
   that is not present in the facts below.
+- The facts may include open "Figure it Out" / exercise-style questions (e.g. "Which
+  sequence do you get when you add the All 1's sequence up and down?") that are NOT
+  answered anywhere in the facts given. Never invent a resolution to these -- if the
+  facts pose a question without also stating its answer, narrate it AS a question for
+  the viewer to think about, do not assert a specific answer.
 - narration: natural, TTS-friendly spoken sentences (no headers, no markdown, no bullet
   points), summarizing the given facts in about {target_words} words. If the facts
   already contain a fully-written narration passage, reproduce it exactly, word for word.

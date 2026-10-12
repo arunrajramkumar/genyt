@@ -25,12 +25,7 @@ permissions:
 
 jobs:
   generate:
-    # macOS runners sit on a separate fleet/IP range from the ubuntu-latest Azure
-    # pool -- switched here because Microsoft's edge-tts endpoint was blocking
-    # every ubuntu-latest run with a 403 (confirmed not a token/code issue: the
-    # same call succeeds fine from other networks). Revert to ubuntu-latest if
-    # macOS runners ever get blocked too, since they cost 10x Actions minutes.
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     environment: education # secrets (PEXELS_API_KEY/GROQ_API_KEY/YOUTUBE_TOKEN_JSON) live in this GitHub Environment, scoped to the education channel
     timeout-minutes: 60
     steps:
@@ -41,11 +36,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install ffmpeg
-        # No fonts-noto-core equivalent needed here -- pipeline/textcard.py
-        # already falls back to macOS's bundled system fonts (Helvetica,
-        # Arial, and the per-script "Sangam MN" fonts) when the Linux Noto
-        # paths aren't present.
-        run: brew install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-core
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt

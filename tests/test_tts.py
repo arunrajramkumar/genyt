@@ -137,3 +137,40 @@ def test_synthesize_gives_up_after_max_attempts(tmp_path, monkeypatch):
 
     with pytest.raises(tts.edge_tts.exceptions.NoAudioReceived):
         tts.synthesize("hello", tmp_path / "out.mp3")
+
+
+def test_synthesize_uses_polly_when_engine_configured(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "polly")
+    monkeypatch.setattr(tts, "_probe_duration", lambda path: 3.0)
+    calls = []
+
+    def fake_synthesize_polly(text, out_path):
+        calls.append(text)
+        out_path.write_bytes(b"fake-mp3")
+
+    monkeypatch.setattr(tts, "_synthesize_polly", fake_synthesize_polly)
+
+    duration = tts.synthesize("hello", tmp_path / "out.mp3")
+    assert calls == ["hello"]
+    assert duration == 3.0
+
+
+def test_synthesize_retries_polly_on_botocore_client_error_then_succeeds(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "polly")
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tts, "_probe_duration", lambda path: 3.0)
+    attempts = {"count": 0}
+
+    def flaky_synthesize_polly(text, out_path):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise tts.botocore.exceptions.ClientError({"Error": {"Code": "Throttling"}}, "SynthesizeSpeech")
+        out_path.write_bytes(b"fake-mp3")
+
+    monkeypatch.setattr(tts, "_synthesize_polly", flaky_synthesize_polly)
+
+    duration = tts.synthesize("hello", tmp_path / "out.mp3")
+    assert attempts["count"] == 3
+    assert duration == 3.0

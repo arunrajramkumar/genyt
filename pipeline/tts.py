@@ -38,6 +38,8 @@ for _bundle in _PROXY_CA_CANDIDATES:
 
 import edge_tts
 import aiohttp
+import boto3
+import botocore.exceptions
 
 FFPROBE_BIN = shutil.which("ffprobe")
 
@@ -93,11 +95,22 @@ async def _synthesize_async(text: str, voice: str, out_path: Path) -> None:
     await communicate.save(str(out_path))
 
 
+def _synthesize_polly(text: str, out_path: Path) -> None:
+    client = boto3.client("polly", region_name=config.AWS_REGION)
+    response = client.synthesize_speech(
+        Text=text, OutputFormat="mp3", VoiceId=config.POLLY_VOICE, Engine="neural"
+    )
+    out_path.write_bytes(response["AudioStream"].read())
+
+
 def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     """Render `text` to an MP3 file at `out_path`. Returns duration in seconds.
 
     `voice` overrides config.TTS_VOICE for this call (e.g. a per-chat language
     preference from the Telegram bot) — defaults to the configured voice.
+    Only applies to the edge-tts engine; the Polly engine always uses
+    config.POLLY_VOICE, since Polly's voice catalog/IDs don't overlap with
+    edge-tts's.
 
     edge-tts talks to an unofficial Microsoft endpoint that occasionally drops
     the connection without sending audio (NoAudioReceived/WebSocketError).
@@ -113,6 +126,12 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     fail, which raises aiohttp's own exception (e.g. WSServerHandshakeError)
     rather than one of edge_tts's wrapped EdgeTTSException types -- caught
     here too so our longer backoff still applies instead of crashing the run.
+
+    config.TTS_ENGINE == "polly" switches to Amazon Polly's officially
+    authenticated API instead -- added because Microsoft's edge-tts endpoint
+    blocks GitHub Actions' published IP ranges outright (confirmed across
+    both ubuntu-latest and macos-latest runners), which no amount of retrying
+    the same blocked network path can fix.
     """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
@@ -123,9 +142,13 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     attempts = 8
     for attempt in range(1, attempts + 1):
         try:
-            asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
+            if config.TTS_ENGINE == "polly":
+                _synthesize_polly(normalized, out_path)
+            else:
+                asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
             return _probe_duration(out_path)
-        except (edge_tts.exceptions.EdgeTTSException, aiohttp.ClientError):
+        except (edge_tts.exceptions.EdgeTTSException, aiohttp.ClientError,
+                botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError):
             if attempt == attempts:
                 raise
             time.sleep(min(2 ** (attempt - 1), 45))

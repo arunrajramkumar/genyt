@@ -60,6 +60,10 @@ jobs:
           # API instead. Render/local stay on edge-tts by default (var unset there).
           TTS_ENGINE: "google"
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          # Separate usage-counter file from auto-video.yml's so the two
+          # workflows' independent commit+push steps never conflict on the
+          # same file if their runs overlap.
+          GOOGLE_TTS_USAGE_FILE: google_tts_usage_education.json
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts
@@ -67,11 +71,11 @@ jobs:
             python3 run.py --themes-file themes_education.yaml
           fi
 
-      - name: Persist updated themes_education.yaml
+      - name: Persist updated themes_education.yaml and usage counters
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add themes_education.yaml
+          git add themes_education.yaml google_tts_usage_education.json
           git diff --cached --quiet && exit 0
           git commit -m "Mark generated theme as done (education) [skip ci]"
           # The pipeline run above can take close to an hour, so origin/main may

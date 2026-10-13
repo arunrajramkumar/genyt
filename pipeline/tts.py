@@ -37,6 +37,8 @@ for _bundle in _PROXY_CA_CANDIDATES:
         break
 
 import base64
+import json
+from datetime import datetime, timezone
 
 import edge_tts
 import aiohttp
@@ -111,6 +113,30 @@ def _synthesize_google(text: str, out_path: Path) -> None:
     out_path.write_bytes(base64.b64decode(response.json()["audioContent"]))
 
 
+def _current_month() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def _load_google_tts_usage() -> dict:
+    try:
+        data = json.loads(config.GOOGLE_TTS_USAGE_FILE.read_text())
+    except (FileNotFoundError, ValueError):
+        data = {}
+    if data.get("month") != _current_month():
+        return {"month": _current_month(), "characters": 0}
+    return data
+
+
+def _record_google_tts_usage(num_chars: int) -> None:
+    usage = _load_google_tts_usage()
+    usage["characters"] += num_chars
+    config.GOOGLE_TTS_USAGE_FILE.write_text(json.dumps(usage))
+
+
+def _google_tts_under_monthly_cap(num_chars: int) -> bool:
+    return _load_google_tts_usage()["characters"] + num_chars <= config.GOOGLE_TTS_MONTHLY_CHAR_CAP
+
+
 def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     """Render `text` to an MP3 file at `out_path`. Returns duration in seconds.
 
@@ -140,12 +166,27 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     edge-tts endpoint blocks GitHub Actions' published IP ranges outright
     (confirmed across both ubuntu-latest and macos-latest runners), which no
     amount of retrying the same blocked network path can fix.
+
+    Google's free tier for the voice used here is 1,000,000 characters/month;
+    config.GOOGLE_TTS_MONTHLY_CHAR_CAP keeps a local, git-committed running
+    total safely under that so this never silently tips into billed usage --
+    raises instead of calling the API once the cap would be exceeded.
     """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_for_speech(text)
+
+    if config.TTS_ENGINE == "google":
+        if not _google_tts_under_monthly_cap(len(normalized)):
+            raise RuntimeError(
+                f"Google TTS monthly character cap ({config.GOOGLE_TTS_MONTHLY_CHAR_CAP}) "
+                "would be exceeded -- refusing to risk billed overage."
+            )
+        # Record the attempt before the request, same reasoning as Tavily's
+        # guardrail: undercounting here would risk the cap never actually biting.
+        _record_google_tts_usage(len(normalized))
 
     attempts = 8
     for attempt in range(1, attempts + 1):

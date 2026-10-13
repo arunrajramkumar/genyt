@@ -52,6 +52,17 @@ TTS_ENGINE = os.environ.get("TTS_ENGINE", "edge")
 GOOGLE_TTS_API_KEY = os.environ.get("GOOGLE_TTS_API_KEY", "")
 GOOGLE_TTS_VOICE = os.environ.get("GOOGLE_TTS_VOICE", "en-IN-Neural2-B")  # male en-IN voice
 
+# Google bills WaveNet/Neural2 voices (like GOOGLE_TTS_VOICE above) past a
+# 1,000,000-characters/month free tier. Each channel's workflow tracks its own
+# usage file (set via GOOGLE_TTS_USAGE_FILE) rather than sharing one, since
+# auto-video.yml and auto-video-education.yml each independently commit+push
+# their own usage updates and a shared file risks a real git conflict if both
+# runs overlap. Each channel's cap is kept well under half the free tier so
+# the combined total across both files never tips into billed usage even if
+# a run retries a few times -- see pipeline/tts.py's usage-counter guardrail.
+GOOGLE_TTS_USAGE_FILE = Path(os.environ.get("GOOGLE_TTS_USAGE_FILE", str(ROOT / "google_tts_usage.json")))
+GOOGLE_TTS_MONTHLY_CHAR_CAP = int(os.environ.get("GOOGLE_TTS_MONTHLY_CHAR_CAP", "400000"))
+
 
 # Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays
 # under the ~512MB RAM ceiling of the free hosting tier this runs on.

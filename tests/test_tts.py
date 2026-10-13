@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 import pytest
@@ -142,6 +143,7 @@ def test_synthesize_gives_up_after_max_attempts(tmp_path, monkeypatch):
 def test_synthesize_uses_google_when_engine_configured(tmp_path, monkeypatch):
     monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
     monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", tmp_path / "usage.json")
     monkeypatch.setattr(tts, "_probe_duration", lambda path: 3.0)
     calls = []
 
@@ -159,6 +161,7 @@ def test_synthesize_uses_google_when_engine_configured(tmp_path, monkeypatch):
 def test_synthesize_retries_google_on_request_exception_then_succeeds(tmp_path, monkeypatch):
     monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
     monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", tmp_path / "usage.json")
     monkeypatch.setattr(tts.time, "sleep", lambda s: None)
     monkeypatch.setattr(tts, "_probe_duration", lambda path: 3.0)
     attempts = {"count": 0}
@@ -174,3 +177,38 @@ def test_synthesize_retries_google_on_request_exception_then_succeeds(tmp_path, 
     duration = tts.synthesize("hello", tmp_path / "out.mp3")
     assert attempts["count"] == 3
     assert duration == 3.0
+
+
+def test_synthesize_raises_when_google_monthly_cap_would_be_exceeded(tmp_path, monkeypatch):
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text('{"month": "2026-10", "characters": 399990}')
+    monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", usage_file)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 400000)
+    monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
+
+    def fail_if_called(text, out_path):
+        raise AssertionError("must not call the API once the cap would be exceeded")
+
+    monkeypatch.setattr(tts, "_synthesize_google", fail_if_called)
+
+    with pytest.raises(RuntimeError, match="cap"):
+        tts.synthesize("x" * 20, tmp_path / "out.mp3")
+
+
+def test_synthesize_records_google_usage_and_resets_on_new_month(tmp_path, monkeypatch):
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text('{"month": "2025-01", "characters": 399999}')  # stale month
+    monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", usage_file)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 400000)
+    monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
+    monkeypatch.setattr(tts, "_probe_duration", lambda path: 1.0)
+    monkeypatch.setattr(tts, "_synthesize_google", lambda text, out_path: out_path.write_bytes(b"fake-mp3"))
+
+    tts.synthesize("hello", tmp_path / "out.mp3")
+
+    usage = json.loads(usage_file.read_text())
+    assert usage == {"month": "2026-10", "characters": len("hello")}

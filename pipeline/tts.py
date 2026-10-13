@@ -36,10 +36,11 @@ for _bundle in _PROXY_CA_CANDIDATES:
         _voices_mod._SSL_CTX = _ctx
         break
 
+import base64
+
 import edge_tts
 import aiohttp
-import boto3
-import botocore.exceptions
+import requests
 
 FFPROBE_BIN = shutil.which("ffprobe")
 
@@ -95,12 +96,19 @@ async def _synthesize_async(text: str, voice: str, out_path: Path) -> None:
     await communicate.save(str(out_path))
 
 
-def _synthesize_polly(text: str, out_path: Path) -> None:
-    client = boto3.client("polly", region_name=config.AWS_REGION)
-    response = client.synthesize_speech(
-        Text=text, OutputFormat="mp3", VoiceId=config.POLLY_VOICE, Engine="neural"
+def _synthesize_google(text: str, out_path: Path) -> None:
+    response = requests.post(
+        "https://texttospeech.googleapis.com/v1/text:synthesize",
+        params={"key": config.GOOGLE_TTS_API_KEY},
+        json={
+            "input": {"text": text},
+            "voice": {"languageCode": "en-IN", "name": config.GOOGLE_TTS_VOICE},
+            "audioConfig": {"audioEncoding": "MP3"},
+        },
+        timeout=30,
     )
-    out_path.write_bytes(response["AudioStream"].read())
+    response.raise_for_status()
+    out_path.write_bytes(base64.b64decode(response.json()["audioContent"]))
 
 
 def synthesize(text: str, out_path: Path, voice: str = None) -> float:
@@ -108,9 +116,9 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
 
     `voice` overrides config.TTS_VOICE for this call (e.g. a per-chat language
     preference from the Telegram bot) — defaults to the configured voice.
-    Only applies to the edge-tts engine; the Polly engine always uses
-    config.POLLY_VOICE, since Polly's voice catalog/IDs don't overlap with
-    edge-tts's.
+    Only applies to the edge-tts engine; the Google engine always uses
+    config.GOOGLE_TTS_VOICE, since Google's voice catalog/IDs don't overlap
+    with edge-tts's.
 
     edge-tts talks to an unofficial Microsoft endpoint that occasionally drops
     the connection without sending audio (NoAudioReceived/WebSocketError).
@@ -127,11 +135,11 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     rather than one of edge_tts's wrapped EdgeTTSException types -- caught
     here too so our longer backoff still applies instead of crashing the run.
 
-    config.TTS_ENGINE == "polly" switches to Amazon Polly's officially
-    authenticated API instead -- added because Microsoft's edge-tts endpoint
-    blocks GitHub Actions' published IP ranges outright (confirmed across
-    both ubuntu-latest and macos-latest runners), which no amount of retrying
-    the same blocked network path can fix.
+    config.TTS_ENGINE == "google" switches to Google Cloud Text-to-Speech's
+    officially authenticated API instead -- added because Microsoft's
+    edge-tts endpoint blocks GitHub Actions' published IP ranges outright
+    (confirmed across both ubuntu-latest and macos-latest runners), which no
+    amount of retrying the same blocked network path can fix.
     """
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
@@ -142,13 +150,12 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     attempts = 8
     for attempt in range(1, attempts + 1):
         try:
-            if config.TTS_ENGINE == "polly":
-                _synthesize_polly(normalized, out_path)
+            if config.TTS_ENGINE == "google":
+                _synthesize_google(normalized, out_path)
             else:
                 asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
             return _probe_duration(out_path)
-        except (edge_tts.exceptions.EdgeTTSException, aiohttp.ClientError,
-                botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError):
+        except (edge_tts.exceptions.EdgeTTSException, aiohttp.ClientError, requests.RequestException):
             if attempt == attempts:
                 raise
             time.sleep(min(2 ** (attempt - 1), 45))

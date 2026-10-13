@@ -44,12 +44,13 @@ TTS_VOICE = os.environ.get("TTS_VOICE", "en-IN-PrabhatNeural")
 
 # TTS engine selection. "edge" (default) is free/no-key but talks to an
 # unofficial Microsoft endpoint that blocks GitHub Actions' published IP
-# ranges outright -- "polly" uses Amazon's officially-authenticated Polly API
-# instead (set TTS_ENGINE=polly + AWS credentials in CI only; Render/local
-# keep using edge-tts unchanged since this env var is unset there).
+# ranges outright -- "google" uses Google Cloud Text-to-Speech's officially
+# authenticated REST API instead (set TTS_ENGINE=google + GOOGLE_TTS_API_KEY
+# in CI only; Render/local keep using edge-tts unchanged since this env var
+# is unset there).
 TTS_ENGINE = os.environ.get("TTS_ENGINE", "edge")
-POLLY_VOICE = os.environ.get("POLLY_VOICE", "Kajal")  # en-IN neural voice
-AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+GOOGLE_TTS_API_KEY = os.environ.get("GOOGLE_TTS_API_KEY", "")
+GOOGLE_TTS_VOICE = os.environ.get("GOOGLE_TTS_VOICE", "en-IN-Neural2-B")  # male en-IN voice
 
 
 # Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays

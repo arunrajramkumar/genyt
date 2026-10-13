@@ -59,12 +59,10 @@ jobs:
           YOUTUBE_AUTO_UPLOAD: "true"
           # Microsoft's free edge-tts endpoint blocks GitHub Actions' published IP
           # ranges outright (confirmed on both ubuntu-latest and macos-latest), so
-          # CI narration uses Amazon Polly's officially-authenticated API instead.
-          # Render/local stay on edge-tts by default (this var is unset there).
-          TTS_ENGINE: "polly"
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          # CI narration uses Google Cloud Text-to-Speech's officially-authenticated
+          # API instead. Render/local stay on edge-tts by default (var unset there).
+          TTS_ENGINE: "google"
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts

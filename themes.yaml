@@ -28,7 +28,7 @@ themes:
   style: motivating, practical personal-finance explainer
   duration_sec: 120
   shorts: true
-  done: false
+  done: true
 - theme: 'P/E ratio explained: is a stock actually cheap or expensive'
   style: clear, practical, beginner-friendly stock analysis
   duration_sec: 150

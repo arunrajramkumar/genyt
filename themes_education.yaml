@@ -523,7 +523,7 @@ themes:
     Ganita Prakash) to 11-12 year olds
   duration_sec: 270
   shorts: false
-  done: false
+  done: true
   _label: 'Ch 2 (Lines and Angles) - Part 3/6: Angle & Comparing Angles'
   extra_tags:
   - NCERT

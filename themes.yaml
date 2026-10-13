@@ -33,7 +33,7 @@ themes:
   style: clear, practical, beginner-friendly stock analysis
   duration_sec: 150
   shorts: true
-  done: false
+  done: true
 - theme: How to build an emergency fund before you start investing
   style: calm, practical personal-finance explainer
   duration_sec: 120

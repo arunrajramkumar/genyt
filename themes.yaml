@@ -44,7 +44,7 @@ themes:
   style: data-driven, practical small and midcap stock analysis
   duration_sec: 180
   shorts: true
-  done: false
+  done: true
 - theme: 3 traits of genuinely high-growth smallcap stocks, and how to verify them
     yourself before investing
   style: confident, research-driven stock-market explainer

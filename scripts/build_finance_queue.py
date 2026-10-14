@@ -14,6 +14,10 @@ risk inventing a figure) at once.
 Usage:
     python3 scripts/build_finance_queue.py --symbols CDSL,KALYANKJIL:Kalyan Jewellers \
         --output finance_queue.yaml
+
+    # Or auto-discover currently trending NSE companies via live news search
+    # instead of hand-picking symbols (see pipeline/trending_stocks.py):
+    python3 scripts/build_finance_queue.py --trending --limit 5 --output finance_queue.yaml
 """
 import argparse
 import sys
@@ -22,7 +26,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline import fundamentals  # noqa: E402
+from pipeline import config, fundamentals, research, trending_stocks  # noqa: E402
 
 MIN_DURATION = 90
 MAX_DURATION = 120
@@ -115,24 +119,62 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100) -
     }
 
 
+def _existing_symbols(path: str) -> set:
+    """NSE symbols already present (done or not) in a themes.yaml-style queue
+    file, so trending-driven discovery doesn't re-queue a company that's
+    already covered. Returns an empty set if the file doesn't exist yet."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return set()
+
+    symbols = set()
+    for entry in data.get("themes", []):
+        symbols.update(research.NSE_SYMBOL_RE.findall((entry.get("theme") or "").upper()))
+    return symbols
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--symbols", required=True,
+        "--symbols",
         help='Comma-separated NSE symbols, optionally "SYMBOL:Company Name" (e.g. "CDSL,KALYANKJIL:Kalyan Jewellers")',
+    )
+    parser.add_argument(
+        "--trending", action="store_true",
+        help="Auto-discover currently trending NSE companies via live news search instead of --symbols",
+    )
+    parser.add_argument("--limit", type=int, default=5, help="Max companies to queue when using --trending")
+    parser.add_argument(
+        "--avoid-existing", default=str(config.THEMES_FILE),
+        help="Theme queue YAML to skip already-covered NSE symbols from when using --trending (default: themes.yaml)",
     )
     parser.add_argument("--output", required=True)
     parser.add_argument("--duration", type=int, default=100, help=f"Target seconds, clamped to [{MIN_DURATION}, {MAX_DURATION}]")
     args = parser.parse_args()
 
-    entries = []
-    for item in args.symbols.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        symbol, _, name = item.partition(":")
-        symbol, name = symbol.strip(), (name.strip() or symbol.strip())
+    if not args.symbols and not args.trending:
+        parser.error("either --symbols or --trending is required")
 
+    if args.trending:
+        exclude = _existing_symbols(args.avoid_existing)
+        candidates = trending_stocks.select_trending_symbols(exclude_symbols=exclude, limit=args.limit)
+        if not candidates:
+            print("No trending candidates found (or none could be verified) -- nothing to queue")
+            candidates = []
+        items = [(c["symbol"], c["name"]) for c in candidates]
+    else:
+        items = []
+        for item in args.symbols.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            symbol, _, name = item.partition(":")
+            items.append((symbol.strip(), name.strip() or symbol.strip()))
+
+    entries = []
+    for symbol, name in items:
         entry = build_theme_entry(symbol, name, args.duration)
         if entry is None:
             print(f"Skipping {symbol} -- could not fetch fundamentals")

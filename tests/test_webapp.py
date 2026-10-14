@@ -16,6 +16,20 @@ def test_healthz_is_unauthenticated_even_with_password_set(client, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_privacy_policy_is_unauthenticated_even_with_password_set(client, monkeypatch):
+    monkeypatch.setattr(webapp, "APP_PASSWORD", "secret")
+    resp = client.get("/privacy")
+    assert resp.status_code == 200
+    assert b"Privacy Policy" in resp.data
+
+
+def test_terms_of_service_is_unauthenticated_even_with_password_set(client, monkeypatch):
+    monkeypatch.setattr(webapp, "APP_PASSWORD", "secret")
+    resp = client.get("/terms")
+    assert resp.status_code == 200
+    assert b"Terms of Service" in resp.data
+
+
 def test_index_requires_auth_when_password_configured(client, monkeypatch):
     monkeypatch.setattr(webapp, "APP_PASSWORD", "secret")
     resp = client.get("/")

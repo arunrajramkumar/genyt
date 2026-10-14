@@ -24,7 +24,7 @@ APP_PASSWORD = os.environ.get("APP_PASSWORD")
 
 @app.before_request
 def _check_auth():
-    if request.path in ("/healthz", "/telegram-webhook"):
+    if request.path in ("/healthz", "/telegram-webhook", "/privacy", "/terms"):
         return None
     if not APP_PASSWORD:
         return None
@@ -42,6 +42,74 @@ def healthz():
     # Unauthenticated on purpose: an external uptime pinger hits this to keep
     # the free-tier instance warm so it doesn't spin down mid-video-generation.
     return "ok"
+
+
+# Unauthenticated on purpose (see _check_auth above): Google's OAuth consent
+# screen verification requires these to be publicly viewable, since they're
+# shown to anyone who sees the consent screen, not just the app's operator.
+_POLICY_PAGE_STYLE = """
+<style>
+  body { font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 700px;
+         margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+</style>
+"""
+
+
+@app.route("/privacy")
+def privacy_policy():
+    return f"""<!doctype html><html><head><title>Privacy Policy - Financial Wealth</title>{_POLICY_PAGE_STYLE}</head><body>
+<h1>Privacy Policy</h1>
+<p>Last updated: October 2026</p>
+<p>Financial Wealth ("the app") is an automated video-production tool operated solely by its developer
+to generate and publish short-form financial-education videos to the developer's own YouTube channel(s).
+It is not a multi-user service and is not made available for use by the general public.</p>
+
+<h2>What data this app accesses</h2>
+<p>The app uses Google's YouTube Data API via OAuth2, solely to upload videos, set metadata, and manage
+captions/thumbnails on the developer's own YouTube channel(s). It does not access, collect, or store any
+data belonging to third parties or viewers of the published videos.</p>
+
+<h2>How OAuth credentials are stored</h2>
+<p>OAuth tokens are stored only on the app's own private server/runtime and are never shared with, or
+sold to, any third party. They are used exclusively to authenticate the app's own automated uploads.</p>
+
+<h2>Third-party services used to generate video content</h2>
+<p>To produce video content, the app sends generated text/search queries (not personal data) to: Groq
+(script writing), Tavily (web search for factual grounding), Google Cloud Text-to-Speech (narration
+audio), and Pexels (stock footage). None of these receive any end-user personal data.</p>
+
+<h2>Contact</h2>
+<p>Questions about this policy can be sent to <a href="mailto:arun1530siva@gmail.com">arun1530siva@gmail.com</a>.</p>
+</body></html>"""
+
+
+@app.route("/terms")
+def terms_of_service():
+    return f"""<!doctype html><html><head><title>Terms of Service - Financial Wealth</title>{_POLICY_PAGE_STYLE}</head><body>
+<h1>Terms of Service</h1>
+<p>Last updated: October 2026</p>
+<p>Financial Wealth ("the app") is an automated tool operated solely by its developer to generate and
+publish short-form financial-education and stock-analysis videos to the developer's own YouTube
+channel(s). It is not offered as a service to the public and does not accept third-party sign-ups.</p>
+
+<h2>No investment advice</h2>
+<p>Any financial/stock-analysis content produced by this app is for general informational and
+educational purposes only. It does not constitute investment, legal, or tax advice, and no
+buy/sell recommendation should be inferred from it.</p>
+
+<h2>No warranty</h2>
+<p>The app and the videos it produces are provided "as is," without warranty of any kind. The developer
+is not liable for any loss or damage arising from reliance on content produced by this app.</p>
+
+<h2>Changes</h2>
+<p>These terms may be updated from time to time; continued operation of the app constitutes acceptance
+of the current terms.</p>
+
+<h2>Contact</h2>
+<p>Questions about these terms can be sent to <a href="mailto:arun1530siva@gmail.com">arun1530siva@gmail.com</a>.</p>
+</body></html>"""
 
 # In-memory job store — fine for a single-user local tool.
 JOBS = {}

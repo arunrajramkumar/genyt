@@ -38,7 +38,7 @@ themes:
   style: calm, practical personal-finance explainer
   duration_sec: 120
   shorts: true
-  done: false
+  done: true
 - theme: How to screen high-growth small and midcap stocks using revenue, profit,
     ROCE, debt, and cash flow
   style: data-driven, practical small and midcap stock analysis

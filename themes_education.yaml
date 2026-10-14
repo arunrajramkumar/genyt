@@ -619,7 +619,7 @@ themes:
     Ganita Prakash) to 11-12 year olds
   duration_sec: 270
   shorts: false
-  done: false
+  done: true
   _label: 'Ch 2 (Lines and Angles) - Part 4/6: Making Rotating Arms & Special Types
     of Angles'
   extra_tags:

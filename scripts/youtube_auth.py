@@ -15,7 +15,8 @@ Usage:
                                                                   # to that GitHub
                                                                   # Environment's
                                                                   # YOUTUBE_TOKEN_JSON
-                                                                  # secret via `gh`,
+                                                                  # secret via the
+                                                                  # GitHub API,
                                                                   # instead of you
                                                                   # copy-pasting it
                                                                   # into the GitHub
@@ -25,13 +26,23 @@ Usage:
 that step can't be automated away (and shouldn't be: scripting it would mean
 storing your Google password and driving a fake browser login, which breaks
 Google's ToS and trips 2FA/bot detection). It only removes the copy-paste step
-after that. Requires the `gh` CLI to be installed and authenticated as an
-account with admin access to this repo.
+after that.
+
+It talks to the GitHub REST API directly (not the `gh` CLI), since `gh` may be
+authenticated as an account without admin access to this repo's secrets. It
+will prompt you to paste a GitHub Personal Access Token at that point -- create
+one at https://github.com/settings/tokens with the "repo" scope (classic) or
+"Secrets: write" repository permission (fine-grained), scoped to this repo.
+The token is only read into memory for this one API call and is never stored.
 """
 import argparse
-import subprocess
+import base64
+import getpass
 import sys
 from pathlib import Path
+
+import requests
+from nacl import encoding, public
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -41,14 +52,45 @@ from pipeline import config
 from pipeline.youtube_upload import SCOPES
 
 GITHUB_REPO = "arunrajramkumar/genyt"
+GITHUB_API = "https://api.github.com"
+
+
+def _encrypt_secret(public_key_b64: str, secret_value: str) -> str:
+    public_key = public.PublicKey(public_key_b64.encode("utf-8"), encoding.Base64Encoder())
+    sealed_box = public.SealedBox(public_key)
+    encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
+    return base64.b64encode(encrypted).decode("utf-8")
 
 
 def _push_to_github_secret(environment: str, token_json: str) -> None:
-    print(f"Pushing refreshed token to the '{environment}' GitHub Environment's YOUTUBE_TOKEN_JSON secret...")
-    subprocess.run(
-        ["gh", "secret", "set", "YOUTUBE_TOKEN_JSON", "--repo", GITHUB_REPO, "--env", environment, "--body", token_json],
-        check=True,
+    token = getpass.getpass(
+        "Paste a GitHub Personal Access Token with access to set secrets on "
+        f"'{GITHUB_REPO}' (create one at https://github.com/settings/tokens, "
+        "\"repo\" scope is enough) -- input is hidden and the token is not stored: "
     )
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+    repo_resp = requests.get(f"{GITHUB_API}/repos/{GITHUB_REPO}", headers=headers)
+    repo_resp.raise_for_status()
+    repo_id = repo_resp.json()["id"]
+
+    key_resp = requests.get(
+        f"{GITHUB_API}/repositories/{repo_id}/environments/{environment}/secrets/public-key",
+        headers=headers,
+    )
+    key_resp.raise_for_status()
+    key_data = key_resp.json()
+
+    print(f"Pushing refreshed token to the '{environment}' GitHub Environment's YOUTUBE_TOKEN_JSON secret...")
+    put_resp = requests.put(
+        f"{GITHUB_API}/repositories/{repo_id}/environments/{environment}/secrets/YOUTUBE_TOKEN_JSON",
+        headers=headers,
+        json={
+            "encrypted_value": _encrypt_secret(key_data["key"], token_json),
+            "key_id": key_data["key_id"],
+        },
+    )
+    put_resp.raise_for_status()
     print("Done -- the next scheduled workflow run will use the refreshed token.")
 
 
@@ -57,8 +99,8 @@ def main():
     parser.add_argument(
         "--push-to-github", metavar="ENVIRONMENT", choices=["common", "education"],
         help="After the browser consent, also push the token straight to this GitHub Environment's "
-             "YOUTUBE_TOKEN_JSON secret via the gh CLI (requires gh to be installed and authenticated "
-             "as an account with admin access to this repo) instead of pasting it in by hand.",
+             "YOUTUBE_TOKEN_JSON secret via the GitHub API (you'll be prompted to paste a Personal "
+             "Access Token with access to this repo's secrets) instead of pasting the token in by hand.",
     )
     args = parser.parse_args()
 

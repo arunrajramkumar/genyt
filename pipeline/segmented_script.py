@@ -93,6 +93,10 @@ Rules:
     {"kind": "sequence_boxes", "items": ["<str>", ...], "highlight_index": <int or null>}
     {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...]}
     {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
+    {"kind": "trend_line", "labels": ["<str>", ...], "values": [<number>, ...]}
+  Prefer trend_line over bar_compare for a value changing across an ordered
+  sequence (e.g. revenue/profit by year) -- reserve bar_compare for comparing
+  a handful of unordered items (e.g. this company's P/E vs. a peer's).
   If none of these fit, or the scene has no literal facts to draw a diagram from
   (e.g. a Hook or Recap scene), leave diagram as null.
 """

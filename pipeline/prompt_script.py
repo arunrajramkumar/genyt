@@ -67,6 +67,11 @@ Rules:
     {"kind": "sequence_boxes", "items": ["<str>", ...], "highlight_index": <int or null>}
     {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...]}
     {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
+    {"kind": "trend_line", "labels": ["<str>", ...], "values": [<number>, ...]}
+  Prefer trend_line over bar_compare for a value changing across an ordered
+  sequence (e.g. revenue/profit by year, a stock's price over time, compound
+  growth) -- reserve bar_compare for comparing a handful of unordered items
+  (e.g. two companies' P/E ratios side by side).
   Leave diagram as null for anything else, including every hook/intro/outro scene.
 """
 

@@ -166,6 +166,35 @@ def test_produce_from_script_picks_first_numeric_on_screen_text_as_stat_for_hook
     assert captured["stat_text"] == "3 hearts"
 
 
+# -- _pick_hook_stat: prefer a percentage, then the largest number --------------
+
+def test_pick_hook_stat_prefers_percentage_over_larger_plain_number():
+    scenes = [
+        {"on_screen_text": "Revenue: Rs 4120 Cr"},
+        {"on_screen_text": "Profit grew 340%"},
+    ]
+    assert producer._pick_hook_stat(scenes) == "Profit grew 340%"
+
+
+def test_pick_hook_stat_picks_largest_number_when_no_percentage_present():
+    scenes = [
+        {"on_screen_text": "FY23"},
+        {"on_screen_text": "Revenue: Rs 4120 Cr"},
+        {"on_screen_text": "P/E: 22.5"},
+    ]
+    assert producer._pick_hook_stat(scenes) == "Revenue: Rs 4120 Cr"
+
+
+def test_pick_hook_stat_returns_empty_string_when_no_scene_has_a_number():
+    scenes = [{"on_screen_text": "Intro"}, {"on_screen_text": ""}]
+    assert producer._pick_hook_stat(scenes) == ""
+
+
+def test_pick_hook_stat_skips_scenes_with_no_on_screen_text():
+    scenes = [{}, {"on_screen_text": "22% ROE"}]
+    assert producer._pick_hook_stat(scenes) == "22% ROE"
+
+
 def test_produce_from_script_clears_stale_work_dir(mocked_pipeline):
     from pipeline import config
     script = _stub_script()

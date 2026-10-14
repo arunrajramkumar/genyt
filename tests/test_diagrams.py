@@ -76,6 +76,14 @@ def test_render_diagram_shape_progression(tmp_path):
     assert out.exists()
 
 
+def test_render_diagram_trend_line(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "trend_line", "labels": ["FY21", "FY22", "FY23"], "values": [100, 250, 412]}, 400, 300, tmp_path / "d.png"
+    )
+    assert out.exists()
+    assert Image.open(out).size == (400, 300)
+
+
 def test_render_diagram_raises_on_unknown_kind(tmp_path):
     import pytest
     with pytest.raises(ValueError):
@@ -182,3 +190,24 @@ def test_render_diagram_shape_progression_avoids_caption_band(tmp_path):
         {"kind": "shape_progression", "shape": "square", "counts": [1, 4, 9, 16, 25]}, 400, 300, tmp_path / "d.png"
     )
     _assert_nothing_drawn_below_caption_bar(out, 400, 300)
+
+
+def test_render_diagram_trend_line_avoids_caption_band(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "trend_line", "labels": ["FY21", "FY22", "FY23"], "values": [100, 250, 412]}, 400, 300, tmp_path / "d.png"
+    )
+    _assert_nothing_drawn_below_caption_bar(out, 400, 300)
+
+
+def test_validate_diagram_spec_accepts_trend_line():
+    spec = {"kind": "trend_line", "labels": ["FY21", "FY22"], "values": [100, 250]}
+    ok, reason = diagrams.validate_diagram_spec(spec, source_text="Revenue grew from 100 Cr in FY21 to 250 Cr in FY22.")
+    assert ok is True
+    assert reason == ""
+
+
+def test_validate_diagram_spec_rejects_trend_line_with_ungrounded_number():
+    spec = {"kind": "trend_line", "labels": ["FY21", "FY22"], "values": [100, 999]}
+    ok, reason = diagrams.validate_diagram_spec(spec, source_text="Revenue grew from 100 Cr in FY21 to 250 Cr in FY22.")
+    assert ok is False
+    assert "999" in reason

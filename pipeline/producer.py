@@ -30,6 +30,32 @@ def _append_hashtags(description: str, tags: list, limit: int = 3) -> str:
     return f"{description}\n\n{' '.join(hashtags)}"
 
 
+def _extract_max_number(text: str) -> float:
+    numbers = re.findall(r"\d[\d,]*\.?\d*", text)
+    if not numbers:
+        return 0.0
+    return max(float(n.replace(",", "")) for n in numbers)
+
+
+def _pick_hook_stat(scenes: list) -> str:
+    """Picks the on_screen_text to headline the thumbnail/hook card.
+
+    Previously this just took the first scene (in narration order) whose
+    on_screen_text contained any digit -- for a finance video that's often
+    whichever stat happens to come first (e.g. a plain year like "FY23"),
+    not the most attention-grabbing one. Instead, score every numeric
+    candidate across all scenes and prefer a percentage figure (growth/
+    return rates read as the most compelling stat for a thumbnail) and,
+    among those, the largest number -- falling back to the largest plain
+    number when no candidate has a percentage.
+    """
+    candidates = [(scene.get("on_screen_text") or "").strip() for scene in scenes]
+    candidates = [c for c in candidates if any(ch.isdigit() for ch in c)]
+    if not candidates:
+        return ""
+    return max(candidates, key=lambda text: ("%" in text, _extract_max_number(text)))
+
+
 def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None,
                          thumbnail_badge: str = None) -> dict:
     """orientation: config.LANDSCAPE or config.SHORTS (defaults to landscape).
@@ -91,14 +117,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         visual_paths.append((visual_path, kind))
 
     on_progress("Rendering hook card / thumbnail")
-    stat_text = next(
-        (
-            (scene.get("on_screen_text") or "").strip()
-            for scene in script["scenes"]
-            if any(ch.isdigit() for ch in (scene.get("on_screen_text") or ""))
-        ),
-        "",
-    )
+    stat_text = _pick_hook_stat(script["scenes"])
     hook_bg_path = visual_paths[0][0] if visual_paths and visual_paths[0][1] in ("image", "diagram") else None
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
     textcard.render_hook_card(

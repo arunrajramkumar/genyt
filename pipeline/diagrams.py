@@ -1,7 +1,8 @@
-"""Renders a small, fixed vocabulary of concept diagrams for education-video
-scenes whose topic has no real filmable stock-footage equivalent (number
-patterns, sequences, shape progressions, comparisons) — e.g. dots forming a
-triangular number, or a number line with a highlighted point.
+"""Renders a small, fixed vocabulary of concept diagrams for video scenes whose
+topic has no real filmable stock-footage equivalent (number patterns,
+sequences, shape progressions, comparisons, trends) — e.g. dots forming a
+triangular number, a number line with a highlighted point, or a company's
+revenue trending across years.
 
 Pure Pillow, no new dependency (textcard.py already uses it). Diagram specs
 are validated against the same source text the LLM was given, mirroring
@@ -33,6 +34,11 @@ DIAGRAM_KINDS = {
     "sequence_boxes": {"required": {"items": list}, "optional": {"highlight_index": (int, type(None))}},
     "bar_compare": {"required": {"labels": list, "values": list}, "optional": {}},
     "shape_progression": {"required": {"shape": str, "counts": list}, "optional": {}},
+    # A connected line/curve rather than bar_compare's discrete bars -- suited
+    # to a trend across an ordered sequence (years, quarters) rather than a
+    # one-off comparison between a handful of unordered categories, e.g.
+    # compound-interest growth over years or a company's revenue by year.
+    "trend_line": {"required": {"labels": list, "values": list}, "optional": {}},
 }
 
 _DIGIT_RE = re.compile(r"\d{2,}")
@@ -108,6 +114,7 @@ def render_diagram(spec: dict, width: int, height: int, out_path: Path) -> Path:
         "sequence_boxes": _render_sequence_boxes,
         "bar_compare": _render_bar_compare,
         "shape_progression": _render_shape_progression,
+        "trend_line": _render_trend_line,
     }.get(kind)
     if renderer is None:
         raise ValueError(f"Unknown diagram kind: {kind!r}")
@@ -223,3 +230,28 @@ def _render_shape_progression(draw, spec, width, height):
             else:
                 draw.ellipse([x - r // 2, y - r // 2, x + r // 2, y + r // 2], fill=ACCENT_COLOR)
         draw.text((cx, cy + r * 3), str(count), font=font, fill=TEXT_COLOR, anchor="ma")
+
+
+def _render_trend_line(draw, spec, width, height):
+    labels, values = spec["labels"][:8], spec["values"][:8]
+    n = len(values)
+    max_v, min_v = max(values), min(0, min(values))
+    span = max_v - min_v or 1
+    x0, x1 = int(width * 0.08), int(width * 0.92)
+    base_y = int(height * 0.72)
+    top_y = int(height * 0.12)
+    step_x = (x1 - x0) / max(1, n - 1)
+    points = []
+    for i, v in enumerate(values):
+        x = x0 + int(step_x * i)
+        y = base_y - int((base_y - top_y) * (v - min_v) / span)
+        points.append((x, y))
+    if len(points) > 1:
+        draw.line(points, fill=ACCENT_COLOR, width=5, joint="curve")
+    label_font_size = max(20, width // (n * 10 + 10))
+    for (x, y), label, v in zip(points, labels, values):
+        draw.ellipse([x - 7, y - 7, x + 7, y + 7], fill=ACCENT_COLOR)
+        value_font, value_text = _fit_text(draw, str(v), int(step_x * 0.9) or width, max(22, label_font_size))
+        draw.text((x, y - 16), value_text, font=value_font, fill=(255, 255, 255), anchor="ms")
+        label_font, label_text = _fit_text(draw, str(label), int(step_x * 0.9) or width, label_font_size)
+        draw.text((x, base_y + 14), label_text, font=label_font, fill=TEXT_COLOR, anchor="ma")

@@ -155,3 +155,139 @@ def test_main_theme_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch):
         assert e.code == 0
     else:
         raise AssertionError("expected SystemExit(0)")
+
+
+# -- --trending: produce one video about a currently-trending NSE stock -------
+
+def test_next_trending_entry_returns_none_when_no_candidates(monkeypatch, tmp_path):
+    monkeypatch.setattr(run.trending_stocks, "select_trending_symbols", lambda exclude_symbols, limit: [])
+    assert run.next_trending_entry(tmp_path / "themes.yaml") is None
+
+
+def test_next_trending_entry_builds_entry_from_top_candidate(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_select(exclude_symbols, limit):
+        captured["exclude_symbols"] = exclude_symbols
+        captured["limit"] = limit
+        return [{"symbol": "CDSL", "name": "CDSL Ltd"}]
+
+    def fake_build_theme_entry(symbol, name):
+        captured["build_args"] = (symbol, name)
+        return {"theme": "...", "style": "s", "duration_sec": 100, "shorts": True, "done": False}
+
+    monkeypatch.setattr(run.trending_stocks, "select_trending_symbols", fake_select)
+    monkeypatch.setattr(run.build_finance_queue, "build_theme_entry", fake_build_theme_entry)
+
+    entry = run.next_trending_entry(tmp_path / "themes.yaml")
+
+    assert captured["build_args"] == ("CDSL", "CDSL Ltd")
+    assert captured["limit"] == 1
+    assert entry["duration_sec"] == 100
+
+
+def test_next_trending_entry_excludes_symbols_already_in_themes_file(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes.yaml"
+    run.save_themes(themes_file, [{"theme": "Deep dive: CDSL (NSE: CDSL)", "done": True}])
+
+    captured = {}
+    monkeypatch.setattr(
+        run.trending_stocks, "select_trending_symbols",
+        lambda exclude_symbols, limit: captured.setdefault("exclude_symbols", exclude_symbols) and [],
+    )
+
+    run.next_trending_entry(themes_file)
+
+    assert "CDSL" in captured["exclude_symbols"]
+
+
+def test_main_trending_flag_produces_entry_and_appends_it_marked_done(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes.yaml"
+    run.save_themes(themes_file, [{"theme": "Static fallback theme", "done": False}])
+
+    trending_entry = {
+        "theme": "Trending theme about XYZ", "style": "s", "duration_sec": 100,
+        "shorts": True, "extra_tags": ["stock analysis"], "_label": "XYZ (NSE: XYZ)",
+    }
+    monkeypatch.setattr(run, "next_trending_entry", lambda themes_file: trending_entry)
+
+    produced = []
+    monkeypatch.setattr(
+        run, "produce_video",
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme),
+    )
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending"])
+
+    run.main()
+
+    assert produced == ["Trending theme about XYZ"]
+    themes = run.load_themes(themes_file)
+    # Static queue entry must be untouched -- only the new trending entry was appended.
+    assert themes[0] == {"theme": "Static fallback theme", "done": False}
+    assert themes[1]["theme"] == "Trending theme about XYZ"
+    assert themes[1]["done"] is True
+
+
+def test_main_trending_flag_falls_back_to_static_queue_when_no_candidate(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes.yaml"
+    run.save_themes(themes_file, [{"theme": "Static fallback theme", "done": False}])
+
+    monkeypatch.setattr(run, "next_trending_entry", lambda themes_file: None)
+
+    produced = []
+    monkeypatch.setattr(
+        run, "produce_video",
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme),
+    )
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending"])
+
+    run.main()
+
+    assert produced == ["Static fallback theme"]
+    assert run.load_themes(themes_file)[0]["done"] is True
+
+
+def test_main_trending_flag_ignored_when_all_flag_also_set(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes.yaml"
+    run.save_themes(themes_file, [{"theme": "A", "done": False}, {"theme": "B", "done": False}])
+
+    def fail_if_called(themes_file):
+        raise AssertionError("--trending should be ignored when --all is also set")
+
+    monkeypatch.setattr(run, "next_trending_entry", fail_if_called)
+
+    produced = []
+    monkeypatch.setattr(
+        run, "produce_video",
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme),
+    )
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending", "--all"])
+
+    run.main()
+
+    assert produced == ["A", "B"]
+
+
+def test_main_trending_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes.yaml"
+    run.save_themes(themes_file, [{"theme": "Static fallback theme", "done": False}])
+
+    trending_entry = {"theme": "Trending theme", "style": "s", "duration_sec": 100, "shorts": True}
+    monkeypatch.setattr(run, "next_trending_entry", lambda themes_file: trending_entry)
+
+    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None):
+        raise run.TTSQuotaExceededError("budget exhausted")
+
+    monkeypatch.setattr(run, "produce_video", fake_produce_video)
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending"])
+
+    try:
+        run.main()
+    except SystemExit as e:
+        assert e.code == 0
+    else:
+        raise AssertionError("expected SystemExit(0)")
+
+    # Nothing should have been recorded as done/appended since production failed.
+    themes = run.load_themes(themes_file)
+    assert themes == [{"theme": "Static fallback theme", "done": False}]

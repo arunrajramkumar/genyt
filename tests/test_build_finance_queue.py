@@ -72,19 +72,19 @@ def test_build_theme_entry_sets_shorts_and_extra_tags(monkeypatch):
     assert "CDSL" in entry["extra_tags"]
 
 
-# -- _existing_symbols: reads already-covered NSE symbols out of a queue file -
+# -- existing_symbols: reads already-covered NSE symbols out of a queue file -
 
-def test_existing_symbols_returns_empty_set_for_missing_file():
-    assert build_finance_queue._existing_symbols("/no/such/file.yaml") == set()
+def testexisting_symbols_returns_empty_set_for_missing_file():
+    assert build_finance_queue.existing_symbols("/no/such/file.yaml") == set()
 
 
-def test_existing_symbols_extracts_symbols_from_theme_text(tmp_path):
+def testexisting_symbols_extracts_symbols_from_theme_text(tmp_path):
     path = tmp_path / "themes.yaml"
     path.write_text(yaml.safe_dump({"themes": [
         {"theme": "Central Depository Services India Limited (NSE: CDSL)."},
         {"theme": "Kalyan Jewellers India Limited (NSE: KALYANKJIL)."},
     ]}))
-    assert build_finance_queue._existing_symbols(str(path)) == {"CDSL", "KALYANKJIL"}
+    assert build_finance_queue.existing_symbols(str(path)) == {"CDSL", "KALYANKJIL"}
 
 
 # -- main: --trending path wires discovery into the same entry builder -------

@@ -119,7 +119,7 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100) -
     }
 
 
-def _existing_symbols(path: str) -> set:
+def existing_symbols(path: str) -> set:
     """NSE symbols already present (done or not) in a themes.yaml-style queue
     file, so trending-driven discovery doesn't re-queue a company that's
     already covered. Returns an empty set if the file doesn't exist yet."""
@@ -158,7 +158,7 @@ def main():
         parser.error("either --symbols or --trending is required")
 
     if args.trending:
-        exclude = _existing_symbols(args.avoid_existing)
+        exclude = existing_symbols(args.avoid_existing)
         candidates = trending_stocks.select_trending_symbols(exclude_symbols=exclude, limit=args.limit)
         if not candidates:
             print("No trending candidates found (or none could be verified) -- nothing to queue")

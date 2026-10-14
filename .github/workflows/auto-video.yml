@@ -67,7 +67,7 @@ jobs:
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts
           else
-            python3 run.py
+            python3 run.py --trending
           fi
 
       - name: Persist updated themes.yaml and usage counters

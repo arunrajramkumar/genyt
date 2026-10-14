@@ -6,6 +6,11 @@ Usage:
     python3 run.py --all           # process every un-done theme
     python3 run.py --theme "..."   # run a one-off theme, ignoring themes.yaml
     python3 run.py --theme "..." --shorts   # vertical 9:16 output for YouTube Shorts
+    python3 run.py --trending      # produce one video about a currently-trending NSE
+                                    # stock (see pipeline/trending_stocks.py) instead of
+                                    # pulling the next entry from themes.yaml; falls back
+                                    # to the themes.yaml queue if no trending candidate
+                                    # can be found/verified right now
 """
 import argparse
 import sys
@@ -13,8 +18,9 @@ from pathlib import Path
 
 import yaml
 
-from pipeline import config, prompt_script, producer
+from pipeline import config, prompt_script, producer, trending_stocks
 from pipeline.tts import TTSQuotaExceededError
+from scripts import build_finance_queue
 
 
 def load_themes(themes_file: Path) -> list[dict]:
@@ -48,6 +54,20 @@ def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: 
     return result["video"]
 
 
+def next_trending_entry(themes_file: Path) -> dict | None:
+    """Best-effort themes.yaml-style entry for one currently-trending,
+    fundamentals-verified NSE stock not already covered in themes_file.
+    Returns None (never raises) if no trending candidate can be found or
+    verified right now, so callers fall back to the static queue instead of
+    producing a video with no real candidate behind it."""
+    exclude = build_finance_queue.existing_symbols(str(themes_file))
+    candidates = trending_stocks.select_trending_symbols(exclude_symbols=exclude, limit=1)
+    if not candidates:
+        return None
+    candidate = candidates[0]
+    return build_finance_queue.build_theme_entry(candidate["symbol"], candidate["name"])
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--theme", help="Run a single one-off theme, ignoring themes.yaml")
@@ -58,6 +78,13 @@ def main():
     parser.add_argument(
         "--themes-file", default=str(config.THEMES_FILE),
         help="Path to the theme queue YAML (default: themes.yaml) -- use a different file to run a separate channel's queue",
+    )
+    parser.add_argument(
+        "--trending", action="store_true",
+        help="Produce one video about a currently-trending, verified-real NSE stock (see "
+             "pipeline/trending_stocks.py) instead of pulling the next entry from --themes-file. "
+             "Ignored together with --theme/--all. Falls back to the themes.yaml queue if no "
+             "trending candidate can be found/verified this run.",
     )
     args = parser.parse_args()
 
@@ -73,6 +100,33 @@ def main():
         return
 
     themes_file = Path(args.themes_file)
+
+    if args.trending and not args.all:
+        trending_entry = next_trending_entry(themes_file)
+        if trending_entry is None:
+            print("No trending candidate found/verified right now -- falling back to the themes.yaml queue")
+        else:
+            try:
+                produce_video(
+                    trending_entry["theme"],
+                    trending_entry.get("style", ""),
+                    trending_entry.get("duration_sec", 180),
+                    trending_entry.get("shorts", False),
+                    trending_entry.get("extra_tags"),
+                    trending_entry.get("thumbnail_badge"),
+                )
+            except TTSQuotaExceededError as e:
+                print(f"Skipping: {e}")
+                sys.exit(0)
+            # Record it in themes_file (done:true) so future --trending runs
+            # don't re-pick the same company, and so it shows up in the same
+            # audit trail as every hand-written theme.
+            trending_entry["done"] = True
+            themes = load_themes(themes_file)
+            themes.append(trending_entry)
+            save_themes(themes_file, themes)
+            return
+
     themes = load_themes(themes_file)
     pending = [t for t in themes if not t.get("done")]
     if not pending:

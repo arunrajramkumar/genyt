@@ -186,6 +186,7 @@ def test_synthesize_raises_when_google_monthly_cap_would_be_exceeded(tmp_path, m
     monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
     monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", usage_file)
     monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 400000)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_SAFETY_BUFFER_CHARS", 0)
     monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
 
     def fail_if_called(text, out_path):
@@ -193,8 +194,41 @@ def test_synthesize_raises_when_google_monthly_cap_would_be_exceeded(tmp_path, m
 
     monkeypatch.setattr(tts, "_synthesize_google", fail_if_called)
 
-    with pytest.raises(RuntimeError, match="cap"):
+    with pytest.raises(tts.TTSQuotaExceededError, match="cap"):
         tts.synthesize("x" * 20, tmp_path / "out.mp3")
+
+
+def test_ensure_google_tts_budget_raises_when_cap_would_be_exceeded(tmp_path, monkeypatch):
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text('{"month": "2026-10", "characters": 399990}')
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", usage_file)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 400000)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_SAFETY_BUFFER_CHARS", 0)
+    monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
+
+    with pytest.raises(tts.TTSQuotaExceededError, match="cap"):
+        tts.ensure_google_tts_budget(20)
+
+
+def test_ensure_google_tts_budget_respects_safety_buffer(tmp_path, monkeypatch):
+    usage_file = tmp_path / "usage.json"
+    usage_file.write_text('{"month": "2026-10", "characters": 394999}')
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", usage_file)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 400000)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_SAFETY_BUFFER_CHARS", 5000)
+    monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
+
+    # 394999 + 2 = 395001, which is within the raw 400000 cap but inside the
+    # 5000-char safety buffer (usable cap is 395000) -- should still raise.
+    with pytest.raises(tts.TTSQuotaExceededError, match="cap"):
+        tts.ensure_google_tts_budget(2)
+
+
+def test_ensure_google_tts_budget_is_a_noop_for_non_google_engine(monkeypatch):
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "edge")
+    tts.ensure_google_tts_budget(10 ** 9)  # must not raise regardless of size
 
 
 def test_synthesize_records_google_usage_and_resets_on_new_month(tmp_path, monkeypatch):

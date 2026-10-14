@@ -63,6 +63,12 @@ GOOGLE_TTS_VOICE = os.environ.get("GOOGLE_TTS_VOICE", "en-IN-Neural2-B")  # male
 GOOGLE_TTS_USAGE_FILE = Path(os.environ.get("GOOGLE_TTS_USAGE_FILE", str(ROOT / "google_tts_usage.json")))
 GOOGLE_TTS_MONTHLY_CHAR_CAP = int(os.environ.get("GOOGLE_TTS_MONTHLY_CHAR_CAP", "400000"))
 
+# Extra headroom kept below GOOGLE_TTS_MONTHLY_CHAR_CAP itself, so the
+# whole-video preflight check (pipeline/tts.ensure_google_tts_budget) stops a
+# scheduled run a little before the cap rather than exactly at it -- avoids
+# flip-flopping between "just under" and "just over" across retried runs.
+GOOGLE_TTS_SAFETY_BUFFER_CHARS = int(os.environ.get("GOOGLE_TTS_SAFETY_BUFFER_CHARS", "5000"))
+
 
 # Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays
 # under the ~512MB RAM ceiling of the free hosting tier this runs on.

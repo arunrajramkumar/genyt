@@ -8,11 +8,13 @@ Usage:
     python3 run.py --theme "..." --shorts   # vertical 9:16 output for YouTube Shorts
 """
 import argparse
+import sys
 from pathlib import Path
 
 import yaml
 
 from pipeline import config, prompt_script, producer
+from pipeline.tts import TTSQuotaExceededError
 
 
 def load_themes(themes_file: Path) -> list[dict]:
@@ -60,7 +62,14 @@ def main():
     args = parser.parse_args()
 
     if args.theme:
-        produce_video(args.theme, args.style, args.duration, args.shorts)
+        try:
+            produce_video(args.theme, args.style, args.duration, args.shorts)
+        except TTSQuotaExceededError as e:
+            # Exit cleanly (code 0) instead of crashing the scheduled job with
+            # a traceback -- this condition recurs daily until the monthly
+            # quota resets, so a hard failure would just be noise every run.
+            print(f"Skipping: {e}")
+            sys.exit(0)
         return
 
     themes_file = Path(args.themes_file)
@@ -72,14 +81,22 @@ def main():
 
     to_run = pending if args.all else pending[:1]
     for entry in to_run:
-        produce_video(
-            entry["theme"],
-            entry.get("style", ""),
-            entry.get("duration_sec", 180),
-            entry.get("shorts", False),
-            entry.get("extra_tags"),
-            entry.get("thumbnail_badge"),
-        )
+        try:
+            produce_video(
+                entry["theme"],
+                entry.get("style", ""),
+                entry.get("duration_sec", 180),
+                entry.get("shorts", False),
+                entry.get("extra_tags"),
+                entry.get("thumbnail_badge"),
+            )
+        except TTSQuotaExceededError as e:
+            # Leave this theme pending (not done) so it's retried once next
+            # month's quota resets, and stop processing the rest of this run's
+            # queue -- the same budget is shared across all of them, so every
+            # other entry would hit the identical guardrail.
+            print(f"Skipping: {e}")
+            break
         entry["done"] = True
         save_themes(themes_file, themes)
 

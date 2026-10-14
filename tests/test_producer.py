@@ -258,6 +258,33 @@ def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline
     assert captured["badge_text"] == "CBSE | Grade 6 Maths"
 
 
+# -- Google TTS whole-video budget preflight -------------------------------------
+
+def test_produce_from_script_checks_google_tts_budget_before_any_synthesis(mocked_pipeline, monkeypatch):
+    """The whole-video character total must be checked BEFORE the per-scene
+    synthesize() loop starts, so a video can't partially narrate before
+    hitting the monthly cap mid-way through."""
+    captured = {}
+    monkeypatch.setattr(producer.tts, "ensure_google_tts_budget", lambda total: captured.setdefault("total", total))
+    script = _stub_script()
+    producer.produce_from_script(script, on_progress=lambda m: None)
+    expected_total = sum(len(s["narration"]) for s in script["scenes"])
+    assert captured["total"] == expected_total
+
+
+def test_produce_from_script_raises_before_synthesizing_when_budget_exhausted(mocked_pipeline, monkeypatch):
+    def raise_quota_exceeded(total):
+        raise producer.tts.TTSQuotaExceededError("budget exhausted")
+
+    monkeypatch.setattr(producer.tts, "ensure_google_tts_budget", raise_quota_exceeded)
+    synthesize_calls = []
+    monkeypatch.setattr(producer.tts, "synthesize", lambda *a, **k: synthesize_calls.append(1))
+
+    with pytest.raises(producer.tts.TTSQuotaExceededError):
+        producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert synthesize_calls == []
+
+
 # -- diagram-first visual fetching ----------------------------------------------
 
 def test_produce_from_script_renders_diagram_instead_of_fetching_stock_visual(mocked_pipeline, monkeypatch):

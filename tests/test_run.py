@@ -118,3 +118,40 @@ def test_main_passes_each_themes_thumbnail_badge_through(monkeypatch, tmp_path):
     run.main()
 
     assert captured["thumbnail_badge"] == "CBSE | Grade 6 Maths"
+
+
+# -- TTS quota guardrail: stop cleanly instead of crashing the scheduled job ----
+
+def test_main_stops_cleanly_and_leaves_theme_pending_when_tts_quota_exceeded(monkeypatch, tmp_path):
+    themes_file = tmp_path / "themes.yaml"
+    run.save_themes(themes_file, [
+        {"theme": "Theme A", "done": False},
+        {"theme": "Theme B", "done": False},
+    ])
+
+    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None):
+        raise run.TTSQuotaExceededError("budget exhausted")
+
+    monkeypatch.setattr(run, "produce_video", fake_produce_video)
+    monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--all"])
+
+    run.main()  # must not raise
+
+    themes = run.load_themes(themes_file)
+    assert themes[0]["done"] is False
+    assert themes[1]["done"] is False
+
+
+def test_main_theme_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch):
+    def fake_produce_video(theme, style, duration, shorts):
+        raise run.TTSQuotaExceededError("budget exhausted")
+
+    monkeypatch.setattr(run, "produce_video", fake_produce_video)
+    monkeypatch.setattr("sys.argv", ["run.py", "--theme", "a theme"])
+
+    try:
+        run.main()
+    except SystemExit as e:
+        assert e.code == 0
+    else:
+        raise AssertionError("expected SystemExit(0)")

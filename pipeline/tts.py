@@ -133,8 +133,36 @@ def _record_google_tts_usage(num_chars: int) -> None:
     config.GOOGLE_TTS_USAGE_FILE.write_text(json.dumps(usage))
 
 
-def _google_tts_under_monthly_cap(num_chars: int) -> bool:
-    return _load_google_tts_usage()["characters"] + num_chars <= config.GOOGLE_TTS_MONTHLY_CHAR_CAP
+class TTSQuotaExceededError(RuntimeError):
+    """Raised when a TTS engine's monthly usage guardrail has tripped (or
+    would trip), instead of risking a billed API call. Callers in run.py
+    catch this specifically to stop a scheduled job cleanly rather than
+    crashing with a traceback every day the quota stays exhausted."""
+
+
+def google_tts_within_cap(num_chars: int) -> bool:
+    """True if synthesizing num_chars more characters this month would stay
+    within config.GOOGLE_TTS_MONTHLY_CHAR_CAP (minus a fixed safety buffer).
+    Always True for non-Google engines, since no cap applies to them."""
+    if config.TTS_ENGINE != "google":
+        return True
+    usable_cap = config.GOOGLE_TTS_MONTHLY_CHAR_CAP - config.GOOGLE_TTS_SAFETY_BUFFER_CHARS
+    return _load_google_tts_usage()["characters"] + num_chars <= usable_cap
+
+
+def ensure_google_tts_budget(total_chars: int) -> None:
+    """Pre-flight guardrail: raises TTSQuotaExceededError if synthesizing
+    total_chars characters (e.g. a whole video's narration, summed across all
+    its scenes) would exceed this month's Google TTS cap. Callers should run
+    this BEFORE starting per-scene synthesis, since checking only inside each
+    synthesize() call risks a video with some scenes narrated and others not,
+    once the cap is crossed mid-video."""
+    if not google_tts_within_cap(total_chars):
+        raise TTSQuotaExceededError(
+            f"Google TTS monthly character cap ({config.GOOGLE_TTS_MONTHLY_CHAR_CAP}) "
+            f"would be exceeded by this video's ~{total_chars} narration characters -- "
+            "skipping before any synthesis, rendering, or upload work begins."
+        )
 
 
 def synthesize(text: str, out_path: Path, voice: str = None) -> float:
@@ -179,11 +207,11 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     normalized = _normalize_for_speech(text)
 
     if config.TTS_ENGINE == "google":
-        if not _google_tts_under_monthly_cap(len(normalized)):
-            raise RuntimeError(
-                f"Google TTS monthly character cap ({config.GOOGLE_TTS_MONTHLY_CHAR_CAP}) "
-                "would be exceeded -- refusing to risk billed overage."
-            )
+        # Callers (producer.produce_from_script) are expected to call
+        # ensure_google_tts_budget() with the whole video's character count
+        # before this loop starts -- this per-call check is defense-in-depth
+        # in case synthesize() is ever called directly without that preflight.
+        ensure_google_tts_budget(len(normalized))
         # Record the attempt before the request, same reasoning as Tavily's
         # guardrail: undercounting here would risk the cap never actually biting.
         _record_google_tts_usage(len(normalized))

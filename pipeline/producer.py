@@ -52,6 +52,8 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         script["scenes"][0]["on_screen_text"] = script["title"][:40]
 
     on_progress("Synthesizing narration")
+    total_narration_chars = sum(len(scene["narration"]) for scene in script["scenes"])
+    tts.ensure_google_tts_budget(total_narration_chars)
     narration_paths = []
     for i, scene in enumerate(script["scenes"]):
         if i > 0:

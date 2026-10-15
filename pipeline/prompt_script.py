@@ -163,6 +163,8 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                     if not ok:
                         scene["diagram"] = None
             segmented_script.append_subscribe_cta(script["scenes"])
+            for scene in script["scenes"]:
+                _ground_scene_on_screen_text(scene)
             return script
         except (ValueError, KeyError) as e:
             last_error = e
@@ -170,3 +172,27 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
     raise RuntimeError(
         f"Model returned an invalid script 3 times in a row ({last_error}). Try again."
     )
+
+
+def _ground_scene_on_screen_text(scene: dict) -> None:
+    """The freeform path writes a whole multi-scene script in a single LLM
+    call -- unlike the segmented path (segmented_script._write_segment_scene),
+    nothing previously checked that a scene's on_screen_text actually came
+    from THAT scene's own narration. In practice the model sometimes drifts:
+    showing a metric spoken in a different scene, or one it never said at all
+    (reported: a real published video where on-screen metrics had "completely
+    no correlation" with the narration). Reuses the same grounding/fact-
+    extraction helpers the segmented path already relies on, applied against
+    this scene's own narration (there's no separate source "content" field
+    in the freeform path -- the narration itself is the only per-scene source
+    of truth)."""
+    narration = scene.get("narration") or ""
+    on_screen_text = (scene.get("on_screen_text") or "").strip()
+    if on_screen_text and not segmented_script._is_grounded(on_screen_text, narration):
+        on_screen_text = ""
+    facts = segmented_script._extract_facts(narration)
+    if len(facts) > 1:
+        on_screen_text = " | ".join(facts)
+    elif not on_screen_text and facts:
+        on_screen_text = facts[0]
+    scene["on_screen_text"] = on_screen_text

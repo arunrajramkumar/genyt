@@ -215,3 +215,60 @@ def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):
     assert result["scenes"][-1]["narration"] == "Fact two. If this helped, subscribe for more videos like it."
     assert result["scenes"][-1]["on_screen_text"] == "SUBSCRIBE FOR MORE"
     assert result["scenes"][0]["narration"] == "Fact one."
+
+
+# -- on_screen_text grounding: freeform path must not show a number that was --
+# -- spoken in a DIFFERENT scene (or never spoken at all) ---------------------
+
+def test_ground_scene_on_screen_text_clears_text_not_grounded_in_its_own_narration():
+    # Regression for a real published video where on-screen metrics had
+    # "completely no correlation" with the narration -- the on_screen_text
+    # here quotes a number that was never said in THIS scene's narration.
+    scene = {"narration": "The company's margins improved this quarter.", "on_screen_text": "Revenue: Rs 412 Cr"}
+    prompt_script._ground_scene_on_screen_text(scene)
+    assert scene["on_screen_text"] == ""
+
+
+def test_ground_scene_on_screen_text_keeps_text_grounded_in_its_own_narration():
+    scene = {"narration": "Revenue grew to Rs 412 Cr this quarter.", "on_screen_text": "Revenue: Rs 412 Cr"}
+    prompt_script._ground_scene_on_screen_text(scene)
+    assert scene["on_screen_text"] == "Revenue: Rs 412 Cr"
+
+
+def test_ground_scene_on_screen_text_fills_in_a_fact_when_on_screen_text_is_empty():
+    scene = {"narration": "ROE stands at 30.2% this year.", "on_screen_text": ""}
+    prompt_script._ground_scene_on_screen_text(scene)
+    assert "30.2" in scene["on_screen_text"]
+
+
+def test_ground_scene_on_screen_text_shows_all_facts_when_narration_has_several():
+    scene = {
+        "narration": "P/E ratio stands at 20.09, while ROE is 30.2%.",
+        "on_screen_text": "P/E: 20.09",
+    }
+    prompt_script._ground_scene_on_screen_text(scene)
+    assert "|" in scene["on_screen_text"]
+
+
+def test_ground_scene_on_screen_text_leaves_qualitative_text_alone():
+    # No 2+ digit numbers in the on_screen_text -- always considered grounded,
+    # same as the segmented path's _is_grounded, so company names/labels with
+    # no digits are never wiped out.
+    scene = {"narration": "A quick look at the company's history.", "on_screen_text": "Arrow Greentech"}
+    prompt_script._ground_scene_on_screen_text(scene)
+    assert scene["on_screen_text"] == "Arrow Greentech"
+
+
+def test_write_freeform_script_clears_on_screen_text_not_grounded_in_its_own_scene(monkeypatch):
+    # Three scenes so the subscribe-CTA rewrite of the LAST scene's
+    # on_screen_text doesn't mask what we're actually testing here.
+    mismatched_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "Octopuses have three hearts.", "visual_query": "octopus", "on_screen_text": "Revenue: ₹412 Cr"},
+        {"narration": "Revenue grew to ₹412 Cr this quarter.", "visual_query": "chart", "on_screen_text": ""},
+        {"narration": "That's a strong result overall.", "visual_query": "office", "on_screen_text": ""},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(mismatched_script))
+    result = prompt_script._write_freeform_script("octopuses")
+    # The figure was spoken in scene 2, not scene 1 -- scene 1 must not show it.
+    assert result["scenes"][0]["on_screen_text"] == ""
+    assert "412" in result["scenes"][1]["on_screen_text"]

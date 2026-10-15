@@ -13,16 +13,20 @@ from . import config
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 MAX_TOKENS_CAP = 2048
 MAX_RATE_LIMIT_RETRIES = 3
+MAX_JSON_VALIDATE_RETRIES = 2
 
 _RETRY_AFTER_MESSAGE_RE = re.compile(r"try again in ([\d.]+)s")
 
 
-def _is_truncated_generation_error(resp) -> bool:
+def _is_json_validate_error(resp) -> bool:
     """openai/gpt-oss-120b is a reasoning model: even with reasoning_effort
     'low', it can occasionally still burn the whole max_tokens budget on
     hidden chain-of-thought for a fact-dense prompt and return this specific
-    400 instead of the JSON body — retryable with a bigger token budget,
-    unlike a malformed-request 400."""
+    400 instead of the JSON body -- retryable with a bigger token budget. It
+    can also (observed in production, e.g. a "tags" array collapsed into one
+    string with mis-escaped quotes) return the exact same 400 for a generation
+    that completed fine but just isn't valid JSON -- not a budget problem, but
+    usually resolved by a plain resample."""
     try:
         return resp.json().get("error", {}).get("code") == "json_validate_failed"
     except (ValueError, AttributeError):
@@ -79,8 +83,11 @@ def chat_json(system_prompt: str, user_prompt: str, max_tokens: int, timeout: in
             "and set it as an environment variable (or a Space secret)."
         )
     resp = _post(system_prompt, user_prompt, max_tokens, timeout)
-    while resp.status_code == 400 and _is_truncated_generation_error(resp) and max_tokens < MAX_TOKENS_CAP:
-        max_tokens = min(max_tokens * 2, MAX_TOKENS_CAP)
+    json_retries = 0
+    while resp.status_code == 400 and _is_json_validate_error(resp) and json_retries < MAX_JSON_VALIDATE_RETRIES:
+        if max_tokens < MAX_TOKENS_CAP:
+            max_tokens = min(max_tokens * 2, MAX_TOKENS_CAP)
+        json_retries += 1
         resp = _post(system_prompt, user_prompt, max_tokens, timeout)
     attempt = 0
     while resp.status_code == 429 and attempt < MAX_RATE_LIMIT_RETRIES:

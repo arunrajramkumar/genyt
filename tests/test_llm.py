@@ -103,7 +103,33 @@ def test_chat_json_gives_up_after_hitting_token_cap(monkeypatch):
     with pytest.raises(RuntimeError, match="json_validate_failed"):
         llm.chat_json("system", "user", max_tokens=1500, timeout=10)
 
-    assert calls == [1500, llm.MAX_TOKENS_CAP]
+    assert calls == [1500, llm.MAX_TOKENS_CAP, llm.MAX_TOKENS_CAP]
+
+
+def test_chat_json_resamples_on_malformed_json_already_at_cap(monkeypatch):
+    """Regression test: a production 400 json_validate_failed showed a fully
+    completed generation (not truncated) with a "tags" array collapsed into
+    one mis-escaped string -- a one-off sampling glitch, not a budget problem.
+    The call site (prompt_script.py) already passes max_tokens=4096, above
+    MAX_TOKENS_CAP, so the old "bump budget while under cap" retry loop never
+    even ran once for it. A plain resample at the same budget should still be
+    tried instead of failing outright."""
+    monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
+    malformed = _fake_response(
+        400, {"error": {"code": "json_validate_failed", "message": "Failed to generate JSON. Please adjust your prompt."}},
+    )
+    success = _fake_response(200, {"choices": [{"message": {"content": '{"ok": true}'}}]})
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(json["max_tokens"])
+        return malformed if len(calls) == 1 else success
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    result = llm.chat_json("system", "user", max_tokens=4096, timeout=120)
+
+    assert result == '{"ok": true}'
+    assert calls == [4096, 4096]
 
 
 def test_chat_json_wraps_connection_error(monkeypatch):

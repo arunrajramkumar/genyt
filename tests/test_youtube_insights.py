@@ -38,6 +38,39 @@ def test_get_style_guidance_returns_summary_when_videos_available(monkeypatch):
     assert yi.get_style_guidance() == "- Lead with a number"
 
 
+# -- get_style_guidance: prints *why* it returned empty, so a silently no-op'd
+# feedback loop (e.g. a token missing yt-analytics.readonly) is observable in
+# CI logs instead of looking identical to "ran fine, nothing to report" -----
+
+def test_get_style_guidance_prints_reason_when_not_configured(monkeypatch, capsys):
+    monkeypatch.setattr(
+        yi, "fetch_channel_insights",
+        mock.Mock(side_effect=youtube_upload.NotConfiguredError("no token")),
+    )
+    yi.get_style_guidance()
+    assert "no token" in capsys.readouterr().out
+
+
+def test_get_style_guidance_prints_reason_when_too_few_videos(monkeypatch, capsys):
+    monkeypatch.setattr(yi, "fetch_channel_insights", lambda max_videos=20: [])
+    yi.get_style_guidance()
+    assert "youtube_insights" in capsys.readouterr().out
+
+
+def test_get_style_guidance_prints_reason_on_unexpected_error(monkeypatch, capsys):
+    monkeypatch.setattr(yi, "fetch_channel_insights", mock.Mock(side_effect=RuntimeError("boom")))
+    yi.get_style_guidance()
+    assert "boom" in capsys.readouterr().out
+
+
+def test_get_style_guidance_silent_when_guidance_found(monkeypatch, capsys):
+    videos = [{"title": "T", "tags": ["a"], "views": 100, "ctr": 5.0, "avg_view_duration_sec": 20.0}]
+    monkeypatch.setattr(yi, "fetch_channel_insights", lambda max_videos=20: videos)
+    monkeypatch.setattr(yi, "summarize_insights", lambda v: "- Lead with a number")
+    yi.get_style_guidance()
+    assert capsys.readouterr().out == ""
+
+
 # -- get_combined_guidance: merges own-channel + niche-wide guidance ----------
 
 def test_get_combined_guidance_merges_both_sources(monkeypatch):
@@ -59,6 +92,13 @@ def test_get_combined_guidance_returns_empty_when_both_sources_empty(monkeypatch
     monkeypatch.setattr(yi, "get_style_guidance", lambda: "")
     monkeypatch.setattr(yi.market_trends, "get_market_trend_guidance", lambda: "")
     assert yi.get_combined_guidance() == ""
+
+
+def test_get_combined_guidance_prints_when_both_sources_empty(monkeypatch, capsys):
+    monkeypatch.setattr(yi, "get_style_guidance", lambda: "")
+    monkeypatch.setattr(yi.market_trends, "get_market_trend_guidance", lambda: "")
+    yi.get_combined_guidance()
+    assert "no channel or niche guidance" in capsys.readouterr().out
 
 
 # -- fetch_channel_insights: shapes the Data API + Analytics API responses ----

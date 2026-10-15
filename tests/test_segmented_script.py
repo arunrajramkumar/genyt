@@ -281,7 +281,7 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
     monkeypatch.setattr(
         ss, "_write_metadata",
-        lambda scenes, style_guidance="": {"title": "Premier Polyfilm: What Long-Term Investors Watch",
+        lambda scenes, style_guidance="", company_name=None: {"title": "Premier Polyfilm: What Long-Term Investors Watch",
                          "description": "desc", "tags": ["premier polyfilm", "stock analysis"]},
     )
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
@@ -292,6 +292,28 @@ def test_write_segmented_script_assembles_title_description_tags(monkeypatch):
     assert script["scenes"][0]["narration"].startswith("N:Hook")
 
 
+def test_write_segmented_script_extracts_company_name_from_prompt_for_metadata(monkeypatch):
+    """build_finance_queue.py always writes the theme as
+    "Company Name (NSE: SYMBOL)..." -- that should be threaded into
+    _write_metadata so it can force the company name into the title even if
+    the metadata model drifts onto a vaguer hook phrase."""
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration, global_instructions=None: {"narration": "n", "visual_query": "v", "on_screen_text": ""},
+    )
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
+    captured = {}
+
+    def fake_write_metadata(scenes, style_guidance="", company_name=None):
+        captured["company_name"] = company_name
+        return {"title": "T", "description": "d", "tags": []}
+
+    monkeypatch.setattr(ss, "_write_metadata", fake_write_metadata)
+    segments = [{"label": "Hook", "content": "c", "duration": 5}]
+    ss.write_segmented_script("Premier Polyfilm (NSE: PREMIER). Write an opening question.", segments)
+    assert captured["company_name"] == "Premier Polyfilm"
+
+
 def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):
     monkeypatch.setattr(
         ss, "_write_segment_scene",
@@ -300,7 +322,7 @@ def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monk
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "- Lead with a number")
     captured = {}
 
-    def fake_write_metadata(scenes, style_guidance=""):
+    def fake_write_metadata(scenes, style_guidance="", company_name=None):
         captured["style_guidance"] = style_guidance
         return {"title": "T", "description": "d", "tags": []}
 
@@ -318,7 +340,7 @@ def test_write_segmented_script_threads_global_instructions_into_every_scene_cal
         {"narration": "n", "visual_query": "v", "on_screen_text": ""},
     )
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
-    monkeypatch.setattr(ss, "_write_metadata", lambda scenes, style_guidance="": {"title": "T", "description": "d", "tags": []})
+    monkeypatch.setattr(ss, "_write_metadata", lambda scenes, style_guidance="", company_name=None: {"title": "T", "description": "d", "tags": []})
     segments = [{"label": "Hook", "content": "c1", "duration": 5}, {"label": "Body", "content": "c2", "duration": 10}]
     ss.write_segmented_script("some prompt", segments, global_instructions="curious and upbeat teacher tone")
     assert captured == ["curious and upbeat teacher tone", "curious and upbeat teacher tone"]
@@ -336,6 +358,45 @@ def test_clean_title_collapses_double_spaces():
 
 def test_clean_title_leaves_clean_title_untouched():
     assert ss.clean_title("What's Next For ITC") == "What's Next For ITC"
+
+
+# -- _extract_company_name / _ensure_company_name_in_title ---------------------
+
+def test_extract_company_name_pulls_name_before_nse_ticker():
+    prompt = "0-12 seconds - Hook\nPremier Polyfilm (NSE: PREMIER). Write an exciting opening question."
+    assert ss._extract_company_name(prompt) == "Premier Polyfilm"
+
+
+def test_extract_company_name_returns_none_when_no_nse_ticker_present():
+    assert ss._extract_company_name("How octopuses see the world") is None
+
+
+def test_ensure_company_name_in_title_leaves_title_untouched_when_already_present():
+    title = "Premier Polyfilm: Is This Multibagger Overvalued?"
+    assert ss._ensure_company_name_in_title(title, "Premier Polyfilm") == title
+
+
+def test_ensure_company_name_in_title_prepends_when_missing():
+    title = "This Multibagger Stock Nobody's Talking About"
+    result = ss._ensure_company_name_in_title(title, "Premier Polyfilm")
+    assert result == "Premier Polyfilm: This Multibagger Stock Nobody's Talking About"
+
+
+def test_ensure_company_name_in_title_is_case_insensitive():
+    title = "premier polyfilm is up big this quarter"
+    assert ss._ensure_company_name_in_title(title, "Premier Polyfilm") == title
+
+
+def test_ensure_company_name_in_title_noop_when_no_company_name_known():
+    title = "5 Facts About Octopuses"
+    assert ss._ensure_company_name_in_title(title, None) == title
+
+
+def test_ensure_company_name_in_title_truncates_to_70_chars():
+    title = "Why This Stock Could Be A Massive Multibagger For Long Term Investors"
+    result = ss._ensure_company_name_in_title(title, "Premier Polyfilm")
+    assert len(result) <= 70
+    assert result.startswith("Premier Polyfilm:")
 
 
 def test_write_metadata_cleans_hashtags_and_double_spaces_from_title(monkeypatch):
@@ -385,7 +446,7 @@ def test_write_segmented_script_appends_subscribe_cta_to_last_scene(monkeypatch)
     )
     monkeypatch.setattr(
         ss, "_write_metadata",
-        lambda scenes, style_guidance="": {"title": "T", "description": "d", "tags": ["a"]},
+        lambda scenes, style_guidance="", company_name=None: {"title": "T", "description": "d", "tags": ["a"]},
     )
     segments = [{"label": "Hook", "content": "c1", "duration": 5}, {"label": "End screen", "content": "c2", "duration": 5}]
     result = ss.write_segmented_script("prompt", segments)
@@ -489,7 +550,7 @@ def test_write_segmented_script_includes_extra_tags(monkeypatch):
     monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
     monkeypatch.setattr(
         ss, "_write_metadata",
-        lambda scenes, style_guidance="": {"title": "T", "description": "d", "tags": ["number theory"]},
+        lambda scenes, style_guidance="", company_name=None: {"title": "T", "description": "d", "tags": ["number theory"]},
     )
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
     script = ss.write_segmented_script("prompt", segments, extra_tags=["NCERT", "CBSE"])

@@ -56,6 +56,28 @@ def _pick_hook_stat(scenes: list) -> str:
     return max(candidates, key=lambda text: ("%" in text, _extract_max_number(text)))
 
 
+def _pick_hook_background(visual_paths: list, work_dir, on_progress=print):
+    """Picks a still image to sit behind the hook card/thumbnail text.
+
+    Previously this only used the first scene's visual, and only if it was
+    already a still image or diagram -- a video clip (the common case for
+    stock-footage queries, since Pexels usually returns videos before photos)
+    was silently skipped, leaving the thumbnail with no background at all.
+    Grabbing a frame from the clip instead means the thumbnail almost always
+    has a real visual behind it."""
+    if not visual_paths:
+        return None
+    path, kind = visual_paths[0]
+    if kind in ("image", "diagram"):
+        return path
+    if kind == "video":
+        try:
+            return assemble.extract_frame(path, work_dir / "hook_bg.jpg")
+        except Exception as e:
+            on_progress(f"  thumbnail background frame extraction failed ({e}), using plain background")
+    return None
+
+
 def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None,
                          thumbnail_badge: str = None) -> dict:
     """orientation: config.LANDSCAPE or config.SHORTS (defaults to landscape).
@@ -118,7 +140,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
 
     on_progress("Rendering hook card / thumbnail")
     stat_text = _pick_hook_stat(script["scenes"])
-    hook_bg_path = visual_paths[0][0] if visual_paths and visual_paths[0][1] in ("image", "diagram") else None
+    hook_bg_path = _pick_hook_background(visual_paths, work_dir, on_progress)
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
     textcard.render_hook_card(
         script["title"], stat_text, orientation["width"], orientation["height"],

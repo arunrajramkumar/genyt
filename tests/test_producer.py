@@ -195,6 +195,51 @@ def test_pick_hook_stat_skips_scenes_with_no_on_screen_text():
     assert producer._pick_hook_stat(scenes) == "22% ROE"
 
 
+# -- _pick_hook_background: use a real visual instead of a blank card --------
+
+def test_pick_hook_background_uses_first_scene_image_directly():
+    path = Path("/tmp/visual.jpg")
+    assert producer._pick_hook_background([(path, "image")], Path("/tmp/work")) == path
+
+
+def test_pick_hook_background_uses_first_scene_diagram_directly():
+    path = Path("/tmp/diagram.png")
+    assert producer._pick_hook_background([(path, "diagram")], Path("/tmp/work")) == path
+
+
+def test_pick_hook_background_extracts_frame_when_first_scene_is_video(monkeypatch, tmp_path):
+    """Regression test: a stock-footage video (the common case for finance
+    queries, since Pexels usually returns a video before a photo) was
+    previously skipped entirely, leaving the thumbnail with no background."""
+    video_path = Path("/tmp/clip.mp4")
+    captured = {}
+
+    def fake_extract_frame(path, out_path):
+        captured["path"] = path
+        captured["out_path"] = out_path
+        return out_path
+
+    monkeypatch.setattr(producer.assemble, "extract_frame", fake_extract_frame)
+
+    result = producer._pick_hook_background([(video_path, "video")], tmp_path)
+
+    assert result == tmp_path / "hook_bg.jpg"
+    assert captured["path"] == video_path
+
+
+def test_pick_hook_background_falls_back_to_none_when_frame_extraction_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        producer.assemble, "extract_frame",
+        mock.Mock(side_effect=RuntimeError("ffmpeg failed")),
+    )
+    result = producer._pick_hook_background([(Path("/tmp/clip.mp4"), "video")], tmp_path, on_progress=lambda m: None)
+    assert result is None
+
+
+def test_pick_hook_background_returns_none_when_no_visuals():
+    assert producer._pick_hook_background([], Path("/tmp/work")) is None
+
+
 def test_produce_from_script_clears_stale_work_dir(mocked_pipeline):
     from pipeline import config
     script = _stub_script()

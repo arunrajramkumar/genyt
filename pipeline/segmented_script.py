@@ -24,6 +24,17 @@ END_SCREEN_RE = re.compile(r"^\s*end\s*screen\s*:?\s*$", re.IGNORECASE)
 QUOTE_RE = re.compile(r'(?:^|\n)[ \t]*[“”"]([^“”"]{15,})[“”"]')
 HASHTAG_RE = re.compile(r"#\w+")
 
+# build_finance_queue.py always writes the subject into the theme text as
+# "Company Name (NSE: SYMBOL)" -- a reliable anchor to pull the exact company
+# name from, so the title can be forced to include it even if the metadata
+# LLM call drifts onto a vaguer phrasing (e.g. "This Multibagger Stock").
+NSE_COMPANY_RE = re.compile(r"([A-Za-z0-9&.'\-, ]+?)\s*\(NSE:\s*[A-Z0-9&\-]+\)")
+
+
+def _extract_company_name(prompt: str):
+    m = NSE_COMPANY_RE.search(prompt)
+    return m.group(1).strip() if m else None
+
 
 def clean_title(title: str) -> str:
     """Strips hashtags (they belong in tags/description, not the title) and
@@ -299,7 +310,19 @@ Rules:
 """
 
 
-def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
+def _ensure_company_name_in_title(title: str, company_name: str) -> str:
+    """The metadata prompt already instructs the model to name the specific
+    subject, but a small model can still drift onto a vaguer hook phrase (e.g.
+    "This Multibagger Stock Nobody's Talking About") that reads well but loses
+    the one thing a stock-analysis title/thumbnail must have for someone
+    scanning a feed: which company it's actually about. Force it in
+    deterministically rather than trusting the sample to always include it."""
+    if not company_name or company_name.lower() in title.lower():
+        return title
+    return f"{company_name}: {title}"[:70]
+
+
+def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = None) -> dict:
     narration = "\n".join(scene["narration"] for scene in scenes)
     user_prompt = f"Narration:\n{narration}"
     if style_guidance:
@@ -317,8 +340,9 @@ def _write_metadata(scenes: list, style_guidance: str = "") -> dict:
             data = _extract_json(raw)
             if not (data.get("title") or "").strip():
                 raise ValueError("empty title")
+            title = _ensure_company_name_in_title(clean_title(data["title"])[:70], company_name)
             return {
-                "title": clean_title(data["title"])[:70],
+                "title": title,
                 "description": (data.get("description") or "").strip(),
                 "tags": [t for t in (data.get("tags") or []) if t],
             }
@@ -336,7 +360,7 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, 
         scenes.append(scene)
 
     style_guidance = youtube_insights.get_combined_guidance()
-    meta = _write_metadata(scenes, style_guidance)
+    meta = _write_metadata(scenes, style_guidance, company_name=_extract_company_name(prompt))
     tags = merge_tags(extra_tags or [], meta["tags"] or ["short video"])
     append_subscribe_cta(scenes)
 

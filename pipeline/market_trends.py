@@ -124,12 +124,21 @@ def summarize_market_trends(videos: list) -> str:
 def get_market_trend_guidance(queries: list = None) -> str:
     """Best-effort niche-wide trend guidance for the next video. Never raises —
     any failure (not configured, quota exhausted, API error) just means no
-    guidance is available yet."""
+    guidance is available yet. Prints the reason on every empty-return path
+    for the same observability reason as youtube_insights.get_style_guidance."""
     try:
         videos = fetch_trending_niche_videos(queries)
-    except Exception:
+    except Exception as e:
+        print(f"[market_trends] niche trend search unavailable ({e}); skipping niche guidance")
+        return ""
+    if not videos:
+        print("[market_trends] no niche videos found for the configured queries; skipping niche guidance")
         return ""
     try:
-        return summarize_market_trends(videos)
-    except Exception:
+        guidance = summarize_market_trends(videos)
+    except Exception as e:
+        print(f"[market_trends] failed to summarize niche trends ({e}); skipping niche guidance")
         return ""
+    if not guidance:
+        print("[market_trends] model returned no usable guidance from niche trends")
+    return guidance

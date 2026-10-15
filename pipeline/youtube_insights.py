@@ -167,15 +167,33 @@ def summarize_insights(videos: list) -> str:
 def get_style_guidance(max_videos: int = 20) -> str:
     """Best-effort channel-performance guidance for the next video's title and
     hook. Never raises — any failure (not configured, too few videos, API
-    error) just means no guidance is available yet."""
+    error) just means no guidance is available yet.
+
+    Printing the reason on every empty-return path (rather than swallowing it
+    entirely) is deliberate: this whole feedback loop ran silently for weeks
+    with no way to tell, from the outside, whether it was actually
+    contributing guidance or quietly no-op'ing (e.g. a token missing the
+    yt-analytics.readonly scope) -- see the "Worth double-checking: is the
+    self-learning feedback loop actually running?" follow-up."""
     try:
         videos = fetch_channel_insights(max_videos)
-    except Exception:
+    except Exception as e:
+        print(f"[youtube_insights] channel insights unavailable ({e}); skipping own-channel guidance")
+        return ""
+    if not videos:
+        print(
+            f"[youtube_insights] fewer than {MIN_VIDEOS_FOR_INSIGHTS} uploaded videos with data yet; "
+            "skipping own-channel guidance"
+        )
         return ""
     try:
-        return summarize_insights(videos)
-    except Exception:
+        guidance = summarize_insights(videos)
+    except Exception as e:
+        print(f"[youtube_insights] failed to summarize channel insights ({e}); skipping own-channel guidance")
         return ""
+    if not guidance:
+        print("[youtube_insights] model returned no usable guidance from channel insights")
+    return guidance
 
 
 def get_combined_guidance() -> str:
@@ -190,4 +208,6 @@ def get_combined_guidance() -> str:
     niche = market_trends.get_market_trend_guidance()
     if niche:
         sections.append(f"Broader finance/stock-analysis/wealth niche trends right now:\n{niche}")
+    if not sections:
+        print("[youtube_insights] no channel or niche guidance available -- this video's title/hook prompt gets none")
     return "\n\n".join(sections)

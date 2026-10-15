@@ -70,3 +70,19 @@ def test_get_market_trend_guidance_returns_summary_when_videos_available(monkeyp
     monkeypatch.setattr(mt, "fetch_trending_niche_videos", lambda queries=None: videos)
     monkeypatch.setattr(mt, "summarize_market_trends", lambda v: "- Trend bullet")
     assert mt.get_market_trend_guidance() == "- Trend bullet"
+
+
+# -- get_market_trend_guidance: prints why it returned empty, for the same
+# observability reason as youtube_insights.get_style_guidance -----------------
+
+def test_get_market_trend_guidance_prints_reason_on_fetch_failure(monkeypatch, capsys):
+    monkeypatch.setattr(mt, "fetch_trending_niche_videos", mock.Mock(side_effect=RuntimeError("quota exceeded")))
+    mt.get_market_trend_guidance()
+    assert "quota exceeded" in capsys.readouterr().out
+
+
+def test_get_market_trend_guidance_prints_reason_when_no_videos_found(monkeypatch, capsys):
+    monkeypatch.setattr(mt, "fetch_trending_niche_videos", lambda queries=None: [])
+    mt.get_market_trend_guidance()
+    assert "market_trends" in capsys.readouterr().out
+

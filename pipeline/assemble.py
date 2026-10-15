@@ -30,6 +30,20 @@ def _probe_duration(path: Path) -> float:
     return float(result.stdout.strip())
 
 
+def extract_frame(video_path: Path, out_path: Path, timestamp: float = None) -> Path:
+    """Grabs a single still frame from a video clip, for use as the thumbnail/
+    hook-card background when a scene's visual is a video rather than a photo.
+    Defaults to the clip's midpoint rather than frame 0 -- stock-footage clips
+    often open on a black or fade-in frame, which made the hook card blank
+    whenever the first scene's visual happened to be a video (the common case
+    for finance-channel videos, since Pexels usually has video results before
+    falling back to photos)."""
+    if timestamp is None:
+        timestamp = _probe_duration(video_path) / 2
+    _run([FFMPEG_BIN, "-y", "-ss", str(timestamp), "-i", str(video_path), "-frames:v", "1", str(out_path)])
+    return out_path
+
+
 def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: Path, width: int, height: int) -> None:
     """Render one scene's visual (image or video) to exactly `duration` seconds,
     scaled/cropped to the target resolution."""

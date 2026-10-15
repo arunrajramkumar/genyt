@@ -36,6 +36,34 @@ def test_overlay_hook_card_builds_bounded_segment_then_concats_remainder(monkeyp
     assert "-f" in concat_cmd and "concat" in concat_cmd
 
 
+def test_extract_frame_defaults_to_clip_midpoint(monkeypatch, tmp_path):
+    """Frame 0 of a stock-footage clip is often a black/fade-in frame -- the
+    midpoint is a more representative still for a thumbnail background."""
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 10.0)
+    out_path = tmp_path / "frame.jpg"
+
+    result = assemble.extract_frame(tmp_path / "clip.mp4", out_path)
+
+    assert result == out_path
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert "-ss" in cmd and cmd[cmd.index("-ss") + 1] == "5.0"
+    assert "-frames:v" in cmd
+
+
+def test_extract_frame_uses_explicit_timestamp_when_given(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    probed = []
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: probed.append(path) or 10.0)
+
+    assemble.extract_frame(tmp_path / "clip.mp4", tmp_path / "frame.jpg", timestamp=2.5)
+
+    assert not probed  # explicit timestamp must skip the probe entirely
+    cmd = calls[0]
+    assert cmd[cmd.index("-ss") + 1] == "2.5"
+
+
 def test_overlay_hook_card_skips_remainder_when_hook_covers_whole_clip(monkeypatch, tmp_path):
     calls = _record_calls(monkeypatch)
     monkeypatch.setattr(assemble, "_probe_duration", lambda path: 1.0)

@@ -34,6 +34,15 @@ def test_needs_grounding_false_for_generic_themes(theme):
     assert research.needs_grounding(theme) is False
 
 
+@pytest.mark.parametrize("theme", [
+    "KPI Green Energy",
+    "Reliance Industries",
+    "Tata Consultancy Services",
+])
+def test_needs_grounding_true_for_bare_company_name_themes(theme):
+    assert research.needs_grounding(theme) is True
+
+
 def test_fetch_grounding_facts_returns_empty_string_when_not_configured(monkeypatch):
     monkeypatch.setattr(config, "TAVILY_API_KEY", "")
     assert research.fetch_grounding_facts("Tata Motors stock") == ""

@@ -35,13 +35,42 @@ GROUNDING_KEYWORDS = (
     " ltd", "limited", "nifty", "sensex", "mutual fund",
 )
 
+# Common topic-framing words that show up in generic/creative themes ("5 Facts
+# About Octopuses", "History of the Roman Empire") but never in a bare company
+# name -- used to tell the two apart below.
+_TOPIC_FRAMING_WORDS = {
+    "a", "an", "the", "of", "in", "on", "to", "for", "with", "and", "or",
+    "about", "how", "why", "what", "when", "where", "who", "which",
+    "is", "are", "was", "were", "explain", "describe", "learn",
+    "history", "historical", "fact", "facts", "guide", "tips",
+    "way", "ways", "thing", "things", "reason", "reasons",
+    "secret", "secrets", "trick", "tricks", "basics", "introduction", "intro",
+}
+
+
+def _looks_like_bare_company_name(theme: str) -> bool:
+    """True for short, keyword-free, Title-Case phrases like "KPI Green
+    Energy" -- an ad-hoc prompt that's just a company name, with none of the
+    "Ltd"/"stock"/"NSE:" markers GROUNDING_KEYWORDS looks for, but still a
+    named real-world entity whose figures must not be left to the model's own
+    guesswork."""
+    words = theme.strip().split()
+    if not (1 < len(words) <= 5):
+        return False
+    lowered_words = [w.strip(".,!?").lower() for w in words]
+    if any(w in _TOPIC_FRAMING_WORDS for w in lowered_words):
+        return False
+    return all(w[0].isupper() for w in words if w[:1].isalpha())
+
 
 def needs_grounding(theme: str) -> bool:
     """True if the theme plausibly makes verifiable real-world claims (named
     companies, stock/financial data) that must not be left to the model's own
     (fabrication-prone) "knowledge"."""
     lowered = theme.lower()
-    return any(keyword in lowered for keyword in GROUNDING_KEYWORDS)
+    if any(keyword in lowered for keyword in GROUNDING_KEYWORDS):
+        return True
+    return _looks_like_bare_company_name(theme)
 
 
 def _current_month() -> str:

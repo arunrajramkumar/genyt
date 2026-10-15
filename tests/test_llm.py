@@ -11,11 +11,12 @@ def test_chat_json_raises_without_api_key(no_api_keys):
         llm.chat_json("system", "user", max_tokens=100, timeout=10)
 
 
-def _fake_response(status_code=200, json_body=None, text=""):
+def _fake_response(status_code=200, json_body=None, text="", headers=None):
     resp = mock.Mock()
     resp.status_code = status_code
     resp.json.return_value = json_body or {}
     resp.text = text
+    resp.headers = headers or {}
     if status_code >= 400:
         resp.raise_for_status.side_effect = requests.HTTPError(f"{status_code} error")
     else:
@@ -114,3 +115,49 @@ def test_chat_json_wraps_connection_error(monkeypatch):
     monkeypatch.setattr(llm.requests, "post", raise_connection_error)
     with pytest.raises(RuntimeError, match="Could not reach the Groq API"):
         llm.chat_json("system", "user", max_tokens=100, timeout=10)
+
+
+def test_chat_json_retries_on_rate_limit_using_suggested_delay(monkeypatch):
+    """Regression test: a real production 429 from Groq ('Rate limit reached
+    ... tokens per minute (TPM) ... Please try again in 1.4625s') previously
+    failed the whole run instantly instead of waiting out a few-second TPM
+    window that would have succeeded on retry."""
+    monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
+    rate_limited = _fake_response(
+        429,
+        {"error": {"message": "Rate limit reached ... Please try again in 1.4625s", "code": "rate_limit_exceeded"}},
+    )
+    success = _fake_response(200, {"choices": [{"message": {"content": '{"ok": true}'}}]})
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(json["max_tokens"])
+        return rate_limited if len(calls) == 1 else success
+
+    sleeps = []
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    monkeypatch.setattr(llm.time, "sleep", lambda s: sleeps.append(s))
+
+    result = llm.chat_json("system", "user", max_tokens=512, timeout=10)
+
+    assert result == '{"ok": true}'
+    assert len(calls) == 2
+    assert sleeps == [1.9625]
+
+
+def test_chat_json_gives_up_after_max_rate_limit_retries(monkeypatch):
+    monkeypatch.setattr(config, "GROQ_API_KEY", "dummy-key")
+    rate_limited = _fake_response(429, {"error": {"message": "rate limited"}}, text="rate limited")
+    calls = []
+
+    def fake_post(url, headers, json, timeout):
+        calls.append(1)
+        return rate_limited
+
+    monkeypatch.setattr(llm.requests, "post", fake_post)
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+
+    with pytest.raises(RuntimeError, match="Groq API error 429"):
+        llm.chat_json("system", "user", max_tokens=100, timeout=10)
+
+    assert len(calls) == 1 + llm.MAX_RATE_LIMIT_RETRIES

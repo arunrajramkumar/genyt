@@ -82,6 +82,38 @@ def _detect_script_candidates(text: str) -> list:
     return []
 
 
+# Characters that carry no visual width/shape at all -- Pillow still needs a
+# cmap entry to draw "nothing", and most fonts don't define one, so these show
+# up as a tofu/box glyph exactly like a missing letter would.
+_ZERO_WIDTH_CHARS = {
+    "\u200b",  # zero width space
+    "\u200c",  # zero width non-joiner
+    "\u200d",  # zero width joiner
+    "\u2060",  # word joiner
+    "\ufeff",  # zero width no-break space / BOM
+    "\u00ad",  # soft hyphen
+}
+
+
+def sanitize_display_text(text: str) -> str:
+    """Pillow draws a visible tofu/box glyph for any character missing from
+    the active font's cmap. LLM output occasionally uses exotic Unicode
+    whitespace for "Indian English" number formatting -- narrow no-break
+    space (U+202F, e.g. "Sep 18", "88 crore"), non-breaking space (U+00A0),
+    thin space (U+2009), etc. -- which common render fonts (Noto Sans Bold,
+    Helvetica) don't map, so what should look like a plain space shows up as
+    a stray box on screen (reported: a box between "Price" and "92" in a
+    published video). Normalize every Unicode whitespace character to a
+    plain ASCII space, and drop zero-width/format characters outright since
+    they have no visual meaning to begin with."""
+    out = []
+    for ch in text:
+        if ch in _ZERO_WIDTH_CHARS:
+            continue
+        out.append(" " if (ch != " " and ch.isspace()) else ch)
+    return "".join(out)
+
+
 def _load_font(size: int, text: str = "") -> ImageFont.FreeTypeFont:
     layout_engine = ImageFont.Layout.RAQM if _RAQM_AVAILABLE else ImageFont.Layout.BASIC
     for path, index in _detect_script_candidates(text):
@@ -96,6 +128,7 @@ def _load_font(size: int, text: str = "") -> ImageFont.FreeTypeFont:
 def render_text_card(text: str, width: int, height: int, out_path: Path) -> Path:
     """Renders `text` inside a semi-transparent bar near the bottom third of a
     `width`x`height` transparent canvas, sized for the video's own resolution."""
+    text = sanitize_display_text(text)
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
@@ -163,6 +196,9 @@ def render_hook_card(
     "CBSE | GRADE 6 MATHS" for an education-channel video, so series/syllabus
     identity is visible even in the small thumbnail grid on a channel page.
     """
+    title = sanitize_display_text(title)
+    stat_text = sanitize_display_text(stat_text) if stat_text else stat_text
+    badge_text = sanitize_display_text(badge_text) if badge_text else badge_text
     if background_path and Path(background_path).exists():
         bg = Image.open(background_path).convert("RGB")
         src_w, src_h = bg.size

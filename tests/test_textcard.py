@@ -93,6 +93,58 @@ def test_rupee_glyph_font_candidates_exist_on_at_least_one_platform():
     assert any(Path(p).exists() for p, _ in textcard.FONT_CANDIDATES)
 
 
+# -- sanitize_display_text: strip the characters that render as a tofu box ----
+
+def test_sanitize_display_text_normalizes_narrow_no_break_space():
+    # Regression for a real published video: a narrow no-break space (used by
+    # the model for "Indian English" number formatting, e.g. "Price 92") has
+    # no glyph in Noto Sans/Helvetica and rendered as a visible box.
+    assert textcard.sanitize_display_text("Price 92") == "Price 92"
+
+
+def test_sanitize_display_text_normalizes_non_breaking_space():
+    assert textcard.sanitize_display_text("Rs 412") == "Rs 412"
+
+
+def test_sanitize_display_text_normalizes_thin_and_other_unicode_spaces():
+    for space in (" ", " ", " ", " ", "　"):
+        assert textcard.sanitize_display_text(f"A{space}B") == "A B"
+
+
+def test_sanitize_display_text_drops_zero_width_characters():
+    assert textcard.sanitize_display_text("Price​92") == "Price92"
+    assert textcard.sanitize_display_text("A﻿B­C") == "ABC"
+
+
+def test_sanitize_display_text_leaves_plain_text_untouched():
+    assert textcard.sanitize_display_text("Revenue: Rs 412 Cr") == "Revenue: Rs 412 Cr"
+
+
+def test_render_text_card_sanitizes_narrow_no_break_space_before_measuring(tmp_path, monkeypatch):
+    # The sanitized text, not the raw text, must be what's wrapped/measured/
+    # drawn -- patch render to capture what actually reaches draw.text.
+    seen = {}
+    from PIL import ImageDraw
+    original_text = ImageDraw.ImageDraw.text
+
+    def spy(self, xy, text, *a, **k):
+        seen.setdefault("texts", []).append(text)
+        return original_text(self, xy, text, *a, **k)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", spy)
+    textcard.render_text_card("Price 92", 720, 1280, tmp_path / "card.png")
+    assert any(" " not in t for t in seen["texts"])
+    assert not any(" " in t for t in seen["texts"])
+
+
+def test_render_hook_card_sanitizes_title_stat_and_badge_text(tmp_path):
+    out = textcard.render_hook_card(
+        "Price Target", "₹92 Crore", 720, 1280, tmp_path / "hook.png",
+        badge_text="Q1​FY27",
+    )
+    assert out.exists() and out.stat().st_size > 0
+
+
 def test_render_hook_card_with_badge_text_produces_a_nonempty_png(tmp_path):
     out = textcard.render_hook_card(
         "Patterns in Mathematics", "", 1280, 720, tmp_path / "badge.png",

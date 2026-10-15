@@ -113,6 +113,17 @@ def test_fit_text_truncates_with_ellipsis_when_shrinking_alone_cant_fit():
     assert draw.textbbox((0, 0), text, font=font)[2] <= 30
 
 
+def test_fit_text_sanitizes_unicode_whitespace_in_llm_authored_labels():
+    # Diagram labels/values come straight from the LLM's diagram JSON -- same
+    # tofu-box risk as on_screen_text (narrow no-break space etc. with no
+    # glyph in the render font), so _fit_text must sanitize too.
+    img = Image.new("RGB", (10, 10))
+    draw = ImageDraw.Draw(img)
+    font, text = diagrams._fit_text(draw, "Price 92", max_width=300, start_size=40)
+    assert text == "Price 92"
+
+
+
 def test_render_sequence_boxes_with_long_category_names_stays_within_each_box(tmp_path):
     out = diagrams.render_diagram(
         {

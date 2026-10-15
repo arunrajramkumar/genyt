@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from .textcard import _load_font
+from .textcard import _load_font, sanitize_display_text
 
 BG_COLOR = (16, 22, 36)
 ACCENT_COLOR = (60, 230, 110)
@@ -93,6 +93,7 @@ def _fit_text(draw, text: str, max_width: int, start_size: int, min_size: int = 
     and smeared into neighbouring boxes/bars. Shrinking the font first (down
     to min_size) and only then truncating with an ellipsis keeps every label
     inside its own slot instead of overlapping its neighbours."""
+    text = sanitize_display_text(text)
     size = start_size
     while size > min_size:
         font = _load_font(size, text)

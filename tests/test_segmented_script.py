@@ -82,12 +82,45 @@ def test_extract_verbatim_returns_empty_when_no_quote():
     ("The company is debt-free with export exposure.", "Debt-Free Balance Sheet"),
     ("Just a plain sentence with nothing extractable.", ""),
 ])
-def test_extract_fact_finds_known_patterns(content, expected):
-    fact = ss._extract_fact(content)
+def test_extract_facts_finds_known_patterns(content, expected):
+    facts = ss._extract_facts(content)
     if expected:
-        assert expected.split()[0].lower() in fact.lower() or expected in fact
+        assert any(expected.split()[0].lower() in f.lower() or expected in f for f in facts)
     else:
-        assert fact == ""
+        assert facts == []
+
+
+def test_extract_facts_returns_all_distinct_metrics_in_order():
+    content = "P/E ratio stands at 20.09, Price-to-Book at 5.51, EV/EBITDA 13.48, and ROE of 30.2%."
+    facts = ss._extract_facts(content, limit=4)
+    assert len(facts) == 4
+    assert any("20.09" in f for f in facts)
+    assert any("5.51" in f for f in facts)
+    assert any("13.48" in f for f in facts)
+    assert any("30.2" in f for f in facts)
+
+
+def test_extract_facts_longer_match_wins_over_contained_shorter_one():
+    # The generic "%" pattern would also match the "30.2%" inside "ROE 30.2%"
+    # at the same position -- the longer, more specific ROE match should win
+    # and the bare percentage should not show up as a separate duplicate fact.
+    content = "Strong ROE of 30.2% this quarter."
+    facts = ss._extract_facts(content)
+    assert facts == ["ROE of 30.2%"] or facts == ["ROE 30.2%"] or "30.2%" in facts[0]
+    assert len(facts) == 1
+
+
+def test_extract_facts_caps_at_limit():
+    content = "P/E 10, P/B 2, EV/EBITDA 5, ROE 20%, ROCE 25%, NSE: ABC"
+    facts = ss._extract_facts(content, limit=3)
+    assert len(facts) == 3
+
+
+def test_extract_facts_plain_price_is_captured():
+    content = "The price has climbed from ₹889.25 on Sep 18 to ₹913.05 on Sep 22."
+    facts = ss._extract_facts(content, limit=4)
+    assert any("889.25" in f for f in facts)
+    assert any("913.05" in f for f in facts)
 
 
 def test_is_grounded_accepts_numbers_present_in_source():
@@ -157,7 +190,7 @@ def test_write_segment_scene_uses_model_output_when_grounded(monkeypatch):
             "on_screen_text": "₹3,120 crore",
         }),
     )
-    scene = ss._write_segment_scene("Financials", "Revenue grew 18% YoY to ₹3,120 crore.", 15)
+    scene = ss._write_segment_scene("Financials", "Revenue grew to ₹3,120 crore this year.", 15)
     assert scene["on_screen_text"] == "₹3,120 crore"
     assert scene["visual_query"] == "factory production line"
 
@@ -176,6 +209,26 @@ def test_write_segment_scene_strips_ungrounded_on_screen_text_and_uses_fact_fall
     # extracted directly from the source content should be used instead.
     assert "9999999" not in scene["on_screen_text"]
     assert "3,120" in scene["on_screen_text"]
+
+
+def test_write_segment_scene_shows_all_metrics_when_content_has_several(monkeypatch):
+    """Regression test: a real published video's valuation scene spoke P/E,
+    P/B, EV/EBITDA, and ROE, but the model's on_screen_text only ever named
+    one of them (e.g. P/E), so P/B and the others were spoken but never shown
+    on screen. When the source content names multiple metrics, all of them
+    should end up on screen, not just whichever single one the model picked."""
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({
+            "narration": "P/E ratio stands at 20.09, Price-to-Book at 5.51, EV/EBITDA 13.48, ROE 30.2%.",
+            "visual_query": "stock market chart",
+            "on_screen_text": "P/E 20.09",
+        }),
+    )
+    content = "P/E ratio stands at 20.09, Price-to-Book at 5.51, EV/EBITDA 13.48, and ROE of 30.2%."
+    scene = ss._write_segment_scene("Valuation", content, 15)
+    assert "20.09" in scene["on_screen_text"]
+    assert "5.51" in scene["on_screen_text"]
 
 
 def test_write_segment_scene_overrides_narration_with_verbatim_quote(monkeypatch):

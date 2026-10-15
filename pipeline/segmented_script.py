@@ -44,12 +44,18 @@ def clean_title(title: str) -> str:
 
 FACT_PATTERNS = [
     r"₹\s?[\d,]+(?:\.\d+)?\s*(?:crore|cr\b|lakh)",
+    # Allow a short run of words between the label and its number (e.g. "P/E
+    # ratio stands at 20.09", "Price-to-Book at 5.51") -- real narration/source
+    # content rarely puts the number immediately after the label.
+    r"(?:P/?E|Price[- ]to[- ]Earnings)\b.{0,25}?[\d.]+",
+    r"(?:P/?B|Price[- ]to[- ]Book)\b.{0,25}?[\d.]+",
+    r"EV/?EBITDA\b.{0,25}?[\d.]+",
+    r"ROE\b.{0,20}?[\d.]+%?",
+    r"ROCE\b.{0,20}?[\d.]+%?",
     r"\d+(?:\.\d+)?\s?%\s*(?:YoY|QoQ|year[- ]on[- ]year)?",
-    r"P/?E[:\s]*[\d.]+",
-    r"ROE[:\s]*[\d.]+%?",
-    r"ROCE[:\s]*[\d.]+%?",
     r"NSE:\s*\w+",
     r"BSE:\s*\d+",
+    r"₹\s?[\d,]+(?:\.\d+)?",  # plain price (e.g. "₹887.80"), lowest priority
 ]
 
 QUALITATIVE_FALLBACKS = [
@@ -165,15 +171,41 @@ def _extract_verbatim(content: str) -> str:
     return ""
 
 
-def _extract_fact(content: str) -> str:
+def _extract_facts(content: str, limit: int = 3) -> list:
+    """Collects every distinct metric matching FACT_PATTERNS in this segment's
+    source content, not just the first -- a scene whose narration covers
+    several numbers (e.g. "P/E 20.09, Price-to-Book 5.51, EV/EBITDA 13.48,
+    ROE 30.2%") previously only ever got ONE of them picked as on-screen text,
+    so a viewer watching muted never saw the others even though they were
+    spoken. Longer/more-specific matches (e.g. "ROE 30.2%") win over shorter
+    ones they fully contain (e.g. a bare "30.2%" from the generic % pattern)."""
+    spans = []
     for pat in FACT_PATTERNS:
-        m = re.search(pat, content, re.IGNORECASE)
-        if m:
-            return m.group(0).strip()
+        for m in re.finditer(pat, content, re.IGNORECASE):
+            raw = m.group(0)
+            text = raw.strip()
+            if not text:
+                continue
+            start = m.start() + raw.index(text)
+            spans.append((start, start + len(text), text))
+    spans.sort(key=lambda s: (s[0], s[0] - s[1]))  # earliest first; longer match wins at same start
+
+    facts, covered = [], []
+    for start, end, text in spans:
+        if any(start >= cs and end <= ce for cs, ce in covered):
+            continue
+        if text in facts:
+            continue
+        facts.append(text)
+        covered.append((start, end))
+        if len(facts) >= limit:
+            break
+    if facts:
+        return facts
     for pat, label in QUALITATIVE_FALLBACKS:
         if re.search(pat, content, re.IGNORECASE):
-            return label
-    return ""
+            return [label]
+    return []
 
 
 def _is_grounded(text: str, content: str) -> bool:
@@ -209,7 +241,7 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
         user_prompt += f"\n\nOverall tone/style for this video: {global_instructions}"
 
     verbatim = _extract_verbatim(content)
-    fact_fallback = _extract_fact(content)
+    facts = _extract_facts(content)
     visual_fallback = _fallback_visual(label)
 
     last_error = None
@@ -237,8 +269,12 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
     on_screen_text = (scene.get("on_screen_text") or "").strip()
     if on_screen_text and not _is_grounded(on_screen_text, content):
         on_screen_text = ""
-    if not on_screen_text and fact_fallback:
-        on_screen_text = fact_fallback
+    if len(facts) > 1:
+        # This segment's content names several metrics -- show all of them
+        # rather than trusting the model to have picked a representative one.
+        on_screen_text = " | ".join(facts)
+    elif not on_screen_text and facts:
+        on_screen_text = facts[0]
 
     diagram = scene.get("diagram")
     if diagram:

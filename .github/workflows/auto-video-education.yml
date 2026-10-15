@@ -82,6 +82,11 @@ jobs:
           # have moved (e.g. a manual push, or the sibling auto-video.yml run)
           # since this job's checkout -- rebase onto the latest before pushing
           # instead of failing outright on a non-fast-forward rejection.
+          # google_tts_usage_education.json is a single incrementing number --
+          # a plain text merge can't combine two independent increments of the
+          # same line, so register a merge driver that sums the deltas instead
+          # of conflicting (see .gitattributes).
+          git config merge.usage-counter.driver "python3 scripts/merge_usage_counter.py %O %A %B"
           for i in 1 2 3; do
             git fetch origin main
             git rebase origin/main && git push && exit 0

@@ -259,6 +259,31 @@ def test_ground_scene_on_screen_text_leaves_qualitative_text_alone():
     assert scene["on_screen_text"] == "Arrow Greentech"
 
 
+def test_ground_scene_on_screen_text_preserves_first_scene_subject_name_despite_multiple_facts():
+    # Regression for the real reported bug's own first scene: SYSTEM_PROMPT
+    # requires scene 1's on_screen_text to be the subject's name even though
+    # the hook narration also states 2+ numeric facts -- those facts must not
+    # clobber the name the way they would for any other scene.
+    scene = {
+        "narration": "Mazagon Dock trades at a current price of ₹2,335.50 and a market cap of ₹81,765 cr.",
+        "on_screen_text": "Mazagon Dock",
+    }
+    prompt_script._ground_scene_on_screen_text(scene, is_first_scene=True)
+    assert scene["on_screen_text"] == "Mazagon Dock"
+
+
+def test_ground_scene_on_screen_text_still_clears_fabricated_first_scene_text():
+    scene = {"narration": "Mazagon Dock is a major Indian shipbuilder.", "on_screen_text": "Revenue: ₹412 Cr"}
+    prompt_script._ground_scene_on_screen_text(scene, is_first_scene=True)
+    assert scene["on_screen_text"] == ""
+
+
+def test_ground_scene_on_screen_text_fills_empty_first_scene_text_with_a_fact():
+    scene = {"narration": "Revenue grew to ₹412 Cr this quarter.", "on_screen_text": ""}
+    prompt_script._ground_scene_on_screen_text(scene, is_first_scene=True)
+    assert "412" in scene["on_screen_text"]
+
+
 def test_write_freeform_script_clears_on_screen_text_not_grounded_in_its_own_scene(monkeypatch):
     # Three scenes so the subscribe-CTA rewrite of the LAST scene's
     # on_screen_text doesn't mask what we're actually testing here.
@@ -272,3 +297,17 @@ def test_write_freeform_script_clears_on_screen_text_not_grounded_in_its_own_sce
     # The figure was spoken in scene 2, not scene 1 -- scene 1 must not show it.
     assert result["scenes"][0]["on_screen_text"] == ""
     assert "412" in result["scenes"][1]["on_screen_text"]
+
+
+def test_write_freeform_script_preserves_first_scene_subject_name_through_full_pipeline(monkeypatch):
+    multi_fact_hook_script = dict(VALID_SCRIPT, scenes=[
+        {
+            "narration": "Mazagon Dock trades at a current price of ₹2,335.50 and a market cap of ₹81,765 cr.",
+            "visual_query": "shipyard",
+            "on_screen_text": "Mazagon Dock",
+        },
+        {"narration": "That's a strong result overall.", "visual_query": "office", "on_screen_text": ""},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(multi_fact_hook_script))
+    result = prompt_script._write_freeform_script("Mazagon Dock stock analysis")
+    assert result["scenes"][0]["on_screen_text"] == "Mazagon Dock"

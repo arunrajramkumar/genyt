@@ -163,8 +163,8 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                     if not ok:
                         scene["diagram"] = None
             segmented_script.append_subscribe_cta(script["scenes"])
-            for scene in script["scenes"]:
-                _ground_scene_on_screen_text(scene)
+            for i, scene in enumerate(script["scenes"]):
+                _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
             return script
         except (ValueError, KeyError) as e:
             last_error = e
@@ -174,7 +174,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
     )
 
 
-def _ground_scene_on_screen_text(scene: dict) -> None:
+def _ground_scene_on_screen_text(scene: dict, is_first_scene: bool = False) -> None:
     """The freeform path writes a whole multi-scene script in a single LLM
     call -- unlike the segmented path (segmented_script._write_segment_scene),
     nothing previously checked that a scene's on_screen_text actually came
@@ -185,11 +185,21 @@ def _ground_scene_on_screen_text(scene: dict) -> None:
     extraction helpers the segmented path already relies on, applied against
     this scene's own narration (there's no separate source "content" field
     in the freeform path -- the narration itself is the only per-scene source
-    of truth)."""
+    of truth).
+
+    is_first_scene: SYSTEM_PROMPT requires the very first scene's on_screen_text
+    to be the video's subject name, not a metric -- unlike every other scene,
+    where on_screen_text IS meant to surface a metric. So once that name has
+    survived the grounding check, leave it alone: don't let a scene that
+    happens to also narrate 2+ numbers (e.g. "current price of X and a market
+    cap of Y") have its subject name clobbered by those numbers."""
     narration = scene.get("narration") or ""
     on_screen_text = (scene.get("on_screen_text") or "").strip()
     if on_screen_text and not segmented_script._is_grounded(on_screen_text, narration):
         on_screen_text = ""
+    if is_first_scene and on_screen_text:
+        scene["on_screen_text"] = on_screen_text
+        return
     facts = segmented_script._extract_facts(narration)
     if len(facts) > 1:
         on_screen_text = " | ".join(facts)

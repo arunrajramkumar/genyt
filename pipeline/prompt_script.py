@@ -111,10 +111,11 @@ def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: li
 
 def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:
     target_words = int(duration_sec / 60 * 140)
+    is_finance_theme = research.needs_grounding(prompt)
 
     user_prompt = f"{prompt.strip()}\n\n"
 
-    if research.needs_grounding(prompt):
+    if is_finance_theme:
         facts = research.fetch_grounding_facts(prompt)
         if facts:
             user_prompt += (
@@ -165,6 +166,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             segmented_script.append_subscribe_cta(script["scenes"])
             for i, scene in enumerate(script["scenes"]):
                 _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
+            script["company_name"] = _extract_freeform_company_name(script, is_finance_theme)
             return script
         except (ValueError, KeyError) as e:
             last_error = e
@@ -172,6 +174,30 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
     raise RuntimeError(
         f"Model returned an invalid script 3 times in a row ({last_error}). Try again."
     )
+
+
+def _extract_freeform_company_name(script: dict, is_finance_theme: bool):
+    """The freeform path has no per-section "content" field to run
+    segmented_script._extract_company_name's "(NSE: SYMBOL)" regex against --
+    most freeform finance themes are a plain one-line string (e.g. "National
+    Aluminium Company - Stock Analysis For Long Term Growth") with no such
+    marker. Without this, producer.py never had a company_name to pass to
+    ai_thumbnail.generate_hook_background(), so the AI thumbnail silently
+    never activated for ANY freeform-path video (confirmed via the
+    "[ai_thumbnail] no company name available" log line on a real run).
+
+    SYSTEM_PROMPT already requires the first scene's on_screen_text to be the
+    video's subject name for exactly this reason -- reuse it instead of
+    re-deriving a name from the raw theme string with a second regex. Only
+    trusted for themes research.needs_grounding() already flagged as
+    finance/named-entity topics, so a generic creative theme never forces an
+    irrelevant "stock market" thumbnail background."""
+    if not is_finance_theme:
+        return None
+    first_text = (script["scenes"][0].get("on_screen_text") or "").strip()
+    if not first_text or first_text == segmented_script.SUBSCRIBE_CTA_ON_SCREEN_TEXT:
+        return None
+    return first_text
 
 
 def _ground_scene_on_screen_text(scene: dict, is_first_scene: bool = False) -> None:

@@ -311,3 +311,46 @@ def test_write_freeform_script_preserves_first_scene_subject_name_through_full_p
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(multi_fact_hook_script))
     result = prompt_script._write_freeform_script("Mazagon Dock stock analysis")
     assert result["scenes"][0]["on_screen_text"] == "Mazagon Dock"
+
+
+# -- company_name: freeform path must also surface it (for ai_thumbnail) ------
+
+def test_write_freeform_script_sets_company_name_from_first_scene_for_finance_theme(monkeypatch):
+    nalco_script = dict(VALID_SCRIPT, scenes=[
+        {
+            "narration": "National Aluminium is the focus today.",
+            "visual_query": "aluminium plant",
+            "on_screen_text": "National Aluminium Company",
+        },
+        {"narration": "Its price-to-earnings looks cheap.", "visual_query": "chart", "on_screen_text": ""},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(nalco_script))
+    result = prompt_script._write_freeform_script("National Aluminium Company - Stock Analysis For Long Term Growth")
+    assert result["company_name"] == "National Aluminium Company"
+
+
+def test_write_freeform_script_omits_company_name_for_non_finance_theme(monkeypatch):
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(VALID_SCRIPT))
+    result = prompt_script._write_freeform_script("Tell me about octopuses")
+    assert result["company_name"] is None
+
+
+def test_write_freeform_script_omits_company_name_when_first_scene_has_no_text(monkeypatch):
+    untitled_hook_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "A quick look at the numbers.", "visual_query": "chart", "on_screen_text": ""},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(untitled_hook_script))
+    result = prompt_script._write_freeform_script("Tata Motors stock analysis")
+    assert result["company_name"] is None
+
+
+def test_write_freeform_script_does_not_mistake_subscribe_cta_for_company_name(monkeypatch):
+    # Single-scene script: append_subscribe_cta overwrites the only (also
+    # first) scene's on_screen_text with the CTA -- that must never leak out
+    # as a "company name".
+    one_scene_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "Tata Motors at a glance.", "visual_query": "cars", "on_screen_text": "Tata Motors"},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(one_scene_script))
+    result = prompt_script._write_freeform_script("Tata Motors stock analysis")
+    assert result["company_name"] != "SUBSCRIBE FOR MORE"

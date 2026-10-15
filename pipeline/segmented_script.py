@@ -319,7 +319,18 @@ def _ensure_company_name_in_title(title: str, company_name: str) -> str:
     deterministically rather than trusting the sample to always include it."""
     if not company_name or company_name.lower() in title.lower():
         return title
-    return f"{company_name}: {title}"[:70]
+    return f"{company_name}: {title}"
+
+
+def _truncate_title(title: str, limit: int = 70) -> str:
+    """A hard `title[:limit]` cut mid-word (observed in production: "...Is It
+    a Long-Term Wea" instead of "...Wealth Builder?") reads as broken on
+    YouTube -- back off to the last word boundary within the limit instead."""
+    if len(title) <= limit:
+        return title
+    truncated = title[:limit]
+    cut = truncated.rfind(" ")
+    return (truncated[:cut] if cut > 0 else truncated).rstrip(" :-–—")
 
 
 def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = None) -> dict:
@@ -340,7 +351,7 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
             data = _extract_json(raw)
             if not (data.get("title") or "").strip():
                 raise ValueError("empty title")
-            title = _ensure_company_name_in_title(clean_title(data["title"])[:70], company_name)
+            title = _truncate_title(_ensure_company_name_in_title(clean_title(data["title"]), company_name))
             return {
                 "title": title,
                 "description": (data.get("description") or "").strip(),

@@ -392,11 +392,34 @@ def test_ensure_company_name_in_title_noop_when_no_company_name_known():
     assert ss._ensure_company_name_in_title(title, None) == title
 
 
-def test_ensure_company_name_in_title_truncates_to_70_chars():
+def test_ensure_company_name_in_title_does_not_truncate():
+    """Truncation is _truncate_title's job (applied once, after this prepend,
+    so it can back off to a word boundary) -- this function just prepends."""
     title = "Why This Stock Could Be A Massive Multibagger For Long Term Investors"
     result = ss._ensure_company_name_in_title(title, "Premier Polyfilm")
+    assert result == f"Premier Polyfilm: {title}"
+
+
+# -- _truncate_title: backs off to a word boundary instead of cutting mid-word -
+
+def test_truncate_title_leaves_short_title_untouched():
+    assert ss._truncate_title("Short title") == "Short title"
+
+
+def test_truncate_title_backs_off_to_last_word_boundary():
+    """Regression test: a production title was hard-cut to exactly 70 chars
+    mid-word ("...Is It a Long-Term Wea" instead of stopping before "Wea")."""
+    title = "Tips Music (TIPSMUSIC): 5-Year Profit CAGR 89% - Is It a Long-Term Wealth Builder?"
+    result = ss._truncate_title(title)
     assert len(result) <= 70
-    assert result.startswith("Premier Polyfilm:")
+    assert not result.endswith("Wea")
+    assert result == "Tips Music (TIPSMUSIC): 5-Year Profit CAGR 89% - Is It a Long-Term"
+
+
+def test_truncate_title_hard_cuts_when_no_word_boundary_available():
+    title = "x" * 100
+    result = ss._truncate_title(title)
+    assert len(result) == 70
 
 
 def test_write_metadata_cleans_hashtags_and_double_spaces_from_title(monkeypatch):

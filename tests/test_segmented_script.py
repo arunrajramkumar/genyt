@@ -363,8 +363,11 @@ def test_write_segmented_script_extracts_company_name_from_prompt_for_metadata(m
 
     monkeypatch.setattr(ss, "_write_metadata", fake_write_metadata)
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
-    ss.write_segmented_script("Premier Polyfilm (NSE: PREMIER). Write an opening question.", segments)
+    script = ss.write_segmented_script("Premier Polyfilm (NSE: PREMIER). Write an opening question.", segments)
     assert captured["company_name"] == "Premier Polyfilm"
+    # Also surfaced on the returned script dict -- producer.py's AI-thumbnail
+    # background generation needs it to build an image prompt.
+    assert script["company_name"] == "Premier Polyfilm"
 
 
 def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):

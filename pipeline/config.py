@@ -69,6 +69,14 @@ GOOGLE_TTS_MONTHLY_CHAR_CAP = int(os.environ.get("GOOGLE_TTS_MONTHLY_CHAR_CAP", 
 # flip-flopping between "just under" and "just over" across retried runs.
 GOOGLE_TTS_SAFETY_BUFFER_CHARS = int(os.environ.get("GOOGLE_TTS_SAFETY_BUFFER_CHARS", "5000"))
 
+# Google Imagen — optional AI-generated "hookable" thumbnail/hook-card
+# background (a purpose-built dramatic scene, instead of whatever stock
+# footage frame happened to be picked). Unset by default: the pipeline falls
+# back to the existing Pexels-footage-frame background (see
+# pipeline/ai_thumbnail.py / pipeline/producer.py) rather than failing.
+GOOGLE_IMAGEN_API_KEY = os.environ.get("GOOGLE_IMAGEN_API_KEY", "")
+GOOGLE_IMAGEN_MODEL = os.environ.get("GOOGLE_IMAGEN_MODEL", "imagen-3.0-generate-002")
+
 
 # Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays
 # under the ~512MB RAM ceiling of the free hosting tier this runs on.

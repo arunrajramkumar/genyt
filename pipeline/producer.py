@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import config, diagrams, tts, visuals, assemble, captions, textcard, youtube_upload
+from . import ai_thumbnail, config, diagrams, tts, visuals, assemble, captions, textcard, youtube_upload
 
 
 def slugify(title: str) -> str:
@@ -140,7 +140,11 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
 
     on_progress("Rendering hook card / thumbnail")
     stat_text = _pick_hook_stat(script["scenes"])
-    hook_bg_path = _pick_hook_background(visual_paths, work_dir, on_progress)
+    hook_bg_path = ai_thumbnail.generate_hook_background(
+        script.get("company_name"), work_dir / "ai_hook_bg.png", on_progress,
+    )
+    if hook_bg_path is None:
+        hook_bg_path = _pick_hook_background(visual_paths, work_dir, on_progress)
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
     textcard.render_hook_card(
         script["title"], stat_text, orientation["width"], orientation["height"],

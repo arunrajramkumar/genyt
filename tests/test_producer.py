@@ -361,6 +361,56 @@ def test_produce_from_script_raises_before_synthesizing_when_budget_exhausted(mo
 
 # -- diagram-first visual fetching ----------------------------------------------
 
+# -- AI-generated ("Imagen") hook-card background, when configured --------------
+
+def test_produce_from_script_uses_ai_background_when_generated(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(producer.ai_thumbnail, "generate_hook_background", lambda *a, **k: Path("/tmp/ai_bg.png"))
+    background_calls = []
+
+    def fake_pick_hook_background(*a, **k):
+        background_calls.append(1)
+        return None
+
+    monkeypatch.setattr(producer, "_pick_hook_background", fake_pick_hook_background)
+
+    captured = {}
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+        captured["background_path"] = background_path
+        return out_path
+    monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
+
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+
+    assert captured["background_path"] == Path("/tmp/ai_bg.png")
+    assert background_calls == []  # the Pexels fallback was never needed
+
+
+def test_produce_from_script_falls_back_to_stock_background_when_ai_background_unavailable(mocked_pipeline, monkeypatch, tmp_path):
+    monkeypatch.setattr(producer.ai_thumbnail, "generate_hook_background", lambda *a, **k: None)
+
+    captured = {}
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+        captured["background_path"] = background_path
+        return out_path
+    monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
+
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+
+    assert captured["background_path"] == tmp_path / "visual.jpg"  # falls back to the scene's own visual
+
+
+def test_produce_from_script_passes_company_name_to_ai_background(mocked_pipeline, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        producer.ai_thumbnail, "generate_hook_background",
+        lambda company_name, out_path, on_progress=print: captured.setdefault("company_name", company_name),
+    )
+    script = _stub_script()
+    script["company_name"] = "Arrow Greentech"
+    producer.produce_from_script(script, on_progress=lambda m: None)
+    assert captured["company_name"] == "Arrow Greentech"
+
+
 def test_produce_from_script_renders_diagram_instead_of_fetching_stock_visual(mocked_pipeline, monkeypatch):
     script = _stub_script()
     script["scenes"][0]["diagram"] = {"kind": "number_line", "min": 1, "max": 5, "highlight": [3]}

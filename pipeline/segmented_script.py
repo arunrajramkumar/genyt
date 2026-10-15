@@ -407,8 +407,15 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, 
         scenes.append(scene)
 
     style_guidance = youtube_insights.get_combined_guidance()
-    meta = _write_metadata(scenes, style_guidance, company_name=_extract_company_name(prompt))
+    company_name = _extract_company_name(prompt)
+    meta = _write_metadata(scenes, style_guidance, company_name=company_name)
     tags = merge_tags(extra_tags or [], meta["tags"] or ["short video"])
     append_subscribe_cta(scenes)
 
-    return {"title": meta["title"], "description": meta["description"], "tags": tags, "scenes": scenes}
+    return {
+        "title": meta["title"],
+        "description": meta["description"],
+        "tags": tags,
+        "scenes": scenes,
+        "company_name": company_name,
+    }

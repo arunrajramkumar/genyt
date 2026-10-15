@@ -497,3 +497,72 @@ themes:
   duration_sec: 60
   shorts: true
   done: false
+- theme: '0-12 seconds - Hook
+
+    Reliance (NSE: RELIANCE). Write an exciting, curiosity-sparking opening question
+    for stock-market viewers, using ONLY this headline fact: Market Cap: ₹ 16,29,994
+    Cr..
+
+
+    12-40 seconds - Key Metrics
+
+    Explain what these valuation metrics for Reliance (NSE: RELIANCE) mean for a retail
+    investor, in simple terms. Facts:
+
+    Market Cap: ₹ 16,29,994 Cr.
+
+    Current Price: ₹ 1,204
+
+    High / Low: ₹ 1,612 / 1,152
+
+    Stock P/E: 41.6
+
+    Book Value: ₹ 418
+
+    Dividend Yield: 0.51 %
+
+    ROCE: 7.78 %
+
+    ROE: 7.71 %
+
+    Face Value: ₹ 10.0
+
+
+    40-65 seconds - Revenue & Profit Growth
+
+    Explain what this quarterly growth trend means for Reliance. Facts:
+
+    Revenue grew 40.6% year-on-year
+
+    Net profit grew -25.9% year-on-year
+
+    Latest quarterly revenue: Rs 163,631 crore
+
+    Latest quarterly net profit: Rs 13,272 crore
+
+
+    65-87 seconds - Risk & Verdict
+
+    Based ONLY on the valuation and growth facts already given above, raise one balanced,
+    neutral question a long-term investor should still answer for themselves about
+    Reliance (e.g. whether the current valuation already prices in the growth). Do
+    not give a buy/sell recommendation, and do not add any new numbers beyond what''s
+    already been given.
+
+
+    87-100 seconds - Recap
+
+    Briefly restate the key numbers and the open question about Reliance so viewers
+    remember them.'
+  style: confident, data-driven stock-analysis explainer, strictly neutral -- no investment
+    advice
+  duration_sec: 100
+  shorts: true
+  done: true
+  extra_tags:
+  - stock analysis
+  - Reliance
+  - RELIANCE
+  - NSE
+  - investing
+  _label: 'Reliance (NSE: RELIANCE)'

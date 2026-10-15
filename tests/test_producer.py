@@ -359,9 +359,7 @@ def test_produce_from_script_raises_before_synthesizing_when_budget_exhausted(mo
     assert synthesize_calls == []
 
 
-# -- diagram-first visual fetching ----------------------------------------------
-
-# -- AI-generated ("Imagen") hook-card background, when configured --------------
+# -- AI-generated (Pollinations.ai, free/keyless) hook-card background --------
 
 def test_produce_from_script_uses_ai_background_when_generated(mocked_pipeline, monkeypatch):
     monkeypatch.setattr(producer.ai_thumbnail, "generate_hook_background", lambda *a, **k: Path("/tmp/ai_bg.png"))
@@ -403,7 +401,7 @@ def test_produce_from_script_passes_company_name_to_ai_background(mocked_pipelin
     captured = {}
     monkeypatch.setattr(
         producer.ai_thumbnail, "generate_hook_background",
-        lambda company_name, out_path, on_progress=print: captured.setdefault("company_name", company_name),
+        lambda company_name, out_path, on_progress=print, width=None, height=None: captured.setdefault("company_name", company_name),
     )
     script = _stub_script()
     script["company_name"] = "Arrow Greentech"

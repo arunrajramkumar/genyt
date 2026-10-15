@@ -1,23 +1,22 @@
-"""Generates an AI thumbnail/hook-card background image via Google's Imagen
-API, when configured — a purpose-built "hookable" visual (e.g. a dramatic
-trading-floor scene) reads as more attention-grabbing on a feed than whatever
-stock-footage frame happened to get picked, and doesn't depend on Pexels
-having a matching clip for an obscure small-cap stock.
+"""Generates a free AI thumbnail/hook-card background image via Pollinations.ai
+— a purpose-built "hookable" visual (e.g. a dramatic trading-floor scene)
+reads as more attention-grabbing on a feed than whatever stock-footage frame
+happened to get picked, and doesn't depend on Pexels having a matching clip
+for an obscure small-cap stock.
 
-Best-effort throughout: a missing key, quota error, or API failure just means
-producer.py falls back to its existing Pexels-frame background — never a
-blocked video.
+Pollinations.ai needs no API key/account/billing (unlike Google Imagen,
+OpenAI, etc.) — just an unauthenticated GET request that returns the image
+bytes directly. It's a public, best-effort service with no SLA, so this is
+still wired as best-effort throughout: any network/rate-limit/content
+failure just means producer.py falls back to its existing Pexels-frame
+background — never a blocked video.
 """
-import base64
+import urllib.parse
 from pathlib import Path
 
 import requests
 
-from . import config
-
-IMAGEN_ENDPOINT = (
-    "https://generativelanguage.googleapis.com/v1beta/models/{model}:predict?key={key}"
-)
+POLLINATIONS_ENDPOINT = "https://image.pollinations.ai/prompt/{prompt}"
 
 
 def _build_prompt(company_name: str) -> str:
@@ -34,33 +33,28 @@ def _build_prompt(company_name: str) -> str:
     )
 
 
-def generate_hook_background(company_name: str, out_path: Path, on_progress=print):
-    """Returns `out_path` on success, or None (never raises) if Imagen isn't
-    configured or the request fails for any reason."""
-    if not config.GOOGLE_IMAGEN_API_KEY:
-        on_progress("[ai_thumbnail] GOOGLE_IMAGEN_API_KEY not set; skipping AI thumbnail background")
-        return None
+def generate_hook_background(company_name: str, out_path: Path, on_progress=print,
+                              width: int = 720, height: int = 1280):
+    """Returns `out_path` on success, or None (never raises) if there's no
+    company name to work with or the request fails for any reason."""
     if not company_name:
         on_progress("[ai_thumbnail] no company name available; skipping AI thumbnail background")
         return None
 
-    url = IMAGEN_ENDPOINT.format(model=config.GOOGLE_IMAGEN_MODEL, key=config.GOOGLE_IMAGEN_API_KEY)
-    body = {
-        "instances": [{"prompt": _build_prompt(company_name)}],
-        "parameters": {"sampleCount": 1, "aspectRatio": "9:16"},
-    }
+    prompt = urllib.parse.quote(_build_prompt(company_name))
+    url = POLLINATIONS_ENDPOINT.format(prompt=prompt)
+    params = {"width": width, "height": height, "nologo": "true"}
     try:
-        resp = requests.post(url, json=body, timeout=45)
+        resp = requests.get(url, params=params, timeout=45)
         resp.raise_for_status()
-        predictions = (resp.json() or {}).get("predictions") or []
-        image_b64 = predictions[0].get("bytesBase64Encoded") if predictions else None
-        if not image_b64:
-            on_progress("[ai_thumbnail] Imagen returned no image; falling back to stock-footage background")
+        content_type = resp.headers.get("content-type", "").split(";")[0].strip()
+        if not resp.content or not content_type.startswith("image/"):
+            on_progress("[ai_thumbnail] Pollinations returned no usable image; falling back to stock-footage background")
             return None
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(base64.b64decode(image_b64))
+        out_path.write_bytes(resp.content)
         on_progress(f"[ai_thumbnail] generated AI thumbnail background for {company_name!r}")
         return out_path
     except Exception as e:
-        on_progress(f"[ai_thumbnail] Imagen request failed ({e}); falling back to stock-footage background")
+        on_progress(f"[ai_thumbnail] AI thumbnail request failed ({e}); falling back to stock-footage background")
         return None

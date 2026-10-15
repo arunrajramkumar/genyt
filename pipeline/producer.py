@@ -142,6 +142,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     stat_text = _pick_hook_stat(script["scenes"])
     hook_bg_path = ai_thumbnail.generate_hook_background(
         script.get("company_name"), work_dir / "ai_hook_bg.png", on_progress,
+        width=orientation["width"], height=orientation["height"],
     )
     if hook_bg_path is None:
         hook_bg_path = _pick_hook_background(visual_paths, work_dir, on_progress)

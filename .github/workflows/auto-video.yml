@@ -63,10 +63,6 @@ jobs:
           # API instead. Render/local stay on edge-tts by default (var unset there).
           TTS_ENGINE: "google"
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
-          # Optional: AI-generated "hookable" thumbnail background via Google
-          # Imagen. Unset (empty secret) simply falls back to the existing
-          # Pexels-frame background -- see pipeline/ai_thumbnail.py.
-          GOOGLE_IMAGEN_API_KEY: ${{ secrets.GOOGLE_IMAGEN_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts

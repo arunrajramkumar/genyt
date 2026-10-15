@@ -83,6 +83,16 @@ def test_get_market_trend_guidance_returns_summary_when_videos_available(monkeyp
     assert mt.get_market_trend_guidance() == "- Trend bullet"
 
 
+def test_get_market_trend_guidance_prints_success_when_guidance_found(monkeypatch, capsys):
+    videos = [{"title": "T", "channel_title": "C", "views": 100}]
+    monkeypatch.setattr(mt, "fetch_trending_niche_videos", lambda queries=None: videos)
+    monkeypatch.setattr(mt, "summarize_market_trends", lambda v: "- Trend bullet")
+    mt.get_market_trend_guidance()
+    out = capsys.readouterr().out
+    assert "[market_trends]" in out
+    assert "1 video" in out
+
+
 # -- get_market_trend_guidance: prints why it returned empty, for the same
 # observability reason as youtube_insights.get_style_guidance -----------------
 

@@ -63,12 +63,14 @@ def test_get_style_guidance_prints_reason_on_unexpected_error(monkeypatch, capsy
     assert "boom" in capsys.readouterr().out
 
 
-def test_get_style_guidance_silent_when_guidance_found(monkeypatch, capsys):
+def test_get_style_guidance_prints_success_when_guidance_found(monkeypatch, capsys):
     videos = [{"title": "T", "tags": ["a"], "views": 100, "ctr": 5.0, "avg_view_duration_sec": 20.0}]
     monkeypatch.setattr(yi, "fetch_channel_insights", lambda max_videos=20: videos)
     monkeypatch.setattr(yi, "summarize_insights", lambda v: "- Lead with a number")
     yi.get_style_guidance()
-    assert capsys.readouterr().out == ""
+    out = capsys.readouterr().out
+    assert "[youtube_insights]" in out
+    assert "1 video" in out
 
 
 # -- get_combined_guidance: merges own-channel + niche-wide guidance ----------
@@ -79,6 +81,15 @@ def test_get_combined_guidance_merges_both_sources(monkeypatch):
     combined = yi.get_combined_guidance()
     assert "Own channel bullet" in combined
     assert "Niche bullet" in combined
+
+
+def test_get_combined_guidance_prints_the_guidance_actually_used(monkeypatch, capsys):
+    monkeypatch.setattr(yi, "get_style_guidance", lambda: "- Own channel bullet")
+    monkeypatch.setattr(yi.market_trends, "get_market_trend_guidance", lambda: "- Niche bullet")
+    yi.get_combined_guidance()
+    out = capsys.readouterr().out
+    assert "Own channel bullet" in out
+    assert "Niche bullet" in out
 
 
 def test_get_combined_guidance_omits_empty_sections(monkeypatch):

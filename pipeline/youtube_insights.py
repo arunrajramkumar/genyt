@@ -206,6 +206,8 @@ def get_style_guidance(max_videos: int = 20) -> str:
         return ""
     if not guidance:
         print("[youtube_insights] model returned no usable guidance from channel insights")
+    else:
+        print(f"[youtube_insights] got own-channel guidance from {len(videos)} videos")
     return guidance
 
 
@@ -221,6 +223,9 @@ def get_combined_guidance() -> str:
     niche = market_trends.get_market_trend_guidance()
     if niche:
         sections.append(f"Broader finance/stock-analysis/wealth niche trends right now:\n{niche}")
-    if not sections:
+    combined = "\n\n".join(sections)
+    if not combined:
         print("[youtube_insights] no channel or niche guidance available -- this video's title/hook prompt gets none")
-    return "\n\n".join(sections)
+    else:
+        print(f"[youtube_insights] guidance fed into this video's title/hook prompt:\n{combined}")
+    return combined

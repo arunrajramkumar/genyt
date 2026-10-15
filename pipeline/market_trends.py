@@ -152,4 +152,6 @@ def get_market_trend_guidance(queries: list = None) -> str:
         return ""
     if not guidance:
         print("[market_trends] model returned no usable guidance from niche trends")
+    else:
+        print(f"[market_trends] got niche-trend guidance from {len(videos)} videos")
     return guidance

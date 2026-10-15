@@ -94,13 +94,24 @@ in what's drawing views right now — hot subtopics, title phrasing, angle/forma
 
 Output ONLY valid JSON (no markdown fences, no commentary):
 
-{"guidance": "3-6 short bullet points, each a concrete, specific instruction for the NEXT
-video's topic framing, title, and hook, e.g. '- Videos naming a specific stock plus a bold
-number in the title are outperforming generic how-to-invest videos right now' — never
-vague advice like 'make it interesting'."}
+{"guidance": "a single string containing 3-6 short bullet points (newline-separated
+within that one string, NOT a JSON array), each a concrete, specific instruction for the
+NEXT video's topic framing, title, and hook, e.g. '- Videos naming a specific stock plus
+a bold number in the title are outperforming generic how-to-invest videos right now' —
+never vague advice like 'make it interesting'."}
 
 Stay neutral and factual — don't invent a trend that isn't visible in the data given.
 """
+
+
+def _coerce_guidance(value) -> str:
+    """See youtube_insights._coerce_guidance -- a production run showed the
+    model return "guidance" as a JSON array instead of the single string the
+    prompt asks for, which crashed `.strip()` and silently killed this whole
+    guidance call every time it happened."""
+    if isinstance(value, list):
+        return "\n".join(str(item).strip() for item in value if str(item).strip())
+    return (value or "").strip()
 
 
 def summarize_market_trends(videos: list) -> str:
@@ -113,7 +124,7 @@ def summarize_market_trends(videos: list) -> str:
         raw = llm.chat_json(SYSTEM_PROMPT_MARKET_TRENDS, user_prompt, max_tokens=400, timeout=60)
         try:
             data = _extract_json(raw)
-            guidance = (data.get("guidance") or "").strip()
+            guidance = _coerce_guidance(data.get("guidance"))
             if guidance:
                 return guidance
         except (ValueError, json.JSONDecodeError):

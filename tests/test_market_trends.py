@@ -58,6 +58,17 @@ def test_summarize_market_trends_returns_empty_after_bad_responses(monkeypatch):
     assert mt.summarize_market_trends(videos) == ""
 
 
+def test_summarize_market_trends_handles_guidance_returned_as_a_list(monkeypatch):
+    """Regression test: same production failure as youtube_insights -- the
+    model returned "guidance" as a JSON array instead of a single string."""
+    monkeypatch.setattr(
+        mt.llm, "chat_json",
+        lambda *a, **k: _mock_response({"guidance": ["- Name a specific stock", "- Use a bold number"]}),
+    )
+    videos = [{"title": "T", "channel_title": "C", "views": 1000}]
+    assert mt.summarize_market_trends(videos) == "- Name a specific stock\n- Use a bold number"
+
+
 # -- get_market_trend_guidance: best-effort, never raises ---------------------
 
 def test_get_market_trend_guidance_returns_empty_on_fetch_failure(monkeypatch):

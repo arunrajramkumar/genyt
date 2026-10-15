@@ -195,3 +195,17 @@ def test_summarize_insights_returns_empty_after_bad_responses(monkeypatch):
     monkeypatch.setattr(yi.llm, "chat_json", lambda *a, **k: "not json at all")
     videos = [{"title": "T", "tags": [], "views": 1, "ctr": None, "avg_view_duration_sec": None}]
     assert yi.summarize_insights(videos) == ""
+
+
+def test_summarize_insights_handles_guidance_returned_as_a_list(monkeypatch):
+    """Regression test: a production run had the model return "guidance" as a
+    JSON array of bullets instead of the single string the prompt asks for --
+    `.strip()` on a list raised AttributeError and silently killed the whole
+    guidance call."""
+    monkeypatch.setattr(
+        yi.llm, "chat_json",
+        lambda *a, **k: _mock_response({"guidance": ["- Lead with a number", "- Keep hooks under 8 words"]}),
+    )
+    videos = [{"title": "T", "tags": ["a"], "views": 10, "ctr": None, "avg_view_duration_sec": None}]
+    assert yi.summarize_insights(videos) == "- Lead with a number\n- Keep hooks under 8 words"
+

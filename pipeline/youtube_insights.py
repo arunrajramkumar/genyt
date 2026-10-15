@@ -131,13 +131,26 @@ hooks viewers — title phrasing, use of numbers/specifics, tag choices, hook le
 
 Output ONLY valid JSON (no markdown fences, no commentary):
 
-{"guidance": "3-6 short bullet points, each a concrete, specific instruction for writing
-the NEXT video's title and opening hook, e.g. '- Lead with a specific number in the
-first 5 words' — never vague advice like 'be engaging'."}
+{"guidance": "a single string containing 3-6 short bullet points (newline-separated
+within that one string, NOT a JSON array), each a concrete, specific instruction for
+writing the NEXT video's title and opening hook, e.g. '- Lead with a specific number in
+the first 5 words' — never vague advice like 'be engaging'."}
 
 If the data doesn't show a clear pattern (too few videos, no real variation), say so
 honestly in one bullet rather than inventing a pattern that isn't there.
 """
+
+
+def _coerce_guidance(value) -> str:
+    """A production run showed the model return "guidance" as a JSON array of
+    bullet strings instead of the single newline-separated string the prompt
+    asks for -- `(value or "").strip()` then crashed with AttributeError
+    ('list' object has no attribute 'strip'), which silently killed this
+    whole guidance call (caught by the broader except below) every time it
+    happened. Accept either shape instead of trusting the model's formatting."""
+    if isinstance(value, list):
+        return "\n".join(str(item).strip() for item in value if str(item).strip())
+    return (value or "").strip()
 
 
 def summarize_insights(videos: list) -> str:
@@ -155,7 +168,7 @@ def summarize_insights(videos: list) -> str:
         raw = llm.chat_json(SYSTEM_PROMPT_INSIGHTS, user_prompt, max_tokens=400, timeout=60)
         try:
             data = _extract_json(raw)
-            guidance = (data.get("guidance") or "").strip()
+            guidance = _coerce_guidance(data.get("guidance"))
             if guidance:
                 return guidance
         except (ValueError, json.JSONDecodeError) as e:

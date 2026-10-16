@@ -566,3 +566,72 @@ themes:
   - NSE
   - investing
   _label: 'Reliance (NSE: RELIANCE)'
+- theme: '0-12 seconds - Hook
+
+    Bharti Airtel (NSE: BHARTIARTL). Write an exciting, curiosity-sparking opening
+    question for stock-market viewers, using ONLY this headline fact: Market Cap:
+    ₹ 11,85,844 Cr..
+
+
+    12-40 seconds - Key Metrics
+
+    Explain what these valuation metrics for Bharti Airtel (NSE: BHARTIARTL) mean
+    for a retail investor, in simple terms. Facts:
+
+    Market Cap: ₹ 11,85,844 Cr.
+
+    Current Price: ₹ 1,900
+
+    High / Low: ₹ 2,175 / 1,726
+
+    Stock P/E: 68.8
+
+    Book Value: ₹ 263
+
+    Dividend Yield: 1.28 %
+
+    ROCE: 12.7 %
+
+    ROE: 10.7 %
+
+    Face Value: ₹ 5.00
+
+
+    40-65 seconds - Revenue & Profit Growth
+
+    Explain what this quarterly growth trend means for Bharti Airtel. Facts:
+
+    Revenue grew 10.6% year-on-year
+
+    Net profit grew 44.2% year-on-year
+
+    Latest quarterly revenue: Rs 32,357 crore
+
+    Latest quarterly net profit: Rs 5,428 crore
+
+
+    65-87 seconds - Risk & Verdict
+
+    Based ONLY on the valuation and growth facts already given above, raise one balanced,
+    neutral question a long-term investor should still answer for themselves about
+    Bharti Airtel (e.g. whether the current valuation already prices in the growth).
+    Do not give a buy/sell recommendation, and do not add any new numbers beyond what''s
+    already been given.
+
+
+    87-100 seconds - Recap
+
+    Briefly restate the key numbers and the open question about Bharti Airtel so viewers
+    remember them.'
+  style: confident, data-driven stock-analysis explainer, strictly neutral -- no investment
+    advice
+  duration_sec: 100
+  shorts: true
+  done: true
+  extra_tags:
+  - stock analysis
+  - Bharti Airtel
+  - BHARTIARTL
+  - NSE
+  - investing
+  _label: 'Bharti Airtel (NSE: BHARTIARTL)'

@@ -94,7 +94,13 @@ def upload_video(
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None
     while response is None:
-        _, response = request.next_chunk()
+        # A multi-minute resumable upload has plenty of chances to hit a
+        # transient network blip or a 5xx from YouTube -- without retries,
+        # that silently throws away an entire render (the slow, expensive
+        # part of the pipeline) over a single bad chunk. num_retries>0 makes
+        # next_chunk() retry a failed chunk with exponential backoff instead
+        # of raising immediately.
+        _, response = request.next_chunk(num_retries=5)
     video_id = response["id"]
 
     if captions_path:

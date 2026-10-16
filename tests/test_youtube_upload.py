@@ -73,8 +73,10 @@ class _FakeRequest:
 
     def __init__(self, response):
         self._response = response
+        self.num_retries_seen = None
 
-    def next_chunk(self):
+    def next_chunk(self, num_retries=0):
+        self.num_retries_seen = num_retries
         return None, self._response
 
 
@@ -111,6 +113,24 @@ def test_upload_video_returns_url_and_uploads_captions(tmp_path, monkeypatch):
     assert captured["video_body"]["snippet"]["title"] == "Title"
     assert captured["captions_body"]["snippet"]["language"] == "ta"
     captions_execute.assert_called_once()
+
+
+def test_upload_video_retries_chunk_uploads_on_transient_failure(tmp_path, monkeypatch):
+    """A multi-minute resumable upload has plenty of chances to hit a
+    transient network blip or a 5xx -- without retries, that throws away an
+    entire render (the slow, expensive part of the pipeline) over one bad
+    chunk."""
+    video_path = tmp_path / "video.mp4"
+    video_path.write_bytes(b"fake")
+
+    fake_request = _FakeRequest({"id": "abc123"})
+    fake_youtube = mock.Mock()
+    fake_youtube.videos.return_value.insert.return_value = fake_request
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    youtube_upload.upload_video(video_path, "Title", "Description", ["tag1"])
+
+    assert fake_request.num_retries_seen == 5
 
 
 def test_upload_video_respects_explicit_privacy_status(tmp_path, monkeypatch):

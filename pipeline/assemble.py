@@ -16,6 +16,13 @@ _VIDEO_BITRATE_ARGS = ["-b:v", "1200k", "-maxrate", "1500k", "-bufsize", "3000k"
 
 HOOK_CARD_DURATION = 2.0
 
+# Slight contrast/saturation lift on real photo/video stock footage (not the
+# flat-colored diagram PNGs, where boosting saturation would just wash out
+# text/box contrast) -- stock footage straight off Pexels tends to look flat
+# compared to professionally color-graded finance-channel content, and this
+# is a free one-line ffmpeg filter rather than a new asset/dependency.
+COLOR_GRADE_FILTER = "eq=contrast=1.08:saturation=1.18:brightness=0.01"
+
 # YouTube re-normalizes playback loudness to roughly -14 LUFS anyway, but it
 # does so by turning the whole track down to match the loudest video on the
 # platform -- a narration track recorded quieter than that (which varies scene
@@ -65,7 +72,8 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
         vf = (
             f"{scale_crop},"
             f"zoompan=z='min(zoom+0.0006,1.15)':d={zoom_frames}:"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={config.VIDEO_FPS}"
+            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={config.VIDEO_FPS},"
+            f"{COLOR_GRADE_FILTER}"
         )
         cmd = [
             FFMPEG_BIN, "-y", "-loop", "1", "-i", str(visual_path),
@@ -90,11 +98,12 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
         # frame rates there corrupt the container's duration metadata and
         # desync audio from video. Force a consistent fps here so every scene
         # clip is uniform before concatenation.
+        video_vf = f"{scale_crop},{COLOR_GRADE_FILTER}"
         source_duration = _probe_duration(visual_path)
         if source_duration >= duration:
             cmd = [
                 FFMPEG_BIN, "-y", "-i", str(visual_path),
-                "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
+                "-t", str(duration), "-vf", video_vf, "-r", str(config.VIDEO_FPS),
                 "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
                 "-pix_fmt", "yuv420p", str(out_path),
             ]
@@ -102,7 +111,7 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
             loops = int(duration // source_duration) + 1
             cmd = [
                 FFMPEG_BIN, "-y", "-stream_loop", str(loops), "-i", str(visual_path),
-                "-t", str(duration), "-vf", scale_crop, "-r", str(config.VIDEO_FPS),
+                "-t", str(duration), "-vf", video_vf, "-r", str(config.VIDEO_FPS),
                 "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
                 "-pix_fmt", "yuv420p", str(out_path),
             ]

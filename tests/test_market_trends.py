@@ -23,11 +23,13 @@ def test_fetch_trending_niche_videos_dedupes_across_queries_and_sorts_by_views(m
 
     monkeypatch.setattr(mt, "_search_videos", fake_search)
     monkeypatch.setattr(mt, "_video_view_counts", lambda youtube, ids: {"v1": 500, "v2": 9000})
+    monkeypatch.setattr(mt, "_video_tags", lambda youtube, ids: {"v1": ["tag1"], "v2": ["tag2"]})
 
     videos = mt.fetch_trending_niche_videos()
 
     assert [v["video_id"] for v in videos] == ["v2", "v1"]  # sorted by views, deduped
     assert videos[0]["views"] == 9000
+    assert videos[0]["tags"] == ["tag2"]
 
 
 def test_fetch_trending_niche_videos_returns_empty_when_no_results(monkeypatch):
@@ -106,4 +108,42 @@ def test_get_market_trend_guidance_prints_reason_when_no_videos_found(monkeypatc
     monkeypatch.setattr(mt, "fetch_trending_niche_videos", lambda queries=None: [])
     mt.get_market_trend_guidance()
     assert "market_trends" in capsys.readouterr().out
+
+
+# -- top_competitor_tags: ranks by number of distinct videos using a tag -----
+
+def test_top_competitor_tags_ranks_by_video_coverage_not_raw_count():
+    videos = [
+        {"tags": ["stock market", "nifty", "nifty"]},  # dupe within one video shouldn't double-count
+        {"tags": ["stock market", "sensex"]},
+        {"tags": ["stock market"]},
+    ]
+    assert mt.top_competitor_tags(videos, limit=2) == ["stock market", "nifty"]
+
+
+def test_top_competitor_tags_dedupes_case_insensitively_keeping_first_casing():
+    videos = [{"tags": ["Nifty50"]}, {"tags": ["nifty50"]}]
+    assert mt.top_competitor_tags(videos) == ["Nifty50"]
+
+
+def test_top_competitor_tags_handles_videos_with_no_tags():
+    assert mt.top_competitor_tags([{"tags": []}, {}]) == []
+
+
+# -- get_competitor_tags: best-effort, never raises ---------------------------
+
+def test_get_competitor_tags_returns_empty_on_fetch_failure(monkeypatch):
+    monkeypatch.setattr(mt, "fetch_trending_niche_videos", mock.Mock(side_effect=RuntimeError("quota exceeded")))
+    assert mt.get_competitor_tags() == []
+
+
+def test_get_competitor_tags_returns_empty_when_no_videos(monkeypatch):
+    monkeypatch.setattr(mt, "fetch_trending_niche_videos", lambda queries=None: [])
+    assert mt.get_competitor_tags() == []
+
+
+def test_get_competitor_tags_returns_ranked_tags(monkeypatch):
+    videos = [{"tags": ["stock market"]}, {"tags": ["stock market"]}]
+    monkeypatch.setattr(mt, "fetch_trending_niche_videos", lambda queries=None: videos)
+    assert mt.get_competitor_tags(limit=5) == ["stock market"]
 

@@ -26,13 +26,13 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline import config, fundamentals, research, trending_stocks  # noqa: E402
+from pipeline import config, fundamentals, market_trends, research, trending_stocks  # noqa: E402
 
 MIN_DURATION = 90
 MAX_DURATION = 120
 
 
-def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100) -> dict:
+def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100, competitor_tags: list = None) -> dict:
     """Returns None if fundamentals couldn't be fetched for this symbol --
     callers must skip the company rather than queue a theme with no real
     facts to ground it in."""
@@ -112,8 +112,11 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100) -
         "shorts": True,
         "done": False,
         # Tags that must appear regardless of what the LLM comes up with (see
-        # segmented_script.merge_tags).
-        "extra_tags": ["stock analysis", company_name, symbol, "NSE", "investing"],
+        # segmented_script.merge_tags). Competitor tags (real tags mined from
+        # other channels' currently-popular niche videos, see
+        # market_trends.get_competitor_tags) come last so the company-specific
+        # tags above always survive merge_tags' character budget first.
+        "extra_tags": ["stock analysis", company_name, symbol, "NSE", "investing", *(competitor_tags or [])],
         # "25" = News & Politics -- these videos are about currently-trending
         # market news for a named company, not the generic "22" People & Blogs
         # bucket every upload defaulted to.
@@ -178,8 +181,11 @@ def main():
             items.append((symbol.strip(), name.strip() or symbol.strip()))
 
     entries = []
+    competitor_tags = market_trends.get_competitor_tags(limit=5)
+    if competitor_tags:
+        print(f"Mined competitor tags: {', '.join(competitor_tags)}")
     for symbol, name in items:
-        entry = build_theme_entry(symbol, name, args.duration)
+        entry = build_theme_entry(symbol, name, args.duration, competitor_tags)
         if entry is None:
             print(f"Skipping {symbol} -- could not fetch fundamentals")
             continue

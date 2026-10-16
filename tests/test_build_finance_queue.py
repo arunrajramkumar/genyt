@@ -72,6 +72,12 @@ def test_build_theme_entry_sets_shorts_and_extra_tags(monkeypatch):
     assert "CDSL" in entry["extra_tags"]
 
 
+def test_build_theme_entry_appends_competitor_tags(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    entry = build_theme_entry("CDSL", "CDSL Ltd", competitor_tags=["mutual funds", "share market"])
+    assert entry["extra_tags"][-2:] == ["mutual funds", "share market"]
+
+
 # -- existing_symbols: reads already-covered NSE symbols out of a queue file -
 
 def testexisting_symbols_returns_empty_set_for_missing_file():
@@ -109,6 +115,7 @@ def test_main_trending_queues_discovered_candidates(monkeypatch, tmp_path):
         lambda exclude_symbols, limit: [{"symbol": "TCS", "name": "TCS"}],
     )
     monkeypatch.setattr(build_finance_queue.fundamentals, "fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    monkeypatch.setattr(build_finance_queue.market_trends, "get_competitor_tags", lambda limit=5: [])
 
     build_finance_queue.main()
 
@@ -124,6 +131,7 @@ def test_main_trending_skips_fundamentals_query_when_nothing_discovered(monkeypa
         ["build_finance_queue.py", "--trending", "--output", str(output)],
     )
     monkeypatch.setattr(build_finance_queue.trending_stocks, "select_trending_symbols", lambda exclude_symbols, limit: [])
+    monkeypatch.setattr(build_finance_queue.market_trends, "get_competitor_tags", lambda limit=5: [])
 
     def fail_if_called(symbol):
         raise AssertionError("fetch_fundamentals should not be called with no candidates")

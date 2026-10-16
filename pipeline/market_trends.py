@@ -13,6 +13,7 @@ means no guidance, never a blocked video.
 """
 import json
 import re
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from googleapiclient.discovery import build
@@ -66,6 +67,20 @@ def _video_view_counts(youtube, video_ids: list) -> dict:
     return counts
 
 
+def _video_tags(youtube, video_ids: list) -> dict:
+    """Returns {video_id: [tag, ...]}. These are the actual public tags other
+    channels put on their own currently-popular videos in this niche -- real
+    SEO signal, not an LLM guess, so no grounding check is needed the way
+    LLM-generated content elsewhere in this pipeline requires."""
+    tags = {}
+    for i in range(0, len(video_ids), 50):
+        batch = video_ids[i:i + 50]
+        resp = youtube.videos().list(part="snippet", id=",".join(batch)).execute()
+        for item in resp.get("items", []):
+            tags[item["id"]] = item.get("snippet", {}).get("tags") or []
+    return tags
+
+
 def fetch_trending_niche_videos(queries: list = None, max_videos: int = MAX_VIDEOS_FOR_SUMMARY) -> list:
     """Returns the channel-agnostic set of currently popular niche videos,
     newest-trend-first by view count: [{title, channel_title, views}, ...]."""
@@ -81,8 +96,9 @@ def fetch_trending_niche_videos(queries: list = None, max_videos: int = MAX_VIDE
     if not video_ids:
         return []
     view_counts = _video_view_counts(youtube, video_ids)
+    tags = _video_tags(youtube, video_ids)
 
-    videos = [dict(seen[vid], views=view_counts.get(vid, 0)) for vid in video_ids]
+    videos = [dict(seen[vid], views=view_counts.get(vid, 0), tags=tags.get(vid, [])) for vid in video_ids]
     videos.sort(key=lambda v: v["views"], reverse=True)
     return videos
 
@@ -155,3 +171,36 @@ def get_market_trend_guidance(queries: list = None) -> str:
     else:
         print(f"[market_trends] got niche-trend guidance from {len(videos)} videos")
     return guidance
+
+
+def top_competitor_tags(videos: list, limit: int = 10) -> list:
+    """Ranks tags by how many distinct currently-popular niche videos use them
+    (not raw occurrence count, so one video with 40 tags can't dominate the
+    ranking over a tag genuinely shared across several popular videos).
+    Case-insensitive dedupe, keeping the first-seen casing for display."""
+    counts = Counter()
+    display = {}
+    for v in videos:
+        for tag in dict.fromkeys(v.get("tags") or []):
+            key = tag.strip().lower()
+            if not key:
+                continue
+            counts[key] += 1
+            display.setdefault(key, tag.strip())
+    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+    return [display[key] for key, _count in ranked[:limit]]
+
+
+def get_competitor_tags(queries: list = None, limit: int = 10) -> list:
+    """Best-effort list of real tags actually used on currently-popular niche
+    videos from OTHER channels, for queue-builders to fold into a video's own
+    tags (see scripts/build_finance_queue.py). Returns [] on any failure --
+    never blocks queue building."""
+    try:
+        videos = fetch_trending_niche_videos(queries)
+    except Exception as e:
+        print(f"[market_trends] competitor tag mining unavailable ({e}); skipping")
+        return []
+    if not videos:
+        return []
+    return top_competitor_tags(videos, limit)

@@ -32,7 +32,7 @@ def test_save_themes_preserves_non_ascii_text(tmp_path):
 def test_produce_video_writes_script_then_produces(monkeypatch):
     calls = {}
 
-    def fake_produce(script, orientation, on_progress, thumbnail_badge=None):
+    def fake_produce(script, orientation, on_progress, thumbnail_badge=None, category_id=None):
         calls["orientation"] = orientation
         return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
 
@@ -50,7 +50,7 @@ def test_produce_video_passes_style_through_to_write_script_from_prompt(monkeypa
         run.prompt_script, "write_script_from_prompt",
         lambda prompt, duration_sec, extra_tags=None, style=None: captured.setdefault("style", style) or {"title": "T", "scenes": []},
     )
-    monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress, thumbnail_badge=None: {
+    monkeypatch.setattr(run.producer, "produce_from_script", lambda script, orientation, on_progress, thumbnail_badge=None, category_id=None: {
         "video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t",
     })
 
@@ -62,7 +62,7 @@ def test_produce_video_passes_thumbnail_badge_to_producer(monkeypatch):
     captured = {}
     monkeypatch.setattr(run.prompt_script, "write_script_from_prompt", lambda prompt, duration_sec, extra_tags=None, style=None: {"title": "T", "scenes": []})
 
-    def fake_produce(script, orientation, on_progress, thumbnail_badge=None):
+    def fake_produce(script, orientation, on_progress, thumbnail_badge=None, category_id=None):
         captured["thumbnail_badge"] = thumbnail_badge
         return {"video": Path("v.mp4"), "srt": Path("v.srt"), "metadata": Path("v.meta"), "slug": "t"}
 
@@ -79,7 +79,7 @@ def test_main_processes_the_given_themes_file_not_the_default(monkeypatch, tmp_p
     run.save_themes(themes_file, [{"theme": "Other channel theme", "done": False}])
 
     produced = []
-    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme))
+    monkeypatch.setattr(run, "produce_video", lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None: produced.append(theme))
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
 
     run.main()
@@ -95,7 +95,7 @@ def test_main_passes_each_themes_extra_tags_through(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(
         run, "produce_video",
-        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: captured.setdefault("extra_tags", extra_tags),
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None: captured.setdefault("extra_tags", extra_tags),
     )
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
 
@@ -111,7 +111,7 @@ def test_main_passes_each_themes_thumbnail_badge_through(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.setattr(
         run, "produce_video",
-        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: captured.setdefault("thumbnail_badge", thumbnail_badge),
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None: captured.setdefault("thumbnail_badge", thumbnail_badge),
     )
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file)])
 
@@ -129,7 +129,7 @@ def test_main_stops_cleanly_and_leaves_theme_pending_when_tts_quota_exceeded(mon
         {"theme": "Theme B", "done": False},
     ])
 
-    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None):
+    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None):
         raise run.TTSQuotaExceededError("budget exhausted")
 
     monkeypatch.setattr(run, "produce_video", fake_produce_video)
@@ -143,7 +143,7 @@ def test_main_stops_cleanly_and_leaves_theme_pending_when_tts_quota_exceeded(mon
 
 
 def test_main_theme_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch):
-    def fake_produce_video(theme, style, duration, shorts):
+    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None):
         raise run.TTSQuotaExceededError("budget exhausted")
 
     monkeypatch.setattr(run, "produce_video", fake_produce_video)
@@ -214,7 +214,7 @@ def test_main_trending_flag_produces_entry_and_appends_it_marked_done(monkeypatc
     produced = []
     monkeypatch.setattr(
         run, "produce_video",
-        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme),
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None: produced.append(theme),
     )
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending"])
 
@@ -237,7 +237,7 @@ def test_main_trending_flag_falls_back_to_static_queue_when_no_candidate(monkeyp
     produced = []
     monkeypatch.setattr(
         run, "produce_video",
-        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme),
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None: produced.append(theme),
     )
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending"])
 
@@ -259,7 +259,7 @@ def test_main_trending_flag_ignored_when_all_flag_also_set(monkeypatch, tmp_path
     produced = []
     monkeypatch.setattr(
         run, "produce_video",
-        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None: produced.append(theme),
+        lambda theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None: produced.append(theme),
     )
     monkeypatch.setattr("sys.argv", ["run.py", "--themes-file", str(themes_file), "--trending", "--all"])
 
@@ -275,7 +275,7 @@ def test_main_trending_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch, t
     trending_entry = {"theme": "Trending theme", "style": "s", "duration_sec": 100, "shorts": True}
     monkeypatch.setattr(run, "next_trending_entry", lambda themes_file: trending_entry)
 
-    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None):
+    def fake_produce_video(theme, style, duration, shorts, extra_tags=None, thumbnail_badge=None, category_id=None):
         raise run.TTSQuotaExceededError("budget exhausted")
 
     monkeypatch.setattr(run, "produce_video", fake_produce_video)

@@ -117,6 +117,9 @@ def build_theme_entry(subject: str, chapter_num: int, chapter_title: str,
         # Corner badge stamped on the thumbnail/hook card (see textcard.render_hook_card)
         # so the syllabus/grade is visible even in a small thumbnail grid.
         "thumbnail_badge": thumbnail_badge,
+        # "27" = Education -- every video here is a syllabus chapter explainer,
+        # not the generic "22" People & Blogs bucket every upload defaulted to.
+        "category_id": "27",
         # Not read by run.py -- just makes the generated queue file human-readable.
         "_label": f"Ch {chapter_num} ({chapter_title}) - Part {part_num}/{total_parts}: {section_titles}",
     }

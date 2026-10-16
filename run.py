@@ -37,7 +37,7 @@ def save_themes(themes_file: Path, themes: list[dict]) -> None:
 
 
 def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: bool = False, extra_tags: list = None,
-                   thumbnail_badge: str = None) -> Path:
+                   thumbnail_badge: str = None, category_id: str = None) -> Path:
     print(f"[1/2] Writing script for: {theme!r}")
     # prompt_script (not the older script_writer) pulls in this channel's own
     # performance guidance plus broader niche trend guidance (see
@@ -48,7 +48,9 @@ def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: 
     orientation = config.SHORTS if shorts else config.LANDSCAPE
 
     print("[2/2] Producing video")
-    result = producer.produce_from_script(script, orientation, on_progress=print, thumbnail_badge=thumbnail_badge)
+    result = producer.produce_from_script(
+        script, orientation, on_progress=print, thumbnail_badge=thumbnail_badge, category_id=category_id,
+    )
     print(f"Captions (upload separately as closed captions): {result['srt']}")
     print(f"Metadata: {result['metadata']}")
     return result["video"]
@@ -114,6 +116,7 @@ def main():
                     trending_entry.get("shorts", False),
                     trending_entry.get("extra_tags"),
                     trending_entry.get("thumbnail_badge"),
+                    trending_entry.get("category_id"),
                 )
             except TTSQuotaExceededError as e:
                 print(f"Skipping: {e}")
@@ -143,6 +146,7 @@ def main():
                 entry.get("shorts", False),
                 entry.get("extra_tags"),
                 entry.get("thumbnail_badge"),
+                entry.get("category_id"),
             )
         except TTSQuotaExceededError as e:
             # Leave this theme pending (not done) so it's retried once next

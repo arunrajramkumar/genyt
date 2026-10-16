@@ -115,6 +115,22 @@ def test_produce_from_script_metadata_file_contains_title_description_tags(mocke
     assert "a, b" in text
 
 
+def test_produce_from_script_adds_shorts_hashtag_for_portrait_orientation(mocked_pipeline):
+    from pipeline import config
+    script = _stub_script()
+    result = producer.produce_from_script(script, config.SHORTS, on_progress=lambda m: None)
+    text = result["metadata"].read_text(encoding="utf-8")
+    assert "#Shorts" in text
+
+
+def test_produce_from_script_omits_shorts_hashtag_for_landscape_orientation(mocked_pipeline):
+    from pipeline import config
+    script = _stub_script()
+    result = producer.produce_from_script(script, config.LANDSCAPE, on_progress=lambda m: None)
+    text = result["metadata"].read_text(encoding="utf-8")
+    assert "#Shorts" not in text
+
+
 # -- hashtag appending: every upload's description should end with #hashtags --
 
 def test_append_hashtags_appends_top_tags_as_hashtags():
@@ -134,6 +150,17 @@ def test_append_hashtags_skips_tags_that_become_empty_after_cleaning():
 
 def test_append_hashtags_leaves_description_untouched_when_no_tags():
     assert producer._append_hashtags("Desc.", []) == "Desc."
+
+
+def test_append_hashtags_prefers_tags_that_appear_in_the_title():
+    # "NCERT"/"CBSE" are generic required tags present on every video;
+    # "Photosynthesis" is this video's actual topic and appears in the title
+    # -- it should win a hashtag slot over the generic ones.
+    result = producer._append_hashtags(
+        "Desc.", ["NCERT", "CBSE", "Photosynthesis"],
+        title="Photosynthesis Explained for Grade 6 Students",
+    )
+    assert result == "Desc.\n\n#Photosynthesis #NCERT #CBSE"
 
 
 def test_produce_from_script_metadata_file_includes_hashtags_from_tags(mocked_pipeline):

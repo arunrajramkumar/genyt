@@ -132,6 +132,47 @@ def test_upload_video_respects_explicit_privacy_status(tmp_path, monkeypatch):
     assert captured["body"]["status"]["privacyStatus"] == "unlisted"
 
 
+def test_upload_video_sets_category_and_default_language(tmp_path, monkeypatch):
+    video_path = tmp_path / "video.mp4"
+    video_path.write_bytes(b"fake")
+
+    captured = {}
+
+    def fake_videos_insert(part, body, media_body):
+        captured["body"] = body
+        return _FakeRequest({"id": "xyz"})
+
+    fake_youtube = mock.Mock()
+    fake_youtube.videos.return_value.insert.side_effect = fake_videos_insert
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    youtube_upload.upload_video(video_path, "T", "D", [], category_id="27", default_language="hi")
+
+    assert captured["body"]["snippet"]["categoryId"] == "27"
+    assert captured["body"]["snippet"]["defaultLanguage"] == "hi"
+    assert captured["body"]["snippet"]["defaultAudioLanguage"] == "hi"
+
+
+def test_upload_video_omits_default_language_when_not_given(tmp_path, monkeypatch):
+    video_path = tmp_path / "video.mp4"
+    video_path.write_bytes(b"fake")
+
+    captured = {}
+
+    def fake_videos_insert(part, body, media_body):
+        captured["body"] = body
+        return _FakeRequest({"id": "xyz"})
+
+    fake_youtube = mock.Mock()
+    fake_youtube.videos.return_value.insert.side_effect = fake_videos_insert
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    youtube_upload.upload_video(video_path, "T", "D", [])
+
+    assert "defaultLanguage" not in captured["body"]["snippet"]
+    assert "defaultAudioLanguage" not in captured["body"]["snippet"]
+
+
 def test_set_thumbnail_calls_thumbnails_set_with_video_id(tmp_path, monkeypatch):
     thumbnail_path = tmp_path / "thumb.png"
     thumbnail_path.write_bytes(b"fake png")

@@ -15,16 +15,25 @@ def slugify(title: str) -> str:
     return slug[:60] or "video"
 
 
-def _append_hashtags(description: str, tags: list, limit: int = 3) -> str:
+def _append_hashtags(description: str, tags: list, title: str = "", limit: int = 3) -> str:
     """YouTube highlights up to 3 hashtags found in a video's description above
-    its title — appending the top tags there gets that for free on every upload."""
-    hashtags = []
+    its title — appending the top tags there gets that for free on every upload.
+
+    Prefers tags that actually appear in this video's own title over ones that
+    don't: `tags` is required-channel-tags-first (see segmented_script.merge_tags),
+    so without this, every video on a channel showed the same generic branding
+    hashtags (e.g. "#NCERT #CBSE #Grade6") instead of the one thing that's
+    actually specific to this video (e.g. the chapter topic or company name)."""
+    title_lower = title.lower()
+    specific, generic = [], []
     for tag in tags:
         cleaned = re.sub(r"[^A-Za-z0-9]", "", tag)
-        if cleaned:
-            hashtags.append(f"#{cleaned}")
-        if len(hashtags) == limit:
-            break
+        if not cleaned:
+            continue
+        bucket = specific if tag.lower() in title_lower else generic
+        bucket.append(f"#{cleaned}")
+
+    hashtags = (specific + generic)[:limit]
     if not hashtags:
         return description
     return f"{description}\n\n{' '.join(hashtags)}"
@@ -79,12 +88,16 @@ def _pick_hook_background(visual_paths: list, work_dir, on_progress=print):
 
 
 def produce_from_script(script: dict, orientation: dict = None, on_progress=print, voice: str = None,
-                         thumbnail_badge: str = None) -> dict:
+                         thumbnail_badge: str = None, category_id: str = None) -> dict:
     """orientation: config.LANDSCAPE or config.SHORTS (defaults to landscape).
     voice: edge-tts voice ID overriding config.TTS_VOICE for this video (e.g. a
     per-chat language preference) — defaults to the configured voice.
     thumbnail_badge: short corner label stamped on the thumbnail/hook card,
     e.g. "CBSE | Grade 6 Maths" for a syllabus-specific channel.
+    category_id: YouTube category ID for this video (defaults to "22", People
+    & Blogs) -- lets a channel-specific queue builder pick a more accurate
+    category (e.g. "27" Education, "25" News & Politics) instead of every
+    video on every channel landing in the same generic bucket.
     Returns {"video": Path, "srt": Path, "metadata": Path, "slug": str}.
     """
     orientation = orientation or config.LANDSCAPE
@@ -179,7 +192,13 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         hook_card_path=thumb_path,
     )
 
-    description = _append_hashtags(script["description"], script["tags"])
+    description = _append_hashtags(script["description"], script["tags"], script["title"])
+    if orientation["orientation"] == "portrait" and "#shorts" not in description.lower():
+        # Nearly every video this pipeline produces is a Shorts-eligible
+        # vertical clip, but nothing ever told YouTube that explicitly --
+        # #Shorts in the description is the standard signal that gets a video
+        # considered for the dedicated Shorts feed/shelf.
+        description = f"{description}\n#Shorts"
 
     meta_path = config.OUTPUT_DIR / f"{slug}.metadata.txt"
     meta_path.write_text(
@@ -193,10 +212,13 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     if config.YOUTUBE_AUTO_UPLOAD:
         try:
             on_progress("Uploading to YouTube")
+            language = (voice or config.TTS_VOICE).split("-")[0]
             upload = youtube_upload.upload_video(
                 out_path, script["title"], description, script["tags"],
+                category_id=category_id or "22",
                 captions_path=srt_path,
-                captions_language=(voice or config.TTS_VOICE).split("-")[0],
+                captions_language=language,
+                default_language=language,
             )
             youtube_url = upload["url"]
             on_progress(f"Uploaded: {youtube_url}")

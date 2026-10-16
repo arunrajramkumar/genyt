@@ -61,21 +61,30 @@ def upload_video(
     category_id: str = "22",
     captions_path=None,
     captions_language: str = "en",
+    default_language: str = None,
 ) -> dict:
     """Uploads video_path to the authorized channel.
 
     privacy_status: "private" (default), "unlisted", or "public".
     category_id: YouTube category ID, 22 = "People & Blogs" (default for Shorts/vlogs).
+    default_language: BCP-47 language code for defaultLanguage/defaultAudioLanguage
+    (e.g. "en") -- these were never set at all before, which left YouTube to guess
+    the video's spoken language from scratch for search/recommendation matching
+    instead of being told outright. Omitted when None.
     Returns {"video_id": str, "url": str}.
     """
     youtube = _client()
+    snippet = {
+        "title": title[:100],
+        "description": description[:5000],
+        "tags": tags[:500],
+        "categoryId": category_id,
+    }
+    if default_language:
+        snippet["defaultLanguage"] = default_language
+        snippet["defaultAudioLanguage"] = default_language
     body = {
-        "snippet": {
-            "title": title[:100],
-            "description": description[:5000],
-            "tags": tags[:500],
-            "categoryId": category_id,
-        },
+        "snippet": snippet,
         "status": {
             "privacyStatus": privacy_status or config.YOUTUBE_DEFAULT_PRIVACY,
             "selfDeclaredMadeForKids": False,

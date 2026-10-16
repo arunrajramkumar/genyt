@@ -114,6 +114,10 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100) -
         # Tags that must appear regardless of what the LLM comes up with (see
         # segmented_script.merge_tags).
         "extra_tags": ["stock analysis", company_name, symbol, "NSE", "investing"],
+        # "25" = News & Politics -- these videos are about currently-trending
+        # market news for a named company, not the generic "22" People & Blogs
+        # bucket every upload defaulted to.
+        "category_id": "25",
         # Not read by run.py -- just makes the generated queue file human-readable.
         "_label": f"{company_name} (NSE: {symbol})",
     }

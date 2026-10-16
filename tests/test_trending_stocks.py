@@ -10,7 +10,7 @@ def _mock_response(payload: dict) -> str:
 # -- _search_trending_stock_news: aggregates Tavily snippets across queries --
 
 def test_search_trending_stock_news_joins_nonempty_results(monkeypatch):
-    monkeypatch.setattr(ts.research, "_fetch_tavily_facts", lambda q: f"facts about {q}" if "today" in q else "")
+    monkeypatch.setattr(ts.research, "search_web", lambda q: f"facts about {q}" if "today" in q else "")
     text = ts._search_trending_stock_news(["NSE stocks today", "other query"])
     assert "facts about NSE stocks today" in text
     assert "other query" not in text

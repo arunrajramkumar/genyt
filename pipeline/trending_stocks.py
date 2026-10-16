@@ -22,8 +22,9 @@ from . import fundamentals, llm, research
 # ranking in select_trending_symbols() by default -- adding a couple of
 # sector-focused queries widens the candidate pool so that ranking actually
 # has a real choice to make, instead of re-picking yesterday's headline name.
-# Tavily usage has ample headroom (see tavily_usage.json / the real dashboard
-# quota) to absorb 2 extra calls per trending run.
+# research.search_web() falls back to free DuckDuckGo scraping once Tavily's
+# quota runs dry, so these extra queries never go unanswered even on a
+# maxed-out Tavily month.
 TRENDING_QUERIES = [
     "NSE stocks in the news India today",
     "most talked about Indian stocks this week",
@@ -61,7 +62,7 @@ def _extract_json(text: str) -> dict:
 
 
 def _search_trending_stock_news(queries: list = None) -> str:
-    parts = [research._fetch_tavily_facts(q) for q in (queries or TRENDING_QUERIES)]
+    parts = [research.search_web(q) for q in (queries or TRENDING_QUERIES)]
     return "\n".join(p for p in parts if p)
 
 

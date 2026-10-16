@@ -5,6 +5,10 @@ import requests
 
 from pipeline import config, research
 
+# Captured before the autouse fixture below monkeypatches research._fetch_duckduckgo_facts
+# away by name, so tests that exercise the real implementation can still call it directly.
+_real_fetch_duckduckgo_facts = research._fetch_duckduckgo_facts
+
 
 @pytest.fixture(autouse=True)
 def _usage_check_unreachable_by_default(monkeypatch):
@@ -13,6 +17,16 @@ def _usage_check_unreachable_by_default(monkeypatch):
     with the fake API key these tests use) so it doesn't interfere unless a
     test explicitly overrides it."""
     monkeypatch.setattr(research.requests, "get", lambda *a, **k: (_ for _ in ()).throw(requests.ConnectionError("boom")))
+
+
+@pytest.fixture(autouse=True)
+def _duckduckgo_fallback_empty_by_default(monkeypatch):
+    """Most tests exercise Tavily (or its absence) in isolation -- default the
+    free DuckDuckGo fallback to "nothing found" so a test asserting an empty
+    result for a Tavily failure/cap/not-configured path doesn't silently hit
+    the real network or get a nondeterministic fallback result. Tests that
+    want to exercise the fallback itself override this explicitly."""
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: "")
 
 
 @pytest.mark.parametrize("theme", [
@@ -49,8 +63,9 @@ def test_fetch_grounding_facts_returns_empty_string_when_not_configured(monkeypa
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload=None, text=""):
         self._payload = payload
+        self.text = text
 
     def raise_for_status(self):
         pass
@@ -254,3 +269,67 @@ def test_fetch_grounding_facts_proceeds_when_live_credits_comfortably_above_buff
     monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(_SEARCH_RESULTS_PAYLOAD))
 
     assert research.fetch_grounding_facts("Tata Motors stock") != ""
+
+
+# -- free DuckDuckGo fallback, used once Tavily's quota/credits run dry ------
+
+_DDG_HTML = """
+<div class="result">
+  <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa&amp;rut=1">
+    Tata Motors <b>Q2</b> results
+  </a>
+  <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fa">
+    Revenue grew <b>12%</b> year over year.
+  </a>
+</div>
+<div class="result">
+  <a rel="nofollow" class="result__a" href="https://example.com/b">No snippet here</a>
+</div>
+"""
+
+
+def test_fetch_duckduckgo_facts_parses_titles_snippets_and_resolves_redirect_urls(monkeypatch):
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(text=_DDG_HTML))
+    result = _real_fetch_duckduckgo_facts("Tata Motors stock")
+    assert "Tata Motors Q2 results" in result
+    assert "Revenue grew 12% year over year." in result
+    assert "(source: https://example.com/a)" in result
+    assert "No snippet here" not in result  # no matching result__snippet -- regex requires both
+
+
+def test_fetch_duckduckgo_facts_returns_empty_string_on_request_failure(monkeypatch):
+    monkeypatch.setattr(
+        research.requests, "post",
+        lambda *a, **k: (_ for _ in ()).throw(requests.ConnectionError("boom")),
+    )
+    assert _real_fetch_duckduckgo_facts("Tata Motors stock") == ""
+
+
+def test_search_web_falls_back_to_duckduckgo_when_tavily_is_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: f"ddg facts about {topic}")
+    assert research.search_web("Tata Motors stock") == "ddg facts about Tata Motors stock"
+
+
+def test_search_web_falls_back_to_duckduckgo_when_tavily_monthly_cap_is_hit(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "TAVILY_MONTHLY_CALL_CAP", 0)
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: "ddg fallback facts")
+    assert research.search_web("Tata Motors stock") == "ddg fallback facts"
+
+
+def test_search_web_prefers_tavily_and_skips_duckduckgo_when_tavily_succeeds(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(_SEARCH_RESULTS_PAYLOAD))
+    ddg_calls = []
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: ddg_calls.append(topic) or "unused")
+    result = research.search_web("Tata Motors stock")
+    assert "Revenue grew 12%." in result
+    assert ddg_calls == []
+
+
+def test_fetch_grounding_facts_uses_duckduckgo_facts_when_tavily_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: "- Real DDG fact (source: https://example.com)")
+    result = research.fetch_grounding_facts("Tata Motors stock")
+    assert "Real DDG fact" in result

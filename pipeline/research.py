@@ -10,12 +10,16 @@ Guarded two ways against running past Tavily's free credit quota:
   2. A local, git-committed call counter (config.TAVILY_MONTHLY_CALL_CAP) that
      still applies if the live check itself is unreachable/fails, so a network
      hiccup in the guardrail can never turn into unbounded spend.
-Either guard tripping skips the call (not charged) and the caller falls back
-to the "don't invent numbers" instruction.
+Either guard tripping skips the call (not charged) and search_web() falls back
+to scraping DuckDuckGo's plain HTML results page instead -- free, no API key,
+no credit limit, so a dry Tavily account for the rest of the month doesn't
+turn into "no grounding at all" for every theme after that. Only if both come
+back empty does the caller fall back to the "don't invent numbers" instruction.
 """
 import json
 import re
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
@@ -23,6 +27,19 @@ from . import config, fundamentals, segmented_script
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 TAVILY_USAGE_URL = "https://api.tavily.com/usage"
+
+# DuckDuckGo's plain (JS-free) HTML results page -- undocumented but stable
+# and widely used for exactly this (no official API, no key, no credit cap).
+# Used only as a fallback once Tavily's guardrails trip, not as the primary
+# source, since Tavily's results are cleaner and the DDG HTML layout could
+# change without notice.
+DUCKDUCKGO_HTML_URL = "https://html.duckduckgo.com/html/"
+DUCKDUCKGO_USER_AGENT = "Mozilla/5.0 (compatible; ytagent-research/1.0)"
+_DDG_RESULT_RE = re.compile(
+    r'<a rel="nofollow" class="result__a" href="(.*?)">(.*?)</a>.*?'
+    r'<a class="result__snippet"[^>]*>(.*?)</a>',
+    re.DOTALL,
+)
 
 NSE_SYMBOL_RE = re.compile(r"NSE:\s*([A-Z0-9&\-]+)")
 
@@ -180,6 +197,60 @@ def _fetch_tavily_facts(topic: str) -> str:
     return "\n".join(lines)
 
 
+def _clean_ddg_fragment(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html)).strip()
+
+
+def _resolve_ddg_url(href: str) -> str:
+    """DDG's HTML results link through its own redirect
+    (`//duckduckgo.com/l/?uddg=<encoded-real-url>&...`) rather than the real
+    URL directly -- unwrap it so the cited source is the actual article."""
+    if href.startswith("//"):
+        href = "https:" + href
+    uddg = parse_qs(urlparse(href).query).get("uddg")
+    return unquote(uddg[0]) if uddg else href
+
+
+def _fetch_duckduckgo_facts(topic: str) -> str:
+    """Free, no-API-key, no-credit-limit fallback for when Tavily's quota/
+    credit guardrail has tripped (or no TAVILY_API_KEY is configured at all)
+    -- scrapes DuckDuckGo's plain HTML results page the same way
+    pipeline/fundamentals.py scrapes Screener.in, so grounding doesn't go
+    dark for the rest of the month just because one paid-tier search
+    provider ran dry. Best-effort: any failure returns "", same contract as
+    _fetch_tavily_facts, so callers still fall back to "don't invent
+    numbers" if even this fails."""
+    try:
+        resp = requests.post(
+            DUCKDUCKGO_HTML_URL,
+            data={"q": topic, "kl": "in-en"},
+            headers={"User-Agent": DUCKDUCKGO_USER_AGENT},
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException:
+        return ""
+
+    lines = []
+    for href, title_html, snippet_html in _DDG_RESULT_RE.findall(resp.text)[:5]:
+        title = _clean_ddg_fragment(title_html)
+        snippet = _clean_ddg_fragment(snippet_html)
+        if title and snippet:
+            lines.append(f"- {title}: {snippet} (source: {_resolve_ddg_url(href)})")
+    return "\n".join(lines)
+
+
+def search_web(topic: str) -> str:
+    """Sourced web snippets about topic, preferring Tavily and falling back to
+    free DuckDuckGo scraping once Tavily's quota/credit guardrail trips (or
+    if no TAVILY_API_KEY is configured at all) -- so a dry Tavily account
+    doesn't silently turn every subsequent theme this month into
+    no-grounding-available. Returns "" if both come back empty; callers must
+    treat that as "no verified data available" and not fabricate in its
+    place."""
+    return _fetch_tavily_facts(topic) or _fetch_duckduckgo_facts(topic)
+
+
 def fetch_grounding_facts(topic: str) -> str:
     """Returns a block of sourced facts about topic, or "" if nothing could be
     verified -- callers must treat "" as "no verified data available" and must
@@ -188,8 +259,9 @@ def fetch_grounding_facts(topic: str) -> str:
     When the topic names an NSE-listed company (e.g. "NSE: CDSL"), real
     scraped fundamentals (P/E, ROE, ROCE, revenue/profit growth -- see
     pipeline/fundamentals.py) are fetched first and take priority, since
-    they're precise numbers rather than search-snippet prose. Tavily's
-    web-search snippets are appended after for qualitative/news context that
+    they're precise numbers rather than search-snippet prose. Web search
+    snippets (Tavily, falling back to free DuckDuckGo scraping -- see
+    search_web()) are appended after for qualitative/news context that
     fundamentals data alone doesn't cover (no API key needed for the
     fundamentals half, so this works even without Tavily configured)."""
     parts = []
@@ -200,9 +272,9 @@ def fetch_grounding_facts(topic: str) -> str:
         if facts:
             parts.append(facts)
 
-    tavily_facts = _fetch_tavily_facts(topic)
-    if tavily_facts:
-        parts.append(tavily_facts)
+    web_facts = search_web(topic)
+    if web_facts:
+        parts.append(web_facts)
 
     return segmented_script.normalize_indian_currency_units("\n".join(parts))
 

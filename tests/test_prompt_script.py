@@ -168,7 +168,7 @@ def test_write_freeform_script_merges_extra_tags_ahead_of_generated_ones(monkeyp
 
 def test_write_freeform_script_injects_grounding_facts_for_finance_themes(monkeypatch):
     monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: True)
-    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme: "- Revenue grew 12% (source: example.com)")
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme, symbol=None: "- Revenue grew 12% (source: example.com)")
     captured = {}
 
     def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
@@ -183,7 +183,7 @@ def test_write_freeform_script_injects_grounding_facts_for_finance_themes(monkey
 
 def test_write_freeform_script_warns_against_fabrication_when_grounding_unavailable(monkeypatch):
     monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: True)
-    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme: "")
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme, symbol=None: "")
     captured = {}
 
     def fake_chat_json(system_prompt, user_prompt, max_tokens, timeout):
@@ -199,10 +199,29 @@ def test_write_freeform_script_warns_against_fabrication_when_grounding_unavaila
 def test_write_freeform_script_skips_grounding_for_non_finance_themes(monkeypatch):
     called = []
     monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: False)
-    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme: called.append(theme))
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme, symbol=None: called.append(theme))
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(VALID_SCRIPT))
     prompt_script._write_freeform_script("octopuses")
     assert called == []
+
+
+def test_write_freeform_script_scrubs_ticker_from_narration(monkeypatch):
+    """Same TTS-mispronunciation concern as the segmented path (see
+    test_segmented_script.test_write_segmented_script_scrubs_ticker_from_narration)
+    -- the freeform path resolves its own symbol via
+    research.resolve_symbol_for_theme and must scrub it out of narration too,
+    keyed off the company name the model put in the first scene's
+    on_screen_text (see _extract_freeform_company_name)."""
+    monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: True)
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme, symbol=None: "- P/E is 59.8 (source: example.com)")
+    monkeypatch.setattr(prompt_script.research, "resolve_symbol_for_theme", lambda theme: "PIDILITIND")
+    ticker_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "PIDILITIND trades at a P/E of 59.8.", "visual_query": "v", "on_screen_text": "Pidilite Industries Ltd"},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(ticker_script))
+    result = prompt_script._write_freeform_script("Pidilite Industries Ltd stock analysis")
+    assert "PIDILITIND" not in result["scenes"][0]["narration"]
+    assert "Pidilite Industries Ltd" in result["scenes"][0]["narration"]
 
 
 def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):

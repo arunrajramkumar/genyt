@@ -2,6 +2,11 @@ from unittest import mock
 
 from pipeline import fundamentals
 
+# Captured before conftest.py's autouse fixture monkeypatches
+# fundamentals.search_company_symbol away by name, so the tests below that
+# exercise the real implementation can still call it directly.
+_real_search_company_symbol = fundamentals.search_company_symbol
+
 
 def _fake_html(include_quarterly=True):
     ratios = """
@@ -148,16 +153,16 @@ def _mock_json_response(payload, status_ok=True):
 def test_search_company_symbol_extracts_ticker_from_first_match(monkeypatch):
     payload = [{"id": 2478, "name": "Pidilite Industries Ltd", "url": "/company/PIDILITIND/consolidated/"}]
     monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response(payload))
-    assert fundamentals.search_company_symbol("Pidilite Industries") == "PIDILITIND"
+    assert _real_search_company_symbol("Pidilite Industries") == "PIDILITIND"
 
 
 def test_search_company_symbol_returns_empty_string_on_no_results(monkeypatch):
     monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response([]))
-    assert fundamentals.search_company_symbol("Totally Madeup Company") == ""
+    assert _real_search_company_symbol("Totally Madeup Company") == ""
 
 
 def test_search_company_symbol_returns_empty_string_on_request_failure(monkeypatch):
     def raise_error(*a, **k):
         raise fundamentals.requests.RequestException("network down")
     monkeypatch.setattr(fundamentals.requests, "get", raise_error)
-    assert fundamentals.search_company_symbol("Pidilite Industries") == ""
+    assert _real_search_company_symbol("Pidilite Industries") == ""

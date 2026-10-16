@@ -47,6 +47,19 @@ def _extract_company_symbol(prompt: str):
     return m.group(2).strip().upper() if m else None
 
 
+def despeak_ticker(narration: str, symbol: str, company_name: str) -> str:
+    """Replaces any bare mention of a stock ticker/symbol (e.g. "PIDILITIND")
+    in narration with the company's full name, so text-to-speech never reads
+    a ticker out loud (it's meaningless/mispronounced when spoken -- it's only
+    ever meant to be read as on-screen text or metadata). SYSTEM_PROMPT/
+    SYSTEM_PROMPT_SEGMENT already instruct the model not to speak a ticker in
+    the first place; this is a backstop for when it doesn't comply. No-op if
+    either symbol or company_name is unknown -- never guesses a replacement."""
+    if not narration or not symbol or not company_name:
+        return narration
+    return re.sub(rf"\b{re.escape(symbol)}\b", company_name, narration, flags=re.IGNORECASE)
+
+
 # Indian retail-investor audiences read rupee amounts in lakh/crore, never
 # million/billion -- but grounding facts come from Tavily web-search snippets
 # (international finance sites) and the LLM just echoes whatever unit the
@@ -167,6 +180,11 @@ Rules:
 - narration: natural, TTS-friendly spoken sentences (no headers, no markdown, no bullet
   points), summarizing the given facts in about {target_words} words. If the facts
   already contain a fully-written narration passage, reproduce it exactly, word for word.
+- The narration is read aloud by text-to-speech -- never speak a bare stock ticker/
+  symbol (e.g. "PIDILITIND", "NSE: TCS", "(NSE: CDSL)") out loud, since it gets
+  mispronounced as gibberish. Always refer to the company by its full name instead
+  (e.g. say "Pidilite Industries", not "PIDILITIND"). The ticker is fine to show in
+  on_screen_text, just never say it in narration.
 - visual_query: 2-4 word English search term for stock video/photo footage that visually
   matches this scene's topic ("{label}"). Must describe a concrete, filmable subject.
   If the facts name a specific company/industry, prefer a term tied to that company's
@@ -510,8 +528,13 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, 
         scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"], global_instructions)
         scenes.append(scene)
 
-    style_guidance = youtube_insights.get_combined_guidance()
     company_name = _extract_company_name(prompt)
+    symbol = _extract_company_symbol(prompt)
+    if company_name and symbol:
+        for scene in scenes:
+            scene["narration"] = despeak_ticker(scene["narration"], symbol, company_name)
+
+    style_guidance = youtube_insights.get_combined_guidance()
     meta = _write_metadata(scenes, style_guidance, company_name=company_name)
     tags = merge_tags(extra_tags or [], meta["tags"] or ["short video"])
     append_subscribe_cta(scenes)
@@ -522,5 +545,5 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, 
         "tags": tags,
         "scenes": scenes,
         "company_name": company_name,
-        "symbol": _extract_company_symbol(prompt),
+        "symbol": symbol,
     }

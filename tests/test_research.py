@@ -29,15 +29,8 @@ def _duckduckgo_fallback_empty_by_default(monkeypatch):
     monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: "")
 
 
-@pytest.fixture(autouse=True)
-def _company_symbol_search_no_match_by_default(monkeypatch):
-    """fetch_grounding_facts resolves bare company-name themes (no literal
-    "NSE:" marker) to a symbol via fundamentals.search_company_symbol -- a
-    real network call against Screener.in's search endpoint. Default it to
-    "no match" so tests that only care about the Tavily/DuckDuckGo path don't
-    silently hit the real network or trigger a real fetch_fundamentals call.
-    Tests exercising the resolution path override this explicitly."""
-    monkeypatch.setattr(research.fundamentals, "search_company_symbol", lambda name: "")
+# _company_symbol_search_no_match_by_default (conftest.py) already keeps
+# fundamentals.search_company_symbol from hitting the real network by default.
 
 
 @pytest.mark.parametrize("theme", [

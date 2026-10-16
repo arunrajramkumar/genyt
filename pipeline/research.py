@@ -308,7 +308,18 @@ def search_web(topic: str) -> str:
     return _fetch_tavily_facts(topic) or _fetch_duckduckgo_facts(topic)
 
 
-def fetch_grounding_facts(topic: str) -> str:
+def resolve_symbol_for_theme(topic: str):
+    """Resolves topic to a real NSE ticker the same way fetch_grounding_facts
+    does internally -- an explicit "NSE: SYMBOL" marker if present, else a
+    Screener.in name search (_resolve_company_symbol). Exposed separately so
+    callers that also need to scrub a bare ticker mention out of generated
+    narration (see segmented_script.despeak_ticker) can get the same symbol
+    without re-deriving or guessing it, and can pass it into
+    fetch_grounding_facts below to skip a redundant resolution."""
+    return _extract_nse_symbol(topic) or _resolve_company_symbol(topic)
+
+
+def fetch_grounding_facts(topic: str, symbol: str = None) -> str:
     """Returns a block of sourced facts about topic, or "" if nothing could be
     verified -- callers must treat "" as "no verified data available" and must
     not fabricate specifics in its place.
@@ -324,10 +335,13 @@ def fetch_grounding_facts(topic: str) -> str:
     to free DuckDuckGo scraping -- see search_web()) are appended after for
     qualitative/news context that fundamentals data alone doesn't cover (no
     API key needed for the fundamentals half, so this works even without
-    Tavily configured)."""
+    Tavily configured).
+
+    symbol: pass an already-resolved ticker (from resolve_symbol_for_theme)
+    to skip re-resolving it here -- otherwise resolved fresh from topic."""
     parts = []
 
-    symbol = _extract_nse_symbol(topic) or _resolve_company_symbol(topic)
+    symbol = symbol if symbol is not None else resolve_symbol_for_theme(topic)
     if symbol:
         facts = fundamentals.format_fundamentals_facts(fundamentals.fetch_fundamentals(symbol))
         if facts:

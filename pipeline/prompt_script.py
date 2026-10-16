@@ -50,6 +50,10 @@ Rules:
   6-12 scenes for longer videos, 4-6 for short ~30-60s videos).
 - Narration must sound natural when read aloud by text-to-speech: no headers, no
   emojis, no markdown.
+- Never speak a bare stock ticker/symbol (e.g. "PIDILITIND", "NSE: TCS", "(NSE: CDSL)")
+  out loud in narration, since text-to-speech mispronounces it as gibberish. Always
+  refer to a company by its full name instead (e.g. say "Pidilite Industries", not
+  "PIDILITIND"). A ticker is fine in on_screen_text, just never in narration.
 - Keep total narration length close to the requested duration at ~140 words/minute.
 - visual_query must describe concrete, filmable subjects (avoid abstract concepts). If
   the topic names a specific company/industry, prefer a term tied to that company's
@@ -135,8 +139,9 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
 
     user_prompt = f"{prompt.strip()}\n\n"
 
+    symbol = research.resolve_symbol_for_theme(prompt) if is_finance_theme else None
     if is_finance_theme:
-        facts = research.fetch_grounding_facts(prompt)
+        facts = research.fetch_grounding_facts(prompt, symbol=symbol)
         if facts:
             user_prompt += (
                 "Below are real, sourced facts from a live web search -- use ONLY "
@@ -189,6 +194,9 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             for i, scene in enumerate(script["scenes"]):
                 _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
             script["company_name"] = _extract_freeform_company_name(script, is_finance_theme)
+            if script["company_name"] and symbol:
+                for scene in script["scenes"]:
+                    scene["narration"] = segmented_script.despeak_ticker(scene["narration"], symbol, script["company_name"])
             return script
         except (ValueError, KeyError) as e:
             last_error = e

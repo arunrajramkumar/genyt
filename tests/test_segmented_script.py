@@ -412,6 +412,26 @@ def test_write_segmented_script_extracts_company_name_from_prompt_for_metadata(m
     assert script["symbol"] == "PREMIER"
 
 
+def test_write_segmented_script_scrubs_ticker_from_narration(monkeypatch):
+    """Text-to-speech mispronounces a bare ticker as gibberish -- any scene
+    narration that echoes the literal ticker from the "(NSE: SYMBOL)" prompt
+    marker (e.g. because the per-section LLM call didn't fully comply with
+    SYSTEM_PROMPT_SEGMENT's instruction) must be scrubbed to the full company
+    name before producer.py ever hands it to TTS."""
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration, global_instructions=None: {
+            "narration": "PIDILITIND trades at a P/E of 59.8.", "visual_query": "v", "on_screen_text": "",
+        },
+    )
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
+    monkeypatch.setattr(ss, "_write_metadata", lambda scenes, style_guidance="", company_name=None: {"title": "T", "description": "d", "tags": []})
+    segments = [{"label": "Hook", "content": "c", "duration": 5}]
+    script = ss.write_segmented_script("Pidilite Industries Ltd (NSE: PIDILITIND). Write an opening question.", segments)
+    assert "PIDILITIND" not in script["scenes"][0]["narration"]
+    assert "Pidilite Industries Ltd" in script["scenes"][0]["narration"]
+
+
 def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):
     monkeypatch.setattr(
         ss, "_write_segment_scene",
@@ -476,6 +496,42 @@ def test_extract_company_symbol_pulls_ticker_before_closing_paren():
 
 def test_extract_company_symbol_returns_none_when_no_nse_ticker_present():
     assert ss._extract_company_symbol("How octopuses see the world") is None
+
+
+# -- despeak_ticker: scrubs a spoken ticker into the full company name ---------
+
+def test_despeak_ticker_replaces_bare_ticker_with_company_name():
+    narration = "PIDILITIND is trading near its all-time high."
+    result = ss.despeak_ticker(narration, "PIDILITIND", "Pidilite Industries Ltd")
+    assert result == "Pidilite Industries Ltd is trading near its all-time high."
+
+
+def test_despeak_ticker_matches_case_insensitively():
+    narration = "Shares of pidilitind rose 2% today."
+    result = ss.despeak_ticker(narration, "PIDILITIND", "Pidilite Industries Ltd")
+    assert result == "Shares of Pidilite Industries Ltd rose 2% today."
+
+
+def test_despeak_ticker_respects_word_boundaries():
+    # "PIDILITINDUSTRIES" merely contains the ticker as a substring -- must not
+    # be mangled into a nonsensical mid-word replacement.
+    narration = "PIDILITINDUSTRIES announced results today."
+    result = ss.despeak_ticker(narration, "PIDILITIND", "Pidilite Industries Ltd")
+    assert result == narration
+
+
+def test_despeak_ticker_noop_when_symbol_missing():
+    narration = "PIDILITIND is trading near its all-time high."
+    assert ss.despeak_ticker(narration, None, "Pidilite Industries Ltd") == narration
+
+
+def test_despeak_ticker_noop_when_company_name_missing():
+    narration = "PIDILITIND is trading near its all-time high."
+    assert ss.despeak_ticker(narration, "PIDILITIND", None) == narration
+
+
+def test_despeak_ticker_noop_when_narration_empty():
+    assert ss.despeak_ticker("", "PIDILITIND", "Pidilite Industries Ltd") == ""
 
 
 def test_ensure_company_name_in_title_leaves_title_untouched_when_already_present():

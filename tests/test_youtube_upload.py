@@ -193,3 +193,23 @@ def test_set_thumbnail_calls_thumbnails_set_with_video_id(tmp_path, monkeypatch)
 
     assert captured["videoId"] == "abc123"
     execute.assert_called_once()
+
+
+def test_add_to_playlist_inserts_a_playlist_item_for_the_video(monkeypatch):
+    captured = {}
+    execute = mock.Mock(return_value={})
+
+    def fake_playlist_items_insert(part, body):
+        captured["part"] = part
+        captured["body"] = body
+        return mock.Mock(execute=execute)
+
+    fake_youtube = mock.Mock()
+    fake_youtube.playlistItems.return_value.insert.side_effect = fake_playlist_items_insert
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    youtube_upload.add_to_playlist("abc123", "PL_mock_playlist")
+
+    assert captured["body"]["snippet"]["playlistId"] == "PL_mock_playlist"
+    assert captured["body"]["snippet"]["resourceId"] == {"kind": "youtube#video", "videoId": "abc123"}
+    execute.assert_called_once()

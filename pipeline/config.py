@@ -104,6 +104,11 @@ YOUTUBE_AUTO_UPLOAD = os.environ.get("YOUTUBE_AUTO_UPLOAD", "true").strip().lowe
 YOUTUBE_TOKEN_SEED_FILE = (
     Path(os.environ["YOUTUBE_TOKEN_SEED_FILE"]) if os.environ.get("YOUTUBE_TOKEN_SEED_FILE") else None
 )
+# Optional: auto-add every uploaded video to this playlist ID (see
+# pipeline/youtube_upload.add_to_playlist) -- off by default since we don't
+# want to guess/fabricate a playlist ID; set this to a real playlist ID
+# (visible in its YouTube Studio URL) to turn it on.
+YOUTUBE_PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID", "")
 
 for d in (OUTPUT_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)

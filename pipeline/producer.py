@@ -228,6 +228,11 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
                 youtube_upload.set_thumbnail(upload["video_id"], thumb_path)
             except Exception as e:
                 on_progress(f"Thumbnail upload failed (video still published): {e}")
+            if config.YOUTUBE_PLAYLIST_ID:
+                try:
+                    youtube_upload.add_to_playlist(upload["video_id"], config.YOUTUBE_PLAYLIST_ID)
+                except Exception as e:
+                    on_progress(f"Playlist add failed (video still published): {e}")
         except youtube_upload.NotConfiguredError:
             on_progress("YouTube upload skipped (not configured — see README)")
         except Exception as e:

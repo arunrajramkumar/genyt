@@ -377,6 +377,49 @@ def test_produce_from_script_thumbnail_upload_failure_does_not_fail_the_job(mock
     assert any("channel not verified" in msg for msg in logs)
 
 
+def test_produce_from_script_skips_playlist_add_when_not_configured(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(producer.config, "YOUTUBE_PLAYLIST_ID", "")
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    called = []
+    monkeypatch.setattr(producer.youtube_upload, "add_to_playlist", lambda *a, **k: called.append(1))
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert called == []
+
+
+def test_produce_from_script_adds_to_playlist_when_configured(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(producer.config, "YOUTUBE_PLAYLIST_ID", "PL123")
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    captured = {}
+    monkeypatch.setattr(
+        producer.youtube_upload, "add_to_playlist",
+        lambda video_id, playlist_id: captured.update(video_id=video_id, playlist_id=playlist_id),
+    )
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert captured == {"video_id": "abc", "playlist_id": "PL123"}
+
+
+def test_produce_from_script_playlist_add_failure_does_not_fail_the_job(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(producer.config, "YOUTUBE_PLAYLIST_ID", "PL123")
+    logs = []
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    monkeypatch.setattr(
+        producer.youtube_upload, "add_to_playlist",
+        mock.Mock(side_effect=RuntimeError("playlist not found")),
+    )
+    result = producer.produce_from_script(_stub_script(), on_progress=logs.append)
+    assert result["youtube_url"] == "https://youtu.be/abc"
+    assert any("playlist not found" in msg for msg in logs)
+
+
 def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
 

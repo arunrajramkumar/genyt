@@ -116,3 +116,17 @@ def set_thumbnail(video_id: str, thumbnail_path) -> None:
     youtube = _client()
     media = MediaFileUpload(str(thumbnail_path), mimetype="image/png")
     youtube.thumbnails().set(videoId=video_id, media_body=media).execute()
+
+
+def add_to_playlist(video_id: str, playlist_id: str) -> None:
+    """Adds an already-uploaded video to a playlist. A populated playlist gives
+    YouTube's autoplay/"up next" another video from this channel to chain into,
+    and gives a viewer who likes one video an easy next click -- but this
+    requires a real playlist ID the user must create and supply (see
+    config.YOUTUBE_PLAYLIST_ID), so it's a no-op unless that's configured.
+    Callers should treat a failure here as non-fatal, same as set_thumbnail."""
+    youtube = _client()
+    youtube.playlistItems().insert(
+        part="snippet",
+        body={"snippet": {"playlistId": playlist_id, "resourceId": {"kind": "youtube#video", "videoId": video_id}}},
+    ).execute()

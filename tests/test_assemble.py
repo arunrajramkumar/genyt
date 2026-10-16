@@ -104,6 +104,34 @@ def test_build_scene_clip_video_shorter_than_duration_loops(monkeypatch, tmp_pat
     assert loop_count >= 2  # ceil(5/2) + 1 margin, must fully cover target duration
 
 
+def test_build_scene_clip_long_video_scene_gets_a_hard_cut_from_two_excerpts(monkeypatch, tmp_path):
+    # A scene longer than VIDEO_SCENE_CUT_THRESHOLD, with enough source footage
+    # to pull two genuinely different excerpts from, should cut partway
+    # through instead of playing one continuous shot the whole time.
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 20.0)
+    assemble._build_scene_clip(tmp_path / "vid.mp4", "video", 10.0, tmp_path / "out.mp4", 1280, 720)
+    cmd = calls[0]
+    assert "-filter_complex" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert filter_arg.count("trim=") == 2
+    assert "concat=n=2:v=1:a=0" in filter_arg
+    assert "-map" in cmd and cmd[cmd.index("-map") + 1] == "[outv]"
+    assert cmd[cmd.index("-t") + 1] == "10.0"
+
+
+def test_build_scene_clip_long_video_scene_skips_cut_when_not_enough_source_footage(monkeypatch, tmp_path):
+    # Duration exceeds the cut threshold, but the source clip barely covers the
+    # scene -- not enough spare footage to pull a genuinely different second
+    # excerpt from, so this must fall back to the plain single-trim path.
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 11.0)
+    assemble._build_scene_clip(tmp_path / "vid.mp4", "video", 10.0, tmp_path / "out.mp4", 1280, 720)
+    cmd = calls[0]
+    assert "-filter_complex" not in cmd
+    assert cmd[cmd.index("-t") + 1] == "10.0"
+
+
 def test_build_scene_clip_diagram_is_static_no_zoompan(monkeypatch, tmp_path):
     calls = _record_calls(monkeypatch)
     assemble._build_scene_clip(tmp_path / "diagram.png", "diagram", 5.0, tmp_path / "out.mp4", 720, 1280)

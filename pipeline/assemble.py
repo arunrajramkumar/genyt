@@ -29,6 +29,12 @@ HOOK_CARD_DURATION = 3.0
 # is a free one-line ffmpeg filter rather than a new asset/dependency.
 COLOR_GRADE_FILTER = "eq=contrast=1.08:saturation=1.18:brightness=0.01"
 
+# Shorts retention falls off when a single visual holds the screen too long --
+# a scene whose narration runs longer than this gets a hard cut partway
+# through to a different excerpt of the same downloaded Pexels clip instead
+# of one continuous shot, without needing to fetch/cache a second visual.
+VIDEO_SCENE_CUT_THRESHOLD = 7.0
+
 # YouTube re-normalizes playback loudness to roughly -14 LUFS anyway, but it
 # does so by turning the whole track down to match the loudest video on the
 # platform -- a narration track recorded quieter than that (which varies scene
@@ -106,7 +112,26 @@ def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: P
         # clip is uniform before concatenation.
         video_vf = f"{scale_crop},{COLOR_GRADE_FILTER}"
         source_duration = _probe_duration(visual_path)
-        if source_duration >= duration:
+        if source_duration >= duration and duration > VIDEO_SCENE_CUT_THRESHOLD and source_duration >= duration * 1.5:
+            # Hard-cut this scene into two excerpts of the same source clip
+            # instead of one continuous shot -- the second excerpt starts
+            # partway through the remaining footage so it's visibly a
+            # different moment, not just a seamless continuation.
+            half = duration / 2
+            second_start = min(source_duration - (duration - half), source_duration / 2)
+            filter_complex = (
+                f"[0:v]trim=start=0:duration={half},setpts=PTS-STARTPTS,{video_vf}[a];"
+                f"[0:v]trim=start={second_start}:duration={duration - half},setpts=PTS-STARTPTS,{video_vf}[b];"
+                f"[a][b]concat=n=2:v=1:a=0[outv]"
+            )
+            cmd = [
+                FFMPEG_BIN, "-y", "-i", str(visual_path),
+                "-filter_complex", filter_complex, "-map", "[outv]",
+                "-t", str(duration), "-r", str(config.VIDEO_FPS),
+                "-an", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
+                "-pix_fmt", "yuv420p", str(out_path),
+            ]
+        elif source_duration >= duration:
             cmd = [
                 FFMPEG_BIN, "-y", "-i", str(visual_path),
                 "-t", str(duration), "-vf", video_vf, "-r", str(config.VIDEO_FPS),

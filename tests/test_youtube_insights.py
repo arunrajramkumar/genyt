@@ -247,3 +247,65 @@ def test_summarize_insights_handles_guidance_returned_as_a_list(monkeypatch):
     videos = [{"title": "T", "tags": ["a"], "views": 10, "ctr": None, "avg_view_duration_sec": None}]
     assert yi.summarize_insights(videos) == "- Lead with a number\n- Keep hooks under 8 words"
 
+
+# -- posting_hour_report: groups real upload history by UTC hour -------------
+
+def test_posting_hour_report_drops_hours_with_too_few_samples():
+    videos = [
+        {"published_at": "2024-01-01T05:00:00Z", "views_per_day": 100},
+        {"published_at": "2024-02-01T09:00:00Z", "views_per_day": 50},  # only 1 sample at hour 9
+    ]
+    report = yi.posting_hour_report(videos, min_videos_per_hour=2)
+    assert report == []
+
+
+def test_posting_hour_report_averages_and_ranks_hours_best_first():
+    videos = [
+        {"published_at": "2024-01-01T05:00:00Z", "views_per_day": 100},
+        {"published_at": "2024-02-01T05:00:00Z", "views_per_day": 200},
+        {"published_at": "2024-01-01T09:00:00Z", "views_per_day": 10},
+        {"published_at": "2024-02-01T09:00:00Z", "views_per_day": 20},
+    ]
+    report = yi.posting_hour_report(videos, min_videos_per_hour=2)
+    assert report == [
+        {"hour": 5, "avg_views_per_day": 150.0, "sample_size": 2},
+        {"hour": 9, "avg_views_per_day": 15.0, "sample_size": 2},
+    ]
+
+
+def test_posting_hour_report_skips_videos_with_missing_or_bad_published_at():
+    videos = [
+        {"published_at": None, "views_per_day": 100},
+        {"published_at": "not-a-date", "views_per_day": 100},
+        {"published_at": "2024-01-01T05:00:00Z", "views_per_day": 100},
+        {"published_at": "2024-02-01T05:00:00Z", "views_per_day": 200},
+    ]
+    report = yi.posting_hour_report(videos, min_videos_per_hour=2)
+    assert report == [{"hour": 5, "avg_views_per_day": 150.0, "sample_size": 2}]
+
+
+# -- get_posting_time_guidance: best-effort, never raises ---------------------
+
+def test_get_posting_time_guidance_returns_empty_on_fetch_failure(monkeypatch):
+    monkeypatch.setattr(yi, "fetch_channel_insights", mock.Mock(side_effect=RuntimeError("boom")))
+    assert yi.get_posting_time_guidance() == ""
+
+
+def test_get_posting_time_guidance_returns_empty_when_no_repeated_hours(monkeypatch):
+    monkeypatch.setattr(
+        yi, "fetch_channel_insights",
+        lambda max_videos=20: [{"published_at": "2024-01-01T05:00:00Z", "views_per_day": 100}],
+    )
+    assert yi.get_posting_time_guidance() == ""
+
+
+def test_get_posting_time_guidance_recommends_best_hour(monkeypatch):
+    videos = [
+        {"published_at": "2024-01-01T05:00:00Z", "views_per_day": 100},
+        {"published_at": "2024-02-01T05:00:00Z", "views_per_day": 200},
+    ]
+    monkeypatch.setattr(yi, "fetch_channel_insights", lambda max_videos=20: videos)
+    guidance = yi.get_posting_time_guidance()
+    assert "05:00 UTC" in guidance
+    assert "150.0 views/day" in guidance
+

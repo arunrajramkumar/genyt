@@ -136,6 +136,7 @@ def fetch_channel_insights(max_videos: int = 20) -> list:
             "tags": snippet.get("tags", []),
             "views": views,
             "views_per_day": _views_per_day(views, snippet.get("publishedAt")),
+            "published_at": snippet.get("publishedAt"),
             "ctr": row.get("impressionsClickThroughRate"),
             "avg_view_duration_sec": row.get("averageViewDuration"),
         })
@@ -229,6 +230,54 @@ def get_style_guidance(max_videos: int = 20) -> str:
     else:
         print(f"[youtube_insights] got own-channel guidance from {len(videos)} videos")
     return guidance
+
+
+def posting_hour_report(videos: list, min_videos_per_hour: int = 2) -> list:
+    """Groups past uploads by their UTC publish hour and averages views_per_day
+    within each hour, so a posting-time tool can recommend when to schedule
+    the next upload based on this channel's own real history -- no LLM
+    involved, purely an aggregation of real data already fetched for
+    get_style_guidance. Hours with fewer than `min_videos_per_hour` samples
+    are dropped since one lucky/unlucky video shouldn't look like a trend.
+    Returns [{hour, avg_views_per_day, sample_size}, ...] sorted best first."""
+    buckets = {}
+    for v in videos:
+        published_at = v.get("published_at")
+        if not published_at:
+            continue
+        try:
+            hour = datetime.fromisoformat(published_at.replace("Z", "+00:00")).hour
+        except ValueError:
+            continue
+        buckets.setdefault(hour, []).append(v.get("views_per_day", 0))
+
+    report = [
+        {"hour": hour, "avg_views_per_day": round(sum(vals) / len(vals), 1), "sample_size": len(vals)}
+        for hour, vals in buckets.items()
+        if len(vals) >= min_videos_per_hour
+    ]
+    report.sort(key=lambda r: r["avg_views_per_day"], reverse=True)
+    return report
+
+
+def get_posting_time_guidance(max_videos: int = 20) -> str:
+    """Best-effort "post around hour X UTC" recommendation string from this
+    channel's own upload history, or "" if there isn't enough same-hour
+    repetition yet to say anything meaningful. Never raises."""
+    try:
+        videos = fetch_channel_insights(max_videos)
+    except Exception as e:
+        print(f"[youtube_insights] posting-time analysis unavailable ({e})")
+        return ""
+    report = posting_hour_report(videos)
+    if not report:
+        print("[youtube_insights] not enough repeated-hour upload history yet for a posting-time recommendation")
+        return ""
+    best = report[0]
+    return (
+        f"Videos posted around {best['hour']:02d}:00 UTC average {best['avg_views_per_day']} views/day "
+        f"(from {best['sample_size']} uploads) -- the best of the hours with enough history to compare."
+    )
 
 
 def get_combined_guidance() -> str:

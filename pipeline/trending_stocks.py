@@ -16,9 +16,18 @@ import re
 
 from . import fundamentals, llm, research
 
+# Two generic queries alone tend to surface the same handful of large,
+# already-everywhere names every day, which then dominate the market-cap
+# ranking in select_trending_symbols() by default -- adding a couple of
+# sector-focused queries widens the candidate pool so that ranking actually
+# has a real choice to make, instead of re-picking yesterday's headline name.
+# Tavily usage has ample headroom (see tavily_usage.json / the real dashboard
+# quota) to absorb 2 extra calls per trending run.
 TRENDING_QUERIES = [
     "NSE stocks in the news India today",
     "most talked about Indian stocks this week",
+    "NSE banking and IT stocks news today",
+    "NSE auto and pharma stocks news today",
 ]
 
 SYSTEM_PROMPT_TRENDING = """You are a financial news analyst. You will be given real

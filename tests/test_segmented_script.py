@@ -739,3 +739,12 @@ def test_write_segment_scene_normalizes_million_billion_in_source_content(monkey
     assert "1,112 crore" in scene["narration"]
     assert "billion" not in scene["on_screen_text"]
     assert "1,112 crore" in scene["on_screen_text"]
+
+
+def test_metadata_prompt_steers_away_from_verdict_style_titles():
+    # The channel's existing narration-level neutrality rule (no buy/sell
+    # recommendation) doesn't automatically cover title phrasing -- a model
+    # could still write a verdict-style title ("Cheap or Overvalued?") even
+    # with neutral narration underneath. Lock in the explicit title-level rule.
+    assert "Apply or Avoid" in ss.SYSTEM_PROMPT_METADATA
+    assert "data-driven" in ss.SYSTEM_PROMPT_METADATA

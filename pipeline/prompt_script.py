@@ -37,7 +37,10 @@ Rules:
   those — never invent, estimate, or add extra numbers, dates, or claims that were
   not given to you. If the prompt is an analysis of something (e.g. a stock, a
   product, a place), stay neutral and do not add a recommendation/verdict unless
-  the user explicitly asked for one.
+  the user explicitly asked for one. This applies to the title too -- never phrase
+  it as a verdict (e.g. avoid "Buy or Sell", "Apply or Avoid", "Cheap or
+  Overvalued"); prefer a data-driven, curiosity-led framing instead (e.g.
+  "<Subject>: 3 Numbers to Know", "<Subject> at ₹X: What the Numbers Show").
 - If the prompt poses an open question (e.g. an exercise/"figure it out" style
   question) without also stating its answer, never invent a resolution — narrate it
   as a question for the viewer to think about instead of asserting a specific answer.

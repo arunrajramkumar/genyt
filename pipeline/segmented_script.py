@@ -408,6 +408,11 @@ Rules:
   English grammar and punctuation, including apostrophes in contractions and
   possessives (e.g. "What's", "India's"). Never put hashtags in the title —
   put them in tags instead.
+- If the subject is a company/stock, never phrase the title as a verdict or
+  recommendation (e.g. avoid "Buy or Sell", "Apply or Avoid", "Cheap or
+  Overvalued") -- this channel stays neutral, per the narration's own stance.
+  Prefer a data-driven, curiosity-led framing instead (e.g. "<Company>: 3
+  Numbers Investors Must Know", "<Company> at ₹X: What the Numbers Show").
 - description: 2-3 sentences summarizing what the video covers.
 - tags: 8-15 relevant search tags.
 - Base this ONLY on the narration given — do not invent facts not present there.

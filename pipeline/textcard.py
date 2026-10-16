@@ -1,6 +1,7 @@
 """Renders short on-screen text (facts/figures) as a transparent PNG overlay
 using Pillow, since this ffmpeg build has no libass/freetype for drawtext.
 """
+import re
 import textwrap
 from pathlib import Path
 
@@ -125,6 +126,28 @@ def _load_font(size: int, text: str = "") -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
+# Same bright green used for the hook card's stat callout, so a number
+# standing out mid-sentence in an on-screen text card ("Revenue grew to ₹412
+# Cr") reads as the same brand "this is the number that matters" cue the
+# audience already sees in the hook card and on the thumbnail.
+NUMBER_ACCENT_COLOR = (60, 230, 110, 255)
+_NUMBER_TOKEN_RE = re.compile(r"[\d₹%]")
+
+
+def _draw_centered_line_with_number_accent(draw, line: str, font, default_fill, y: int, width: int) -> None:
+    """Draws `line` centered horizontally at `y`, coloring any token that
+    contains a digit/₹/% in NUMBER_ACCENT_COLOR instead of `default_fill`."""
+    tokens = line.split(" ")
+    widths = [draw.textbbox((0, 0), tok, font=font)[2] for tok in tokens]
+    space_w = draw.textbbox((0, 0), " ", font=font)[2]
+    total_w = sum(widths) + space_w * (len(tokens) - 1)
+    x = (width - total_w) // 2
+    for tok, tok_w in zip(tokens, widths):
+        fill = NUMBER_ACCENT_COLOR if _NUMBER_TOKEN_RE.search(tok) else default_fill
+        draw.text((x, y), tok, font=font, fill=fill)
+        x += tok_w + space_w
+
+
 def render_text_card(text: str, width: int, height: int, out_path: Path) -> Path:
     """Renders `text` inside a semi-transparent bar near the bottom third of a
     `width`x`height` transparent canvas, sized for the video's own resolution."""
@@ -149,10 +172,7 @@ def render_text_card(text: str, width: int, height: int, out_path: Path) -> Path
 
     y = bar_y0 + padding
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w = bbox[2] - bbox[0]
-        x = (width - text_w) // 2
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        _draw_centered_line_with_number_accent(draw, line, font, (255, 255, 255, 255), y, width)
         y += line_height + int(font_size * 0.25)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -158,6 +158,26 @@ def test_render_hook_card_without_badge_text_still_works(tmp_path):
     assert out.exists() and out.stat().st_size > 0
 
 
+def test_render_text_card_colors_number_tokens_with_accent(tmp_path, monkeypatch):
+    # Numbers are the "this is the number that matters" cue -- they must be
+    # drawn in NUMBER_ACCENT_COLOR, while surrounding plain words stay white.
+    seen = []
+    from PIL import ImageDraw
+    original_text = ImageDraw.ImageDraw.text
+
+    def spy(self, xy, text, *a, fill=None, **k):
+        seen.append((text, fill))
+        return original_text(self, xy, text, *a, fill=fill, **k)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", spy)
+    textcard.render_text_card("Revenue grew to Rs412 Cr", 720, 1280, tmp_path / "card.png")
+
+    fills_by_token = dict(seen)
+    assert fills_by_token["Rs412"] == textcard.NUMBER_ACCENT_COLOR
+    assert fills_by_token["Revenue"] == (255, 255, 255, 255)
+    assert fills_by_token["Cr"] == (255, 255, 255, 255)
+
+
 def test_render_hook_card_badge_does_not_overlap_title_bar(tmp_path):
     # Regression for a real generated video's opening frame: the red corner
     # badge sat at a fixed top-left position while the white title bar always

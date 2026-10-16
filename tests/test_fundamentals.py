@@ -130,3 +130,34 @@ def test_format_fundamentals_facts_includes_ratios_and_growth():
     assert "- Latest quarterly net profit: Rs 152 crore" in text
     assert "- Revenue grew 12.1% year-on-year" in text
     assert "- Net profit grew 44.8% year-on-year" in text
+
+
+# -- search_company_symbol: resolves a plain company name to a real ticker ---
+# via Screener.in's free, no-key company-search endpoint ---------------------
+
+def _mock_json_response(payload, status_ok=True):
+    resp = mock.Mock()
+    resp.json = lambda: payload
+    if status_ok:
+        resp.raise_for_status = lambda: None
+    else:
+        resp.raise_for_status = mock.Mock(side_effect=fundamentals.requests.RequestException("boom"))
+    return resp
+
+
+def test_search_company_symbol_extracts_ticker_from_first_match(monkeypatch):
+    payload = [{"id": 2478, "name": "Pidilite Industries Ltd", "url": "/company/PIDILITIND/consolidated/"}]
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response(payload))
+    assert fundamentals.search_company_symbol("Pidilite Industries") == "PIDILITIND"
+
+
+def test_search_company_symbol_returns_empty_string_on_no_results(monkeypatch):
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response([]))
+    assert fundamentals.search_company_symbol("Totally Madeup Company") == ""
+
+
+def test_search_company_symbol_returns_empty_string_on_request_failure(monkeypatch):
+    def raise_error(*a, **k):
+        raise fundamentals.requests.RequestException("network down")
+    monkeypatch.setattr(fundamentals.requests, "get", raise_error)
+    assert fundamentals.search_company_symbol("Pidilite Industries") == ""

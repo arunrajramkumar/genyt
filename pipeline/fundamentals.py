@@ -15,6 +15,7 @@ import re
 import requests
 
 SCREENER_URL = "https://www.screener.in/company/{symbol}/"
+SCREENER_SEARCH_URL = "https://www.screener.in/api/company/search/"
 USER_AGENT = "Mozilla/5.0 (compatible; ytagent-fundamentals/1.0)"
 
 RATIO_ROW_RE = re.compile(
@@ -22,6 +23,7 @@ RATIO_ROW_RE = re.compile(
     re.DOTALL,
 )
 NUMBER_RE = re.compile(r"[\d,]+\.?\d*")
+SYMBOL_FROM_URL_RE = re.compile(r"/company/([A-Z0-9&\-]+)/?")
 
 
 def _strip_tags(html: str) -> str:
@@ -115,6 +117,32 @@ def fetch_fundamentals(symbol: str) -> dict:
         if profit_growth is not None:
             data["profit_growth_yoy_pct"] = profit_growth
     return data
+
+
+def search_company_symbol(company_name: str) -> str:
+    """Resolves a plain company name (e.g. "Pidilite Industries") to its real
+    NSE symbol via Screener.in's free, no-API-key company-search endpoint --
+    the same site this module already scrapes for fundamentals, just its
+    search index instead of a company page. Returns "" on no match or any
+    request/parse failure; callers must still verify the returned symbol by
+    calling fetch_fundamentals on it before trusting it (a name-search hit
+    only confirms a company with that name exists, not that the caller's
+    inferred name was exactly right)."""
+    try:
+        resp = requests.get(
+            SCREENER_SEARCH_URL,
+            params={"q": company_name},
+            headers={"User-Agent": USER_AGENT}, timeout=10,
+        )
+        resp.raise_for_status()
+        results = resp.json()
+    except (requests.RequestException, ValueError):
+        return ""
+
+    if not results:
+        return ""
+    m = SYMBOL_FROM_URL_RE.search(results[0].get("url", ""))
+    return m.group(1) if m else ""
 
 
 def market_cap_cr(data: dict) -> float:

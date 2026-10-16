@@ -65,6 +65,63 @@ _TOPIC_FRAMING_WORDS = {
 }
 
 
+# Generic finance/video-title words that often sit right next to a company
+# name in a freeform theme ("Pidilite Industries - Stock Analysis...", "Is
+# Reliance Industries Ltd a good dividend stock?") but are never themselves
+# part of the name -- used to trim a candidate name down to just the company,
+# so the Screener.in name search below isn't polluted by trailing noise.
+_GENERIC_FINANCE_WORDS = {
+    "stock", "stocks", "shares", "share", "analysis", "review", "ltd", "limited",
+    "ipo", "dividend", "quarterly", "results", "earnings", "price", "target",
+    "buy", "sell", "hold", "growth", "wealth", "long", "term", "creation",
+    "builder", "compounder", "valuation", "report", "update", "news", "outlook",
+    "forecast", "crash", "rally", "rating", "rated", "investment", "investor",
+    "investors", "market", "markets", "cap", "capitalisation", "capitalization",
+    "fundamental", "fundamentals", "breakdown", "today", "week", "month", "year",
+}
+
+
+def _extract_company_name_candidate(theme: str):
+    """Finds the longest run of consecutive capitalized, non-generic words in
+    a freeform theme -- e.g. pulls "Pidilite Industries" out of "Pidilite
+    Industries - Stock Analysis for Long Term Wealth Creation" or "Reliance
+    Industries" out of "Is Reliance Industries Ltd a good dividend stock?".
+    Returns "" when nothing plausible is found. This is only ever a *search
+    query* for _resolve_company_symbol below, never trusted as a symbol by
+    itself -- a wrong/too-broad guess here just means Screener's search comes
+    back empty or with an unrelated company, which fetch_fundamentals then
+    either confirms or silently drops."""
+    best, current = [], []
+    for word in re.findall(r"[A-Za-z0-9&]+", theme):
+        lowered = word.lower()
+        qualifies = word[0].isupper() and lowered not in _TOPIC_FRAMING_WORDS and lowered not in _GENERIC_FINANCE_WORDS
+        if qualifies:
+            current.append(word)
+            if len(current) > len(best):
+                best = current
+        else:
+            current = []
+    candidate = " ".join(best)
+    return candidate if len(candidate) >= 3 else ""
+
+
+def _resolve_company_symbol(theme: str):
+    """When a theme names a real company by plain name rather than a literal
+    "NSE: SYMBOL" marker, resolves it to a real ticker via Screener.in's free
+    company-search endpoint (fundamentals.search_company_symbol), verified by
+    requiring fetch_fundamentals on the resolved symbol to return real data
+    before it's trusted -- the same verify-then-trust pattern
+    trending_stocks.select_trending_symbols uses for LLM-suggested tickers.
+    Returns None when no company name can be extracted, Screener has no
+    match, or the resolved symbol doesn't check out -- callers must fall back
+    to web-search snippets rather than guess."""
+    candidate = _extract_company_name_candidate(theme)
+    if not candidate:
+        return None
+    symbol = fundamentals.search_company_symbol(candidate)
+    return symbol or None
+
+
 def _looks_like_bare_company_name(theme: str) -> bool:
     """True for short, keyword-free, Title-Case phrases like "KPI Green
     Energy" -- an ad-hoc prompt that's just a company name, with none of the
@@ -256,17 +313,21 @@ def fetch_grounding_facts(topic: str) -> str:
     verified -- callers must treat "" as "no verified data available" and must
     not fabricate specifics in its place.
 
-    When the topic names an NSE-listed company (e.g. "NSE: CDSL"), real
-    scraped fundamentals (P/E, ROE, ROCE, revenue/profit growth -- see
+    When the topic names an NSE-listed company -- either explicitly (e.g.
+    "NSE: CDSL") or just by plain company name (e.g. "Pidilite Industries -
+    Stock Analysis...", resolved via _resolve_company_symbol) -- real scraped
+    fundamentals (P/E, ROE, ROCE, revenue/profit growth -- see
     pipeline/fundamentals.py) are fetched first and take priority, since
-    they're precise numbers rather than search-snippet prose. Web search
-    snippets (Tavily, falling back to free DuckDuckGo scraping -- see
-    search_web()) are appended after for qualitative/news context that
-    fundamentals data alone doesn't cover (no API key needed for the
-    fundamentals half, so this works even without Tavily configured)."""
+    they're live, current numbers rather than search-snippet prose that can
+    be stale (e.g. pre-stock-split prices/ratios a web search might still
+    surface long after the split). Web search snippets (Tavily, falling back
+    to free DuckDuckGo scraping -- see search_web()) are appended after for
+    qualitative/news context that fundamentals data alone doesn't cover (no
+    API key needed for the fundamentals half, so this works even without
+    Tavily configured)."""
     parts = []
 
-    symbol = _extract_nse_symbol(topic)
+    symbol = _extract_nse_symbol(topic) or _resolve_company_symbol(topic)
     if symbol:
         facts = fundamentals.format_fundamentals_facts(fundamentals.fetch_fundamentals(symbol))
         if facts:

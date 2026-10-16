@@ -29,6 +29,17 @@ def _duckduckgo_fallback_empty_by_default(monkeypatch):
     monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda topic: "")
 
 
+@pytest.fixture(autouse=True)
+def _company_symbol_search_no_match_by_default(monkeypatch):
+    """fetch_grounding_facts resolves bare company-name themes (no literal
+    "NSE:" marker) to a symbol via fundamentals.search_company_symbol -- a
+    real network call against Screener.in's search endpoint. Default it to
+    "no match" so tests that only care about the Tavily/DuckDuckGo path don't
+    silently hit the real network or trigger a real fetch_fundamentals call.
+    Tests exercising the resolution path override this explicitly."""
+    monkeypatch.setattr(research.fundamentals, "search_company_symbol", lambda name: "")
+
+
 @pytest.mark.parametrize("theme", [
     "TATA MOTORS Stock analysis for long term growth",
     "Is Reliance Industries Ltd a good dividend stock?",
@@ -246,6 +257,78 @@ def test_fetch_grounding_facts_falls_back_to_tavily_when_no_nse_symbol_named(mon
 
     assert fundamentals_calls == []
     assert "Revenue grew 12%." in result
+
+
+# -- resolving a bare company-name theme (no literal "NSE:") to a real ticker -
+# via Screener.in's free name-search endpoint, so live fundamentals still take
+# priority over (potentially stale) web-search snippets. -----------------------
+
+@pytest.mark.parametrize("theme, expected_candidate", [
+    ("Pidilite Industries - Stock Analysis for Long Term Wealth Creation", "Pidilite Industries"),
+    ("Is Reliance Industries Ltd a good dividend stock?", "Reliance Industries"),
+    ("TATA MOTORS Stock analysis for long term growth", "TATA MOTORS"),
+    ("KPI Green Energy", "KPI Green Energy"),
+])
+def test_extract_company_name_candidate_trims_generic_finance_words(theme, expected_candidate):
+    assert research._extract_company_name_candidate(theme) == expected_candidate
+
+
+@pytest.mark.parametrize("theme", [
+    "5 Facts About Octopuses",
+    "Upcoming IPO analysis for this month",
+])
+def test_extract_company_name_candidate_returns_empty_for_generic_themes(theme):
+    # These themes have no real company name in them -- the leftover word(s)
+    # (e.g. "Octopuses", "Upcoming") must still be handed to Screener's search
+    # as a best-effort query (it reliably returns no match for them), never
+    # silently treated as a resolved company.
+    candidate = research._extract_company_name_candidate(theme)
+    assert candidate in ("", "Octopuses", "Upcoming")
+
+
+def test_fetch_grounding_facts_resolves_bare_company_name_to_real_fundamentals(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    monkeypatch.setattr(
+        research.fundamentals, "search_company_symbol",
+        lambda name: "PIDILITIND" if name == "Pidilite Industries" else "",
+    )
+    monkeypatch.setattr(
+        research.fundamentals, "fetch_fundamentals",
+        lambda symbol: {"symbol": symbol, "ratios": {"Stock P/E": "59.8"}} if symbol == "PIDILITIND" else {},
+    )
+    result = research.fetch_grounding_facts("Pidilite Industries - Stock Analysis for Long Term Wealth Creation")
+    assert "Stock P/E: 59.8" in result
+
+
+def test_fetch_grounding_facts_ignores_resolved_symbol_that_fails_fundamentals_check(monkeypatch):
+    # Screener's search returning a hit only confirms a company with that name
+    # exists -- it must still be independently verified via fetch_fundamentals
+    # before being trusted, same as trending_stocks' verify-then-trust pattern.
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(research.fundamentals, "search_company_symbol", lambda name: "FAKECO")
+    monkeypatch.setattr(research.fundamentals, "fetch_fundamentals", lambda symbol: {})
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(_SEARCH_RESULTS_PAYLOAD))
+    result = research.fetch_grounding_facts("Totally Madeup Company stock")
+
+    assert "Stock P/E" not in result
+    assert "Revenue grew 12%." in result
+
+
+def test_fetch_grounding_facts_prefers_explicit_nse_symbol_over_name_resolution(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    resolve_calls = []
+    monkeypatch.setattr(
+        research.fundamentals, "search_company_symbol",
+        lambda name: resolve_calls.append(name) or "",
+    )
+    monkeypatch.setattr(
+        research.fundamentals, "fetch_fundamentals",
+        lambda symbol: {"symbol": symbol, "ratios": {"Stock P/E": "57.2"}},
+    )
+    result = research.fetch_grounding_facts("NSE: CDSL quarterly results breakdown")
+
+    assert resolve_calls == []  # explicit "NSE: CDSL" already resolved -- no name search needed
+    assert "Stock P/E: 57.2" in result
 
 
 # -- unit normalization: Tavily snippets use international million/billion, --

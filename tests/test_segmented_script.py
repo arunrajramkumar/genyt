@@ -634,3 +634,64 @@ def test_write_segmented_script_includes_extra_tags(monkeypatch):
     segments = [{"label": "Hook", "content": "c", "duration": 5}]
     script = ss.write_segmented_script("prompt", segments, extra_tags=["NCERT", "CBSE"])
     assert script["tags"] == ["NCERT", "CBSE", "number theory"]
+
+
+# -- normalize_indian_currency_units: Indian audiences read rupee amounts in --
+# -- lakh/crore, not million/billion -- regression for a real published video --
+# -- where narration said "market capitalization of ₹11.12 billion" but the ---
+# -- on-screen text showed only "₹11.12" (the "billion" got silently dropped) -
+
+def test_normalize_indian_currency_units_converts_billion_to_crore():
+    assert ss.normalize_indian_currency_units("a market cap of ₹11.12 billion") == "a market cap of ₹1,112 crore"
+
+
+def test_normalize_indian_currency_units_converts_large_million_to_crore():
+    assert ss.normalize_indian_currency_units("earnings of ₹49 million") == "earnings of ₹4.9 crore"
+
+
+def test_normalize_indian_currency_units_converts_small_million_to_lakh():
+    assert ss.normalize_indian_currency_units("revenue of ₹5 million") == "revenue of ₹50 lakh"
+
+
+def test_normalize_indian_currency_units_converts_large_thousand_to_lakh():
+    assert ss.normalize_indian_currency_units("profit of ₹250 thousand") == "profit of ₹2.5 lakh"
+
+
+def test_normalize_indian_currency_units_converts_small_thousand_to_plain_rupees():
+    assert ss.normalize_indian_currency_units("fee of ₹50 thousand") == "fee of ₹50,000"
+
+
+def test_normalize_indian_currency_units_boundary_ten_million_is_exactly_one_crore():
+    assert ss.normalize_indian_currency_units("₹10 million") == "₹1 crore"
+
+
+def test_normalize_indian_currency_units_leaves_text_without_million_billion_untouched():
+    assert ss.normalize_indian_currency_units("Revenue grew to ₹3,120 crore this year.") == "Revenue grew to ₹3,120 crore this year."
+
+
+def test_normalize_indian_currency_units_never_touches_dollar_amounts():
+    assert ss.normalize_indian_currency_units("a market cap of $11.12 billion") == "a market cap of $11.12 billion"
+
+
+def test_normalize_indian_currency_units_is_case_insensitive():
+    assert ss.normalize_indian_currency_units("₹49 Million") == "₹4.9 crore"
+
+
+def test_write_segment_scene_normalizes_million_billion_in_source_content(monkeypatch):
+    # Regression for a real published video: narration said "11.2 million"
+    # but the on-screen text showed only "Rs.11.2" -- the unit got dropped.
+    # The source content itself uses the international convention; the scene's
+    # narration and on-screen text must both come out in crore/lakh instead.
+    monkeypatch.setattr(
+        ss.llm, "chat_json",
+        lambda *a, **k: _mock_llm_response({
+            "narration": "The company posted a market cap of ₹11.12 billion.",
+            "visual_query": "stock chart",
+            "on_screen_text": "₹11.12 billion",
+        }),
+    )
+    scene = ss._write_segment_scene("Valuation", "Market cap stands at ₹11.12 billion.", 10)
+    assert "billion" not in scene["narration"]
+    assert "1,112 crore" in scene["narration"]
+    assert "billion" not in scene["on_screen_text"]
+    assert "1,112 crore" in scene["on_screen_text"]

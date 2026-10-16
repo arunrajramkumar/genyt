@@ -217,6 +217,20 @@ def test_fetch_grounding_facts_falls_back_to_tavily_when_no_nse_symbol_named(mon
     assert "Revenue grew 12%." in result
 
 
+# -- unit normalization: Tavily snippets use international million/billion, --
+# -- but Indian audiences read rupee amounts in lakh/crore -------------------
+
+def test_fetch_grounding_facts_normalizes_million_billion_from_tavily_snippets(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    payload = {"results": [
+        {"title": "Premier Polyfilm", "content": "Market capitalization of ₹11.12 billion.", "url": "https://example.com/a"},
+    ]}
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: _FakeResponse(payload))
+    result = research.fetch_grounding_facts("Premier Polyfilm stock analysis")
+    assert "billion" not in result
+    assert "₹1,112 crore" in result
+
+
 def test_fetch_grounding_facts_proceeds_when_live_credits_comfortably_above_buffer(monkeypatch):
     monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
     monkeypatch.setattr(config, "TAVILY_SAFETY_BUFFER_CREDITS", 50)

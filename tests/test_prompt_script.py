@@ -284,6 +284,18 @@ def test_ground_scene_on_screen_text_fills_empty_first_scene_text_with_a_fact():
     assert "412" in scene["on_screen_text"]
 
 
+def test_ground_scene_on_screen_text_normalizes_million_billion_before_grounding_check():
+    # Mirrors _write_freeform_script's real call order: narration is already
+    # normalized by the time this runs, so the on-screen text's normalized
+    # figure must still line up with it for the grounding check to pass.
+    scene = {
+        "narration": "The company posted a market cap of ₹1,112 crore.",
+        "on_screen_text": "₹11.12 billion",
+    }
+    prompt_script._ground_scene_on_screen_text(scene)
+    assert scene["on_screen_text"] == "₹1,112 crore"
+
+
 def test_write_freeform_script_clears_on_screen_text_not_grounded_in_its_own_scene(monkeypatch):
     # Three scenes so the subscribe-CTA rewrite of the LAST scene's
     # on_screen_text doesn't mask what we're actually testing here.
@@ -342,6 +354,35 @@ def test_write_freeform_script_omits_company_name_when_first_scene_has_no_text(m
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(untitled_hook_script))
     result = prompt_script._write_freeform_script("Tata Motors stock analysis")
     assert result["company_name"] is None
+
+
+# -- unit normalization: narration/description/on_screen_text must read in --
+# -- lakh/crore, not million/billion, for Indian finance themes --------------
+
+def test_write_freeform_script_normalizes_million_billion_in_narration_and_description(monkeypatch):
+    # Regression for a real published video: narration said "market
+    # capitalization of ₹11.12 billion" but the on-screen text showed only
+    # "₹11.12" -- the unit word got silently dropped during fact-extraction.
+    billion_script = dict(
+        VALID_SCRIPT,
+        description="Trailing twelve-month earnings of ₹49 million.",
+        scenes=[
+            {
+                "narration": "The company has a market capitalization of ₹11.12 billion.",
+                "visual_query": "stock chart",
+                "on_screen_text": "₹11.12 billion",
+            },
+            {"narration": "That's a strong result overall.", "visual_query": "office", "on_screen_text": ""},
+        ],
+    )
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(billion_script))
+    result = prompt_script._write_freeform_script("Premier Polyfilm stock analysis")
+    assert "billion" not in result["description"]
+    assert "₹4.9 crore" in result["description"]
+    assert "billion" not in result["scenes"][0]["narration"]
+    assert "₹1,112 crore" in result["scenes"][0]["narration"]
+    assert "billion" not in result["scenes"][0]["on_screen_text"]
+    assert "1,112 crore" in result["scenes"][0]["on_screen_text"]
 
 
 def test_write_freeform_script_does_not_mistake_subscribe_cta_for_company_name(monkeypatch):

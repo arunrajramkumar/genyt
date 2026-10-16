@@ -36,6 +36,48 @@ def _extract_company_name(prompt: str):
     return m.group(1).strip() if m else None
 
 
+# Indian retail-investor audiences read rupee amounts in lakh/crore, never
+# million/billion -- but grounding facts come from Tavily web-search snippets
+# (international finance sites) and the LLM just echoes whatever unit the
+# source text used. Reported bug: narration said "a market capitalization of
+# ₹11.12 billion" and the on-screen text showed only "₹11.12" -- the "billion"
+# got silently dropped during fact-extraction, making the number read as
+# roughly 100 crore too small. Converting the unit (not inventing a new
+# number) fixes this at the root: once narration itself says "₹1,112 crore",
+# both the on-screen extraction (FACT_PATTERNS' crore/lakh pattern) and the
+# narration/captions stay correct and in sync.
+_CURRENCY_UNIT_RE = re.compile(r"₹\s?([\d,]+(?:\.\d+)?)\s*(million|billion|thousand)\b", re.IGNORECASE)
+
+
+def _format_indian_number(value: float) -> str:
+    formatted = f"{value:,.2f}"
+    if formatted.endswith(".00"):
+        return formatted[:-3]
+    return formatted.rstrip("0").rstrip(".")
+
+
+def _convert_currency_unit(match: re.Match) -> str:
+    number = float(match.group(1).replace(",", ""))
+    unit = match.group(2).lower()
+    if unit.startswith("billion"):
+        return f"₹{_format_indian_number(number * 100)} crore"
+    if unit.startswith("million"):
+        if number >= 10:
+            return f"₹{_format_indian_number(number / 10)} crore"
+        return f"₹{_format_indian_number(number * 10)} lakh"
+    # thousand
+    if number >= 100:
+        return f"₹{_format_indian_number(number / 100)} lakh"
+    return f"₹{_format_indian_number(number * 1000)}"  # sub-lakh: plain rupees reads clearer than "0.x lakh"
+
+
+def normalize_indian_currency_units(text: str) -> str:
+    """Rewrites "₹<N> million/billion/thousand" into the lakh/crore convention
+    Indian audiences actually use. Only touches amounts with a literal ₹
+    prefix, so a USD ($) figure is never misinterpreted as rupees."""
+    return _CURRENCY_UNIT_RE.sub(_convert_currency_unit, text)
+
+
 def clean_title(title: str) -> str:
     """Strips hashtags (they belong in tags/description, not the title) and
     collapses any double-spacing the model leaves behind after removing them."""
@@ -234,6 +276,7 @@ def _fallback_visual(label: str) -> str:
 
 
 def _write_segment_scene(label: str, content: str, duration_sec: float, global_instructions: str = None) -> dict:
+    content = normalize_indian_currency_units(content)
     target_words = max(6, int(duration_sec / 60 * 140))
     system_prompt = _segment_system_prompt(target_words, label)
     user_prompt = f"Scene topic: {label}\n\nFacts:\n{content}\n\nProduce the JSON now."
@@ -263,10 +306,11 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
 
     if verbatim:
         scene["narration"] = verbatim
+    scene["narration"] = normalize_indian_currency_units(scene["narration"])
     if not (scene.get("visual_query") or "").strip():
         scene["visual_query"] = visual_fallback
 
-    on_screen_text = (scene.get("on_screen_text") or "").strip()
+    on_screen_text = normalize_indian_currency_units((scene.get("on_screen_text") or "").strip())
     if on_screen_text and not _is_grounded(on_screen_text, content):
         on_screen_text = ""
     if len(facts) > 1:

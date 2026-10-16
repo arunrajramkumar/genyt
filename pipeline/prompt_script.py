@@ -156,8 +156,10 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             if not script["scenes"]:
                 raise ValueError("Script has zero scenes")
             script["title"] = segmented_script.clean_title(script["title"])[:70]
+            script["description"] = segmented_script.normalize_indian_currency_units(script["description"])
             script["tags"] = segmented_script.merge_tags(extra_tags or [], script["tags"] or ["short video"])
             for scene in script["scenes"]:
+                scene["narration"] = segmented_script.normalize_indian_currency_units(scene.get("narration") or "")
                 diagram = scene.get("diagram")
                 if diagram:
                     ok, _reason = diagrams.validate_diagram_spec(diagram, source_text=scene.get("narration", ""))
@@ -220,7 +222,7 @@ def _ground_scene_on_screen_text(scene: dict, is_first_scene: bool = False) -> N
     happens to also narrate 2+ numbers (e.g. "current price of X and a market
     cap of Y") have its subject name clobbered by those numbers."""
     narration = scene.get("narration") or ""
-    on_screen_text = (scene.get("on_screen_text") or "").strip()
+    on_screen_text = segmented_script.normalize_indian_currency_units((scene.get("on_screen_text") or "").strip())
     if on_screen_text and not segmented_script._is_grounded(on_screen_text, narration):
         on_screen_text = ""
     if is_first_scene and on_screen_text:

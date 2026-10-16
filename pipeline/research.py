@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from . import config, fundamentals
+from . import config, fundamentals, segmented_script
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 TAVILY_USAGE_URL = "https://api.tavily.com/usage"
@@ -192,5 +192,5 @@ def fetch_grounding_facts(topic: str) -> str:
     if tavily_facts:
         parts.append(tavily_facts)
 
-    return "\n".join(parts)
+    return segmented_script.normalize_indian_currency_units("\n".join(parts))
 

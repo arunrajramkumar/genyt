@@ -102,7 +102,16 @@ def _fetch_remaining_credits():
     this billing cycle. Returns None if the check itself fails (auth error,
     network issue, rate limit, or the account reports no fixed plan_limit) --
     callers must treat None as "unknown" and fall back to the local call-count
-    guardrail rather than block indefinitely on an unreachable check."""
+    guardrail rather than block indefinitely on an unreachable check.
+
+    Also syncs the locally committed usage file to Tavily's own plan_usage
+    whenever this succeeds. The local file is otherwise hand-incremented one
+    call at a time (see _record_call), which silently drifts from the real
+    number -- it never counts this very GET request, any call made during
+    local testing whose updated file didn't get committed, or any call made
+    by a concurrent run. Tavily's own account is the authoritative source of
+    truth, so overwrite the local figure with it rather than let the two
+    diverge indefinitely."""
     try:
         resp = requests.get(
             TAVILY_USAGE_URL,
@@ -115,12 +124,15 @@ def _fetch_remaining_credits():
         return None
 
     account = data.get("account", {})
+    plan_usage = account.get("plan_usage")
+    if plan_usage is not None:
+        config.TAVILY_USAGE_FILE.write_text(json.dumps({"month": _current_month(), "calls": plan_usage}))
     if account.get("paygo_usage"):
         return 0  # any pay-as-you-go overage usage is a hard stop signal
     plan_limit = account.get("plan_limit")
     if plan_limit is None:
         return None
-    return max(0, plan_limit - (account.get("plan_usage") or 0))
+    return max(0, plan_limit - (plan_usage or 0))
 
 
 def _extract_nse_symbol(theme: str):

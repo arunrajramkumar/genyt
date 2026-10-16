@@ -159,6 +159,22 @@ def test_fetch_remaining_credits_returns_none_when_plan_is_unbounded(monkeypatch
     assert research._fetch_remaining_credits() is None
 
 
+def test_fetch_remaining_credits_syncs_local_usage_file_to_tavilys_own_count(monkeypatch):
+    # The local file is otherwise hand-incremented one call at a time, which
+    # drifts from Tavily's real account usage (e.g. calls made during local
+    # testing that were never committed) -- a successful live check must
+    # overwrite it with the authoritative number instead of leaving it stale.
+    config.TAVILY_USAGE_FILE.write_text(json.dumps({"month": research._current_month(), "calls": 3}))
+    monkeypatch.setattr(
+        research.requests, "get",
+        lambda *a, **k: _FakeResponse({"account": {"plan_usage": 357, "plan_limit": 1500}}),
+    )
+    research._fetch_remaining_credits()
+    usage = json.loads(config.TAVILY_USAGE_FILE.read_text())
+    assert usage["calls"] == 357
+    assert usage["month"] == research._current_month()
+
+
 def test_fetch_remaining_credits_returns_zero_on_any_paygo_overage_usage(monkeypatch):
     monkeypatch.setattr(
         research.requests, "get",

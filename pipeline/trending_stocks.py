@@ -12,6 +12,7 @@ symbol that doesn't resolve to a real, scrapable company page is silently
 dropped rather than queued with made-up data.
 """
 import json
+import random
 import re
 
 from . import fundamentals, llm, research
@@ -94,6 +95,25 @@ def _extract_candidates(facts_text: str) -> list:
     return grounded
 
 
+def _weighted_pick_without_replacement(pairs: list, k: int) -> list:
+    """Picks up to k items from pairs=[(candidate, market_cap_cr), ...] via
+    weighted random sampling (weight = market cap, so a bigger company is
+    still more likely to be picked) without replacement, instead of always
+    taking the strict top-k by market cap. Always taking the single largest
+    company converges this channel onto the same handful of mega-caps every
+    other finance channel already covers, day after day -- a real company a
+    retail audience still recognizes but hasn't seen covered everywhere else
+    is a better find than the n-th video about the same index heavyweight."""
+    pool = list(pairs)
+    chosen = []
+    for _ in range(min(k, len(pool))):
+        weights = [cap + 1 for _, cap in pool]  # +1 so an unparseable/zero market cap still has a nonzero chance
+        pick = random.choices(pool, weights=weights, k=1)[0]
+        chosen.append(pick)
+        pool.remove(pick)
+    return chosen
+
+
 def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = None) -> list:
     """Best-effort list of up to `limit` currently-trending, verified-real NSE
     symbols not already in exclude_symbols: [{symbol, name}, ...]. Returns []
@@ -102,11 +122,14 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
     available right now" and fall back to requiring a manual --symbols list,
     never queue a theme with no real candidate behind it.
 
-    Ranked by market cap (largest first) among all verified candidates rather
-    than taking the first `limit` in whatever order the LLM happened to list
-    them -- a bigger, more widely-recognized company is a reasonable free
-    proxy for viewer search/click interest, and the figure is already scraped
-    as part of the existing fundamentals verification step (no new API call)."""
+    Picked via market-cap-weighted random sampling (without replacement) from
+    among all verified candidates, rather than strictly the top `limit` by
+    market cap -- a bigger, more widely-recognized company is a reasonable
+    free proxy for viewer search/click interest (the figure is already
+    scraped as part of the existing fundamentals verification step, no new
+    API call), but always picking the single largest name every run means
+    this channel never covers anything but the same mega-caps every other
+    finance channel already covers."""
     exclude = {s.strip().upper() for s in exclude_symbols}
     try:
         facts_text = _search_trending_stock_news(queries)
@@ -123,5 +146,6 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
         if data:
             verified.append((c, fundamentals.market_cap_cr(data)))
 
-    verified.sort(key=lambda pair: pair[1], reverse=True)
-    return [c for c, _market_cap in verified[:limit]]
+    chosen = _weighted_pick_without_replacement(verified, limit)
+    chosen.sort(key=lambda pair: pair[1], reverse=True)
+    return [c for c, _market_cap in chosen]

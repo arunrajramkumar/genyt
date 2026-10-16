@@ -80,13 +80,16 @@ def test_select_trending_symbols_respects_limit(monkeypatch):
     monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
 
     result = ts.select_trending_symbols(exclude_symbols=[], limit=2)
-    assert [c["symbol"] for c in result] == ["A", "B"]
+    assert len(result) == 2
+    assert {c["symbol"] for c in result} <= {"A", "B", "C"}
 
 
 def test_select_trending_symbols_ranks_by_market_cap_descending(monkeypatch):
     # Candidates come back in LLM-extraction order (small company first), but
     # the smaller company must not win a limited slot over a bigger, more
-    # widely-recognized one.
+    # widely-recognized one -- stub out the weighted-random pick itself
+    # (tested separately below) so this test only verifies the final result
+    # is market-cap-sorted, not which random draw happened to occur.
     monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
     monkeypatch.setattr(
         ts, "_extract_candidates",
@@ -95,9 +98,40 @@ def test_select_trending_symbols_ranks_by_market_cap_descending(monkeypatch):
     market_caps = {"SMALLCO": 500.0, "BIGCO": 50000.0, "MIDCO": 5000.0}
     monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
     monkeypatch.setattr(ts.fundamentals, "market_cap_cr", lambda data: market_caps[data["symbol"]])
+    monkeypatch.setattr(
+        ts, "_weighted_pick_without_replacement",
+        lambda pairs, k: sorted(pairs, key=lambda p: p[1], reverse=True)[:k],
+    )
 
     result = ts.select_trending_symbols(exclude_symbols=[], limit=2)
     assert [c["symbol"] for c in result] == ["BIGCO", "MIDCO"]
+
+
+# -- _weighted_pick_without_replacement: market-cap-weighted diversity -------
+
+def test_weighted_pick_without_replacement_never_exceeds_k():
+    pairs = [({"symbol": s}, 100.0) for s in ["A", "B", "C"]]
+    assert len(ts._weighted_pick_without_replacement(pairs, 2)) == 2
+
+
+def test_weighted_pick_without_replacement_returns_all_when_k_exceeds_pool_size():
+    pairs = [({"symbol": s}, 100.0) for s in ["A", "B"]]
+    assert len(ts._weighted_pick_without_replacement(pairs, 5)) == 2
+
+
+def test_weighted_pick_without_replacement_never_repeats_a_candidate():
+    pairs = [({"symbol": s}, 100.0) for s in ["A", "B", "C", "D"]]
+    chosen = ts._weighted_pick_without_replacement(pairs, 4)
+    assert len({c["symbol"] for c, _cap in chosen}) == 4
+
+
+def test_weighted_pick_without_replacement_gives_zero_market_cap_a_nonzero_chance(monkeypatch):
+    # A candidate with an unparseable/zero market cap (weight 0) must still be
+    # pickable (weight floored at 1), not permanently excluded.
+    pairs = [({"symbol": "ZERO"}, 0.0), ({"symbol": "HUGE"}, 1_000_000.0)]
+    monkeypatch.setattr(ts.random, "choices", lambda pool, weights, k: [pool[0]] if weights[0] > 0 else [pool[1]])
+    chosen = ts._weighted_pick_without_replacement(pairs, 1)
+    assert chosen[0][0]["symbol"] == "ZERO"
 
 
 def test_select_trending_symbols_returns_empty_on_unexpected_failure(monkeypatch):

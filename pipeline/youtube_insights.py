@@ -13,7 +13,7 @@ raising, so a missing/incomplete channel history never blocks generation.
 """
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 
 from googleapiclient.discovery import build
 
@@ -94,9 +94,25 @@ def _analytics_rows(analytics, video_ids: list) -> dict:
     return {}
 
 
+def _views_per_day(views: int, published_at: str) -> float:
+    """Raw view count alone makes a month-old video look like a far bigger hit
+    than a video uploaded yesterday purely because it's had more time to
+    accumulate views, which skews the LLM's title/hook pattern-finding toward
+    "this title is good" when the real signal is just "this video is older".
+    Normalizing by days-live makes recent and older uploads comparable."""
+    if not published_at:
+        return 0.0
+    try:
+        published = datetime.fromisoformat(published_at.replace("Z", "+00:00")).date()
+    except ValueError:
+        return 0.0
+    days_live = max(1, (date.today() - published).days)
+    return round(views / days_live, 1)
+
+
 def fetch_channel_insights(max_videos: int = 20) -> list:
-    """Returns [{title, tags, views, ctr, avg_view_duration_sec}, ...] for the
-    channel's most recent uploads. Raises youtube_upload.NotConfiguredError if
+    """Returns [{title, tags, views, views_per_day, ctr, avg_view_duration_sec}, ...]
+    for the channel's most recent uploads. Raises youtube_upload.NotConfiguredError if
     no YouTube token exists yet. Returns [] if there aren't enough videos for
     a pattern to be meaningful."""
     creds = youtube_upload._load_credentials()
@@ -114,10 +130,12 @@ def fetch_channel_insights(max_videos: int = 20) -> list:
     for vid in video_ids:
         snippet = snippets.get(vid, {})
         row = analytics_rows.get(vid, {})
+        views = row.get("views", 0)
         videos.append({
             "title": snippet.get("title", ""),
             "tags": snippet.get("tags", []),
-            "views": row.get("views", 0),
+            "views": views,
+            "views_per_day": _views_per_day(views, snippet.get("publishedAt")),
             "ctr": row.get("impressionsClickThroughRate"),
             "avg_view_duration_sec": row.get("averageViewDuration"),
         })
@@ -125,9 +143,11 @@ def fetch_channel_insights(max_videos: int = 20) -> list:
 
 
 SYSTEM_PROMPT_INSIGHTS = """You are a YouTube Shorts growth strategist. Given a list of a
-channel's recent videos with their title, tags, view count, click-through rate (CTR, if
-available) and average view duration, identify concrete, actionable patterns in what
-hooks viewers — title phrasing, use of numbers/specifics, tag choices, hook length.
+channel's recent videos with their title, tags, views-per-day-since-upload (use this, not
+raw views, to judge performance -- a recently-uploaded video naturally has fewer total
+views than an older one even if it's resonating just as well or better), click-through
+rate (CTR, if available) and average view duration, identify concrete, actionable patterns
+in what hooks viewers — title phrasing, use of numbers/specifics, tag choices, hook length.
 
 Output ONLY valid JSON (no markdown fences, no commentary):
 
@@ -160,7 +180,7 @@ def summarize_insights(videos: list) -> str:
     for v in videos:
         ctr = f"{v['ctr']:.1f}% CTR" if v.get("ctr") is not None else "CTR n/a"
         duration = f"{v['avg_view_duration_sec']:.0f}s avg view" if v.get("avg_view_duration_sec") is not None else "duration n/a"
-        lines.append(f"- \"{v['title']}\" | tags: {', '.join(v['tags'][:8])} | {v['views']} views | {ctr} | {duration}")
+        lines.append(f"- \"{v['title']}\" | tags: {', '.join(v['tags'][:8])} | {v.get('views_per_day', 0)} views/day ({v['views']} total) | {ctr} | {duration}")
     user_prompt = "Recent videos:\n" + "\n".join(lines) + "\n\nProduce the JSON guidance now."
 
     last_error = None

@@ -126,8 +126,8 @@ def test_fetch_channel_insights_combines_snippet_and_analytics_data(monkeypatch)
     monkeypatch.setattr(yi, "build", lambda *a, **k: mock.Mock())
     monkeypatch.setattr(yi, "_uploaded_video_ids", lambda youtube, max_videos: ["v1", "v2", "v3"])
     monkeypatch.setattr(yi, "_video_snippets", lambda youtube, ids: {
-        "v1": {"title": "First video", "tags": ["a", "b"]},
-        "v2": {"title": "Second video", "tags": ["c"]},
+        "v1": {"title": "First video", "tags": ["a", "b"], "publishedAt": "2024-01-01T00:00:00Z"},
+        "v2": {"title": "Second video", "tags": ["c"], "publishedAt": "2024-01-01T00:00:00Z"},
         "v3": {"title": "Third video", "tags": []},
     })
     monkeypatch.setattr(yi, "_analytics_rows", lambda analytics, ids: {
@@ -136,14 +136,18 @@ def test_fetch_channel_insights_combines_snippet_and_analytics_data(monkeypatch)
 
     videos = yi.fetch_channel_insights()
 
-    assert videos[0] == {
-        "title": "First video", "tags": ["a", "b"], "views": 1000,
-        "ctr": 6.5, "avg_view_duration_sec": 15.0,
-    }
+    assert videos[0]["title"] == "First video"
+    assert videos[0]["views"] == 1000
+    assert videos[0]["ctr"] == 6.5
+    assert videos[0]["avg_view_duration_sec"] == 15.0
+    assert videos[0]["views_per_day"] > 0
     # Videos with no matching analytics row still show up, with sensible defaults.
     assert videos[1]["title"] == "Second video"
     assert videos[1]["views"] == 0
     assert videos[1]["ctr"] is None
+    assert videos[1]["views_per_day"] == 0.0
+    # A video with no publishedAt at all must not raise/crash the normalization.
+    assert videos[2]["views_per_day"] == 0.0
 
 
 # -- _analytics_rows: falls back when the full metric set isn't queryable -----
@@ -185,6 +189,29 @@ def test_analytics_rows_returns_empty_when_both_attempts_fail():
     analytics = mock.Mock()
     analytics.reports.return_value.query.return_value.execute.side_effect = Exception("boom")
     assert yi._analytics_rows(analytics, ["v1"]) == {}
+
+
+# -- _views_per_day: normalizes raw view count by days since upload ----------
+
+def test_views_per_day_returns_zero_for_missing_published_at():
+    assert yi._views_per_day(1000, None) == 0.0
+    assert yi._views_per_day(1000, "") == 0.0
+
+
+def test_views_per_day_returns_zero_for_unparseable_published_at():
+    assert yi._views_per_day(1000, "not-a-date") == 0.0
+
+
+def test_views_per_day_floors_at_one_day_for_a_video_published_today():
+    from datetime import date
+    published_today = f"{date.today().isoformat()}T00:00:00Z"
+    assert yi._views_per_day(500, published_today) == 500.0
+
+
+def test_views_per_day_divides_by_days_live():
+    from datetime import date, timedelta
+    published_10_days_ago = f"{(date.today() - timedelta(days=10)).isoformat()}T00:00:00Z"
+    assert yi._views_per_day(1000, published_10_days_ago) == 100.0
 
 
 # -- summarize_insights: LLM call shape ---------------------------------------

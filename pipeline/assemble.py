@@ -14,7 +14,13 @@ FFPROBE_BIN = shutil.which("ffprobe")
 # occasionally tipping over the limit and silently failing the Telegram send.
 _VIDEO_BITRATE_ARGS = ["-b:v", "1200k", "-maxrate", "1500k", "-bufsize", "3000k"]
 
-HOOK_CARD_DURATION = 2.0
+# Shorts retention drops off a cliff in the first ~3s -- 2s wasn't quite long
+# enough for a viewer to actually read the headline + stat callout before the
+# scene underneath took over, so the branded hook now holds through that whole
+# critical window instead of flashing by. _overlay_hook_card already clamps
+# this to the scene's own clip length when the first scene's narration is
+# shorter than this, so raising it here is safe for every video length.
+HOOK_CARD_DURATION = 3.0
 
 # Slight contrast/saturation lift on real photo/video stock footage (not the
 # flat-colored diagram PNGs, where boosting saturation would just wash out

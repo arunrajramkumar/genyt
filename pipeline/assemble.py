@@ -188,6 +188,18 @@ def _overlay_hook_card(clip_path: Path, hook_card_path: Path, duration: float, w
     ])
 
 
+def _overlay_watermark(video_path: Path, watermark_path: Path, out_path: Path) -> None:
+    """Overlays a static watermark PNG for the whole duration of `video_path`
+    in one pass over the already-concatenated video, rather than per-scene --
+    cheaper and the watermark position never needs to vary by scene."""
+    _run([
+        FFMPEG_BIN, "-y", "-i", str(video_path), "-loop", "1", "-i", str(watermark_path),
+        "-filter_complex", "[0:v][1:v]overlay=0:0:shortest=1",
+        "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
+        "-pix_fmt", "yuv420p", str(out_path),
+    ])
+
+
 def assemble_video(
     scenes: list[dict],
     narration_paths: list[Path],
@@ -249,6 +261,13 @@ def assemble_video(
         FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
         "-c", "copy", str(video_only_path),
     ])
+
+    if config.CHANNEL_WATERMARK_TEXT:
+        watermark_path = work_dir / "watermark.png"
+        textcard.render_watermark(config.CHANNEL_WATERMARK_TEXT, width, height, watermark_path)
+        watermarked_path = work_dir / "video_watermarked.mp4"
+        _overlay_watermark(video_only_path, watermark_path, watermarked_path)
+        video_only_path = watermarked_path
 
     # Concatenate all narration clips into one continuous audio track — re-encoded
     # (not stream-copied) since the source mp3s may not share identical codec

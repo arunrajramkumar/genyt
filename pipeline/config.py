@@ -42,6 +42,12 @@ CACHE_DIR = ROOT / "cache"
 # returned by a successful YouTube upload -- see pipeline/performance_log.py.
 COMPANY_PERFORMANCE_LOG_FILE = ROOT / "company_performance_log.json"
 
+# Optional small "@handle"-style corner watermark burned into every video
+# (see pipeline/assemble.py / pipeline/textcard.render_watermark) -- off by
+# default (no-op) since we don't want to fabricate a channel handle; set this
+# to the channel's real @handle to turn it on.
+CHANNEL_WATERMARK_TEXT = os.environ.get("CHANNEL_WATERMARK_TEXT", "")
+
 # Narration voice — Microsoft Edge neural TTS (free, no API key).
 # en-IN-PrabhatNeural / en-IN-NeerjaNeural give an Indian-English accent;
 # run `edge-tts --list-voices` for the full catalog.

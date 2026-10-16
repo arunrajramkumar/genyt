@@ -178,6 +178,11 @@ def test_render_text_card_colors_number_tokens_with_accent(tmp_path, monkeypatch
     assert fills_by_token["Cr"] == (255, 255, 255, 255)
 
 
+def test_render_watermark_produces_a_nonempty_png(tmp_path):
+    out = textcard.render_watermark("@mychannel", 720, 1280, tmp_path / "wm.png")
+    assert out.exists() and out.stat().st_size > 0
+
+
 def test_render_hook_card_badge_does_not_overlap_title_bar(tmp_path):
     # Regression for a real generated video's opening frame: the red corner
     # badge sat at a fixed top-left position while the white title bar always

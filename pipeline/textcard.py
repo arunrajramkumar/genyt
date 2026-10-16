@@ -197,6 +197,35 @@ def _draw_centered_lines(draw, lines, font, fill, top_y, width, line_gap) -> int
     return y
 
 
+def render_watermark(text: str, width: int, height: int, out_path: Path) -> Path:
+    """Renders a small, semi-transparent channel-handle pill for the top-right
+    corner, present for the whole video rather than just the hook/thumbnail --
+    a re-shared or screen-recorded clip (common for finance Shorts) otherwise
+    carries no indication of which channel it came from."""
+    text = sanitize_display_text(text)
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    font_size = max(18, width // 32)
+    font = _load_font(font_size, text)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    pad_x, pad_y = int(font_size * 0.7), int(font_size * 0.4)
+    margin = int(width * 0.03)
+    x1 = width - margin
+    y0 = margin
+    x0 = x1 - text_w - pad_x * 2
+    y1 = y0 + text_h + pad_y * 2
+
+    draw.rectangle([x0, y0, x1, y1], fill=(0, 0, 0, 130), outline=None)
+    draw.text((x0 + pad_x, y0 + pad_y), text, font=font, fill=(255, 255, 255, 220))
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_path)
+    return out_path
+
+
 def render_hook_card(
     title: str,
     stat_text: str,

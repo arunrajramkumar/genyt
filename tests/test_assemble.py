@@ -140,6 +140,69 @@ def test_overlay_text_renders_card_then_composites(monkeypatch, tmp_path):
     assert "overlay" in calls[0][calls[0].index("-filter_complex") + 1]
 
 
+def test_overlay_watermark_composites_for_the_whole_clip(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    assemble._overlay_watermark(tmp_path / "video.mp4", tmp_path / "wm.png", tmp_path / "out.mp4")
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert "-loop" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "overlay" in filter_arg and "shortest=1" in filter_arg
+
+
+def test_assemble_video_skips_watermark_when_not_configured(monkeypatch, tmp_path):
+    monkeypatch.setattr(assemble.config, "CHANNEL_WATERMARK_TEXT", "")
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)
+    narration = tmp_path / "n0.mp3"
+    narration.write_bytes(b"x")
+    visual = tmp_path / "v0.jpg"
+    visual.write_bytes(b"x")
+
+    assemble.assemble_video(
+        scenes=[{"narration": "hi", "on_screen_text": ""}],
+        narration_paths=[narration],
+        visual_paths=[(visual, "image")],
+        out_path=tmp_path / "final.mp4",
+        work_dir=tmp_path / "work",
+        width=720, height=1280,
+        hook_card_path=None,
+    )
+    assert not any("watermark" in str(c[-1]) for c in calls)
+
+
+def test_assemble_video_applies_watermark_when_configured(monkeypatch, tmp_path):
+    monkeypatch.setattr(assemble.config, "CHANNEL_WATERMARK_TEXT", "@mychannel")
+    rendered = {}
+    monkeypatch.setattr(
+        assemble.textcard, "render_watermark",
+        lambda text, w, h, out: (rendered.setdefault("text", text), out.touch())[1] or out,
+    )
+    watermarked = []
+    monkeypatch.setattr(assemble, "_run", lambda cmd: None)
+    monkeypatch.setattr(
+        assemble, "_overlay_watermark",
+        lambda video_path, watermark_path, out_path: watermarked.append(video_path) or out_path.touch(),
+    )
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)
+    narration = tmp_path / "n0.mp3"
+    narration.write_bytes(b"x")
+    visual = tmp_path / "v0.jpg"
+    visual.write_bytes(b"x")
+
+    assemble.assemble_video(
+        scenes=[{"narration": "hi", "on_screen_text": ""}],
+        narration_paths=[narration],
+        visual_paths=[(visual, "image")],
+        out_path=tmp_path / "final.mp4",
+        work_dir=tmp_path / "work",
+        width=720, height=1280,
+        hook_card_path=None,
+    )
+    assert rendered["text"] == "@mychannel"
+    assert len(watermarked) == 1
+
+
 def test_assemble_video_skips_hook_clip_when_not_provided(monkeypatch, tmp_path):
     calls = _record_calls(monkeypatch)
     monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)

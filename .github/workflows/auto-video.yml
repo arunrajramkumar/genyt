@@ -57,6 +57,9 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           YOUTUBE_TOKEN_SEED_FILE: /tmp/youtube_seed/youtube_token.json
           YOUTUBE_AUTO_UPLOAD: "true"
+          # The finance channel's real @handle -- burns a small corner watermark
+          # into every upload (see pipeline/assemble.py/_overlay_watermark).
+          CHANNEL_WATERMARK_TEXT: "@FinancialWealth-R"
           # Microsoft's free edge-tts endpoint blocks GitHub Actions' published IP
           # ranges outright (confirmed on both ubuntu-latest and macos-latest), so
           # CI narration uses Google Cloud Text-to-Speech's officially-authenticated

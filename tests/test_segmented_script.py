@@ -34,6 +34,21 @@ def test_parse_segments_extracts_labels_and_durations():
     assert segments[-1]["duration"] is not None  # End screen has no header range -> fallback duration
 
 
+def test_parse_segments_sizes_headerless_duration_from_word_count():
+    short_prompt = (
+        "0-5 seconds - Hook\nShort hook line.\n\n"
+        "5-10 seconds - Body\nReal content here.\n\n"
+        "10-15 seconds - More\nMore content.\n\n"
+        "End screen:\n" + " ".join(["word"] * 70) + "\n"
+    )
+    segments = ss.parse_segments(short_prompt)
+    end_screen = next(s for s in segments if s["label"] == "End screen")
+    # 70 words at ~140 words/minute should read as roughly 30 seconds, not a
+    # fixed 4s fallback that would either clip it mid-sentence or (for a
+    # shorter section) leave dead air.
+    assert end_screen["duration"] == 30
+
+
 def test_parse_segments_requires_at_least_three_headers():
     short_prompt = "0-5 seconds - Hook\nSomething.\n\n5-10 seconds - Body\nMore."
     assert ss.parse_segments(short_prompt) == []

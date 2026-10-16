@@ -232,10 +232,15 @@ def parse_segments(prompt: str) -> list:
         if content:
             segments.append({"label": label, "content": content, "duration": duration})
 
-    known_total = sum(s["duration"] for s in segments if s["duration"])
+    # Headerless sections (e.g. "End screen:") have no explicit time range, so
+    # their spoken duration is estimated from their own word count at the same
+    # ~140 words/minute pacing convention _write_segment_scene uses to size
+    # narration -- a fixed 4s fallback either clipped longer disclaimers mid-
+    # sentence or left short ones sitting in dead air.
     for s in segments:
         if s["duration"] is None:
-            s["duration"] = max(2, 4)
+            word_count = len(s["content"].split())
+            s["duration"] = max(2, round(word_count / 140 * 60))
 
     return segments
 

@@ -407,6 +407,9 @@ def test_write_segmented_script_extracts_company_name_from_prompt_for_metadata(m
     # Also surfaced on the returned script dict -- producer.py's AI-thumbnail
     # background generation needs it to build an image prompt.
     assert script["company_name"] == "Premier Polyfilm"
+    # And the NSE symbol -- the non-fuzzy join key producer.py's performance
+    # log uses to tie the real uploaded video_id back to this exact company.
+    assert script["symbol"] == "PREMIER"
 
 
 def test_write_segmented_script_passes_channel_style_guidance_into_metadata(monkeypatch):
@@ -464,6 +467,15 @@ def test_extract_company_name_pulls_name_before_nse_ticker():
 
 def test_extract_company_name_returns_none_when_no_nse_ticker_present():
     assert ss._extract_company_name("How octopuses see the world") is None
+
+
+def test_extract_company_symbol_pulls_ticker_before_closing_paren():
+    prompt = "0-12 seconds - Hook\nPremier Polyfilm (NSE: PREMIER). Write an exciting opening question."
+    assert ss._extract_company_symbol(prompt) == "PREMIER"
+
+
+def test_extract_company_symbol_returns_none_when_no_nse_ticker_present():
+    assert ss._extract_company_symbol("How octopuses see the world") is None
 
 
 def test_ensure_company_name_in_title_leaves_title_untouched_when_already_present():

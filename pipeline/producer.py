@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import ai_thumbnail, config, diagrams, tts, visuals, assemble, captions, textcard, youtube_upload
+from . import ai_thumbnail, config, diagrams, performance_log, tts, visuals, assemble, captions, textcard, youtube_upload
 
 
 def slugify(title: str) -> str:
@@ -222,6 +222,8 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
             )
             youtube_url = upload["url"]
             on_progress(f"Uploaded: {youtube_url}")
+            if script.get("symbol"):
+                performance_log.record(upload["video_id"], script["symbol"], script.get("company_name"))
             try:
                 youtube_upload.set_thumbnail(upload["video_id"], thumb_path)
             except Exception as e:

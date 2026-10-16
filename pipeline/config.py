@@ -37,6 +37,11 @@ THEMES_FILE = ROOT / "themes.yaml"
 OUTPUT_DIR = ROOT / "output"
 CACHE_DIR = ROOT / "cache"
 
+# Git-committed (not cache/, which is gitignored/ephemeral in CI) join table
+# of real uploaded video_id -> NSE symbol, keyed off the exact video_id
+# returned by a successful YouTube upload -- see pipeline/performance_log.py.
+COMPANY_PERFORMANCE_LOG_FILE = ROOT / "company_performance_log.json"
+
 # Narration voice — Microsoft Edge neural TTS (free, no API key).
 # en-IN-PrabhatNeural / en-IN-NeerjaNeural give an Indian-English accent;
 # run `edge-tts --list-voices` for the full catalog.

@@ -28,12 +28,23 @@ HASHTAG_RE = re.compile(r"#\w+")
 # "Company Name (NSE: SYMBOL)" -- a reliable anchor to pull the exact company
 # name from, so the title can be forced to include it even if the metadata
 # LLM call drifts onto a vaguer phrasing (e.g. "This Multibagger Stock").
-NSE_COMPANY_RE = re.compile(r"([A-Za-z0-9&.'\-, ]+?)\s*\(NSE:\s*[A-Z0-9&\-]+\)")
+NSE_COMPANY_RE = re.compile(r"([A-Za-z0-9&.'\-, ]+?)\s*\(NSE:\s*([A-Z0-9&\-]+)\)")
 
 
 def _extract_company_name(prompt: str):
     m = NSE_COMPANY_RE.search(prompt)
     return m.group(1).strip() if m else None
+
+
+def _extract_company_symbol(prompt: str):
+    """Pulls the NSE ticker out of the same "(NSE: SYMBOL)" anchor used by
+    _extract_company_name -- this is the one reliable, non-fuzzy join key back
+    to the exact company a finance video was about, used by the performance
+    log (see pipeline.performance_log) to track which company's video actually
+    got uploaded, keyed off the real YouTube video_id rather than re-parsing
+    the LLM-generated title."""
+    m = NSE_COMPANY_RE.search(prompt)
+    return m.group(2).strip().upper() if m else None
 
 
 # Indian retail-investor audiences read rupee amounts in lakh/crore, never
@@ -506,4 +517,5 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, 
         "tags": tags,
         "scenes": scenes,
         "company_name": company_name,
+        "symbol": _extract_company_symbol(prompt),
     }

@@ -332,6 +332,36 @@ def test_produce_from_script_sets_thumbnail_after_successful_upload(mocked_pipel
     assert captured["thumbnail_path"] == result["thumbnail"]
 
 
+def test_produce_from_script_records_performance_log_entry_for_finance_video(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    recorded = {}
+    monkeypatch.setattr(
+        producer.performance_log, "record",
+        lambda video_id, symbol, company_name: recorded.update(
+            video_id=video_id, symbol=symbol, company_name=company_name,
+        ),
+    )
+    script = _stub_script()
+    script["symbol"] = "CDSL"
+    script["company_name"] = "CDSL Ltd"
+    producer.produce_from_script(script, on_progress=lambda m: None)
+    assert recorded == {"video_id": "abc", "symbol": "CDSL", "company_name": "CDSL Ltd"}
+
+
+def test_produce_from_script_skips_performance_log_when_no_symbol(mocked_pipeline, monkeypatch):
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    called = []
+    monkeypatch.setattr(producer.performance_log, "record", lambda *a, **k: called.append(1))
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert called == []
+
+
 def test_produce_from_script_thumbnail_upload_failure_does_not_fail_the_job(mocked_pipeline, monkeypatch):
     logs = []
     monkeypatch.setattr(

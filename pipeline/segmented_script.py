@@ -158,6 +158,13 @@ Rules:
   already contain a fully-written narration passage, reproduce it exactly, word for word.
 - visual_query: 2-4 word English search term for stock video/photo footage that visually
   matches this scene's topic ("{label}"). Must describe a concrete, filmable subject.
+  If the facts name a specific company/industry, prefer a term tied to that company's
+  actual business or sector (e.g. "gold jewellery workshop" for a jewellery company,
+  "cement factory kiln" for a cement company, "data center server racks" for an IT
+  company) over generic finance stock imagery ("stock market chart", "money growth",
+  "businessman handshake", "calculator documents") -- those generic terms are what
+  every finance channel's footage already looks like, so only fall back to them when
+  the facts genuinely give no sector/subject detail to search for instead.
   Leave this as a reasonable generic fallback (e.g. "student writing notebook") if you
   set "diagram" below instead.
 - on_screen_text: the single most important number, name, or fact from the given

@@ -110,6 +110,7 @@ def test_fetch_visual_prefers_video_results_closest_to_target_width(isolated_dir
 
 def test_fetch_visual_falls_back_to_photo_when_no_videos(isolated_dirs, monkeypatch):
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    monkeypatch.setattr(visuals.random, "choice", lambda choices: 1)
     video_response = _ok_response({"videos": []})
     photo_response = _ok_response({"photos": [{"src": {"large2x": "https://example.com/photo.jpg"}}]})
     monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([video_response, photo_response]))
@@ -121,12 +122,52 @@ def test_fetch_visual_falls_back_to_photo_when_no_videos(isolated_dirs, monkeypa
 
 def test_fetch_visual_raises_when_nothing_found(isolated_dirs, monkeypatch):
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    monkeypatch.setattr(visuals.random, "choice", lambda choices: 1)
     video_response = _ok_response({"videos": []})
     photo_response = _ok_response({"photos": []})
     monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([video_response, photo_response]))
 
     with pytest.raises(RuntimeError, match="No Pexels results"):
         visuals.fetch_visual("a very obscure query", orientation="landscape")
+
+
+def test_fetch_visual_uses_a_random_page_to_diversify_results(isolated_dirs, monkeypatch):
+    # Pexels orders by relevance, so always requesting page 1 means every
+    # video asking for the same query draws from the same top-8 results as
+    # every other channel doing the same query -- a random page multiplies
+    # the effective pool for free.
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    monkeypatch.setattr(visuals.random, "choice", lambda choices: 3)
+    video_search_response = _ok_response({
+        "videos": [{"video_files": [{"width": 1280, "link": "https://example.com/clip.mp4"}]}],
+    })
+    seen_params = []
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        seen_params.append(params)
+        return video_search_response
+    monkeypatch.setattr(visuals.requests, "get", fake_get)
+    monkeypatch.setattr(visuals, "_download", lambda url, dest: (dest.write_bytes(b"x"), dest)[1])
+
+    visuals.fetch_visual("stock market chart", orientation="landscape")
+    assert seen_params[0]["page"] == 3
+
+
+def test_fetch_visual_retries_page_one_when_random_page_has_no_videos(isolated_dirs, monkeypatch):
+    # A niche/sector-specific query may not have results as deep as page 3+
+    # -- retrying page 1 before falling back to photos keeps variety-seeking
+    # from making a thin query worse off than before.
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    monkeypatch.setattr(visuals.random, "choice", lambda choices: 3)
+    empty_page = _ok_response({"videos": []})
+    page_one_response = _ok_response({
+        "videos": [{"video_files": [{"width": 1280, "link": "https://example.com/clip.mp4"}]}],
+    })
+    monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([empty_page, page_one_response]))
+    monkeypatch.setattr(visuals, "_download", lambda url, dest: (dest.write_bytes(b"x"), dest)[1])
+
+    path, kind = visuals.fetch_visual("niche sector term", orientation="landscape")
+    assert kind == "video"
 
 
 def test_fetch_visual_seeds_a_pool_of_distinct_clips_for_variety_on_reuse(isolated_dirs, monkeypatch):

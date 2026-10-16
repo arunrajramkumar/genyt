@@ -51,7 +51,13 @@ Rules:
 - Narration must sound natural when read aloud by text-to-speech: no headers, no
   emojis, no markdown.
 - Keep total narration length close to the requested duration at ~140 words/minute.
-- visual_query must describe concrete, filmable subjects (avoid abstract concepts).
+- visual_query must describe concrete, filmable subjects (avoid abstract concepts). If
+  the topic names a specific company/industry, prefer a term tied to that company's
+  actual business or sector (e.g. "gold jewellery workshop" for a jewellery company,
+  "cement factory kiln" for a cement company) over generic finance stock imagery
+  ("stock market chart", "money growth", "businessman handshake") -- those generic
+  terms are what every finance channel's footage already looks like, so only fall
+  back to them when the topic genuinely gives no sector/subject detail to search for.
 - on_screen_text should surface the key number/name/fact from that scene's narration
   as short punchy text (e.g. "Revenue: Rs 412 Cr", "P/E: 22.5", "Roman Aqueducts, 312 BC"),
   so a muted viewer can still follow along. Use it whenever the scene has a concrete

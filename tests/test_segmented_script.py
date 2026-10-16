@@ -748,3 +748,12 @@ def test_metadata_prompt_steers_away_from_verdict_style_titles():
     # with neutral narration underneath. Lock in the explicit title-level rule.
     assert "Apply or Avoid" in ss.SYSTEM_PROMPT_METADATA
     assert "data-driven" in ss.SYSTEM_PROMPT_METADATA
+
+
+def test_segment_prompt_steers_visual_query_away_from_generic_finance_imagery():
+    # Pexels search terms like "stock market chart" return the same top
+    # results every finance channel querying the same term also gets -- push
+    # the model toward sector-specific terms instead, so footage actually
+    # differs company to company.
+    assert "stock market chart" in ss.SYSTEM_PROMPT_SEGMENT
+    assert "sector" in ss.SYSTEM_PROMPT_SEGMENT

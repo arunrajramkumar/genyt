@@ -395,3 +395,8 @@ def test_write_freeform_script_does_not_mistake_subscribe_cta_for_company_name(m
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(one_scene_script))
     result = prompt_script._write_freeform_script("Tata Motors stock analysis")
     assert result["company_name"] != "SUBSCRIBE FOR MORE"
+
+
+def test_system_prompt_steers_visual_query_away_from_generic_finance_imagery():
+    assert "stock market chart" in prompt_script.SYSTEM_PROMPT
+    assert "sector" in prompt_script.SYSTEM_PROMPT

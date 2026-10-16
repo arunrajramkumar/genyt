@@ -23,6 +23,14 @@ PHOTO_SEARCH_URL = "https://api.pexels.com/v1/search"
 # giving `exclude` enough headroom to avoid repeats in most real videos.
 POOL_SIZE = 8
 
+# Pexels orders results by relevance, so always requesting page 1 means every
+# video asking for the same query (e.g. "stock market chart") draws from the
+# exact same top-8 results every other channel doing the same query also gets
+# -- a major contributor to finance-channel b-roll looking interchangeable.
+# Drawing from a random page multiplies the effective pool ~4x at no extra
+# API-call cost (still one search request per cache miss).
+SEARCH_PAGE_CHOICES = [1, 2, 3, 4]
+
 
 def _cache_path(query: str, orientation: str, suffix: str, index: int = 0) -> Path:
     key = hashlib.sha1(f"{orientation}:{query}".encode("utf-8")).hexdigest()[:16]
@@ -76,14 +84,27 @@ def fetch_visual(
     if cached_images:
         return _pick(cached_images, exclude), "image"
 
+    page = random.choice(SEARCH_PAGE_CHOICES)
     resp = requests.get(
         VIDEO_SEARCH_URL,
         headers=headers,
-        params={"query": query, "orientation": orientation, "per_page": POOL_SIZE},
+        params={"query": query, "orientation": orientation, "per_page": POOL_SIZE, "page": page},
         timeout=30,
     )
     resp.raise_for_status()
     videos = resp.json().get("videos", [])
+    if not videos and page != 1:
+        # A niche query (e.g. a sector-specific term) may simply not have
+        # results that deep -- retry page 1 before giving up on video entirely,
+        # so variety-seeking never makes a thin query worse off than before.
+        resp = requests.get(
+            VIDEO_SEARCH_URL,
+            headers=headers,
+            params={"query": query, "orientation": orientation, "per_page": POOL_SIZE, "page": 1},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        videos = resp.json().get("videos", [])
     if videos:
         downloaded = []
         for video, dest in zip(videos[:POOL_SIZE], video_pool):
@@ -95,14 +116,24 @@ def fetch_visual(
             downloaded.append(_download(best["link"], dest))
         return _pick(downloaded, exclude), "video"
 
+    photo_page = random.choice(SEARCH_PAGE_CHOICES)
     resp = requests.get(
         PHOTO_SEARCH_URL,
         headers=headers,
-        params={"query": query, "orientation": orientation, "per_page": POOL_SIZE},
+        params={"query": query, "orientation": orientation, "per_page": POOL_SIZE, "page": photo_page},
         timeout=30,
     )
     resp.raise_for_status()
     photos = resp.json().get("photos", [])
+    if not photos and photo_page != 1:
+        resp = requests.get(
+            PHOTO_SEARCH_URL,
+            headers=headers,
+            params={"query": query, "orientation": orientation, "per_page": POOL_SIZE, "page": 1},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        photos = resp.json().get("photos", [])
     if photos:
         downloaded = []
         for photo, dest in zip(photos[:POOL_SIZE], image_pool):

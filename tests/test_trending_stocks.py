@@ -83,6 +83,23 @@ def test_select_trending_symbols_respects_limit(monkeypatch):
     assert [c["symbol"] for c in result] == ["A", "B"]
 
 
+def test_select_trending_symbols_ranks_by_market_cap_descending(monkeypatch):
+    # Candidates come back in LLM-extraction order (small company first), but
+    # the smaller company must not win a limited slot over a bigger, more
+    # widely-recognized one.
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(
+        ts, "_extract_candidates",
+        lambda text: [{"symbol": s, "name": s} for s in ["SMALLCO", "BIGCO", "MIDCO"]],
+    )
+    market_caps = {"SMALLCO": 500.0, "BIGCO": 50000.0, "MIDCO": 5000.0}
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+    monkeypatch.setattr(ts.fundamentals, "market_cap_cr", lambda data: market_caps[data["symbol"]])
+
+    result = ts.select_trending_symbols(exclude_symbols=[], limit=2)
+    assert [c["symbol"] for c in result] == ["BIGCO", "MIDCO"]
+
+
 def test_select_trending_symbols_returns_empty_on_unexpected_failure(monkeypatch):
     def boom(queries=None):
         raise RuntimeError("network down")

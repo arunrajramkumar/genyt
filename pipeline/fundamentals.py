@@ -117,6 +117,22 @@ def fetch_fundamentals(symbol: str) -> dict:
     return data
 
 
+def market_cap_cr(data: dict) -> float:
+    """Parses the already-scraped "Market Cap" ratio (e.g. "₹ 26,334 Cr.") into
+    a plain crore float, so callers can rank candidates by how widely-recognized
+    a company is without a new API/data source. Returns 0.0 when the ratio is
+    missing or unparseable -- never raises, so a scrape-format change degrades
+    ranking instead of breaking topic selection."""
+    value = (data.get("ratios") or {}).get("Market Cap", "")
+    match = NUMBER_RE.search(value)
+    if not match:
+        return 0.0
+    try:
+        return float(match.group(0).replace(",", ""))
+    except ValueError:
+        return 0.0
+
+
 def format_fundamentals_facts(data: dict) -> str:
     """Formats fetched fundamentals into the same "- fact" bullet-list shape
     research.fetch_grounding_facts() produces, so callers can drop it straight

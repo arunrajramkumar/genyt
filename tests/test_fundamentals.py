@@ -95,6 +95,21 @@ def test_fetch_fundamentals_returns_empty_dict_on_request_failure(monkeypatch):
     assert fundamentals.fetch_fundamentals("cdsl") == {}
 
 
+# -- market_cap_cr: parses the scraped "Market Cap" ratio for ranking --------
+
+def test_market_cap_cr_parses_rupee_crore_string():
+    data = {"ratios": {"Market Cap": "₹ 26,334 Cr."}}
+    assert fundamentals.market_cap_cr(data) == 26334.0
+
+
+def test_market_cap_cr_returns_zero_when_ratio_missing():
+    assert fundamentals.market_cap_cr({"ratios": {"Stock P/E": "57.2"}}) == 0.0
+
+
+def test_market_cap_cr_returns_zero_when_ratios_missing_entirely():
+    assert fundamentals.market_cap_cr({"symbol": "CDSL"}) == 0.0
+
+
 def test_format_fundamentals_facts_returns_empty_string_for_empty_data():
     assert fundamentals.format_fundamentals_facts({}) == ""
 

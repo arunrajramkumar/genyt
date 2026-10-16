@@ -91,7 +91,13 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
     on any failure (Tavily not configured/quota exhausted, LLM failure, no
     companies found) -- callers must treat [] as "no trending candidates
     available right now" and fall back to requiring a manual --symbols list,
-    never queue a theme with no real candidate behind it."""
+    never queue a theme with no real candidate behind it.
+
+    Ranked by market cap (largest first) among all verified candidates rather
+    than taking the first `limit` in whatever order the LLM happened to list
+    them -- a bigger, more widely-recognized company is a reasonable free
+    proxy for viewer search/click interest, and the figure is already scraped
+    as part of the existing fundamentals verification step (no new API call)."""
     exclude = {s.strip().upper() for s in exclude_symbols}
     try:
         facts_text = _search_trending_stock_news(queries)
@@ -99,13 +105,14 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
     except Exception:
         return []
 
-    selected, seen = [], set()
+    verified, seen = [], set()
     for c in candidates:
         if c["symbol"] in exclude or c["symbol"] in seen:
             continue
         seen.add(c["symbol"])
-        if fundamentals.fetch_fundamentals(c["symbol"]):
-            selected.append(c)
-        if len(selected) >= limit:
-            break
-    return selected
+        data = fundamentals.fetch_fundamentals(c["symbol"])
+        if data:
+            verified.append((c, fundamentals.market_cap_cr(data)))
+
+    verified.sort(key=lambda pair: pair[1], reverse=True)
+    return [c for c, _market_cap in verified[:limit]]

@@ -178,6 +178,116 @@ def test_overlay_watermark_composites_for_the_whole_clip(monkeypatch, tmp_path):
     assert "overlay" in filter_arg and "shortest=1" in filter_arg
 
 
+def test_pick_music_track_returns_none_when_dir_missing(tmp_path):
+    assert assemble._pick_music_track(tmp_path / "nope") is None
+
+
+def test_pick_music_track_returns_none_when_dir_has_no_audio_files(tmp_path):
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    (music_dir / "readme.txt").write_text("not audio")
+    assert assemble._pick_music_track(music_dir) is None
+
+
+def test_pick_music_track_picks_from_audio_files_only(tmp_path, monkeypatch):
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    (music_dir / "a.mp3").write_bytes(b"x")
+    (music_dir / "b.wav").write_bytes(b"x")
+    (music_dir / "notes.txt").write_text("skip me")
+    monkeypatch.setattr(assemble.random, "choice", lambda seq: seq[0])
+    track = assemble._pick_music_track(music_dir)
+    assert track.suffix in (".mp3", ".wav")
+
+
+def test_mix_background_music_loops_track_and_mixes_at_configured_volume(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 12.0)
+    assemble._mix_background_music(tmp_path / "narration.m4a", tmp_path / "music.mp3", 0.12, tmp_path / "out.m4a")
+    cmd = calls[0]
+    assert "-stream_loop" in cmd and cmd[cmd.index("-stream_loop") + 1] == "-1"
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "volume=0.12" in filter_arg
+    assert "amix=inputs=2:duration=first" in filter_arg
+    assert cmd[cmd.index("-t") + 1] == "12.0"
+
+
+def test_assemble_video_skips_music_bed_when_not_configured(monkeypatch, tmp_path):
+    monkeypatch.setattr(assemble.config, "MUSIC_BED_DIR", None)
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)
+    narration = tmp_path / "n0.mp3"
+    narration.write_bytes(b"x")
+    visual = tmp_path / "v0.jpg"
+    visual.write_bytes(b"x")
+
+    assemble.assemble_video(
+        scenes=[{"narration": "hi", "on_screen_text": ""}],
+        narration_paths=[narration],
+        visual_paths=[(visual, "image")],
+        out_path=tmp_path / "final.mp4",
+        work_dir=tmp_path / "work",
+        width=720, height=1280,
+        hook_card_path=None,
+    )
+    assert not any("narration_with_music" in str(c[-1]) for c in calls)
+
+
+def test_assemble_video_skips_music_bed_when_dir_has_no_tracks(monkeypatch, tmp_path):
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    monkeypatch.setattr(assemble.config, "MUSIC_BED_DIR", music_dir)
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)
+    narration = tmp_path / "n0.mp3"
+    narration.write_bytes(b"x")
+    visual = tmp_path / "v0.jpg"
+    visual.write_bytes(b"x")
+
+    assemble.assemble_video(
+        scenes=[{"narration": "hi", "on_screen_text": ""}],
+        narration_paths=[narration],
+        visual_paths=[(visual, "image")],
+        out_path=tmp_path / "final.mp4",
+        work_dir=tmp_path / "work",
+        width=720, height=1280,
+        hook_card_path=None,
+    )
+    assert not any("narration_with_music" in str(c[-1]) for c in calls)
+
+
+def test_assemble_video_mixes_music_bed_when_configured(monkeypatch, tmp_path):
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    (music_dir / "track.mp3").write_bytes(b"x")
+    monkeypatch.setattr(assemble.config, "MUSIC_BED_DIR", music_dir)
+    monkeypatch.setattr(assemble.config, "MUSIC_BED_VOLUME", 0.1)
+    mixed = []
+    monkeypatch.setattr(assemble, "_run", lambda cmd: None)
+    monkeypatch.setattr(
+        assemble, "_mix_background_music",
+        lambda narration_path, music_path, volume, out_path: mixed.append((music_path, volume)) or out_path.touch(),
+    )
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)
+    narration = tmp_path / "n0.mp3"
+    narration.write_bytes(b"x")
+    visual = tmp_path / "v0.jpg"
+    visual.write_bytes(b"x")
+
+    assemble.assemble_video(
+        scenes=[{"narration": "hi", "on_screen_text": ""}],
+        narration_paths=[narration],
+        visual_paths=[(visual, "image")],
+        out_path=tmp_path / "final.mp4",
+        work_dir=tmp_path / "work",
+        width=720, height=1280,
+        hook_card_path=None,
+    )
+    assert len(mixed) == 1
+    assert mixed[0][0] == music_dir / "track.mp3"
+    assert mixed[0][1] == 0.1
+
+
 def test_assemble_video_skips_watermark_when_not_configured(monkeypatch, tmp_path):
     monkeypatch.setattr(assemble.config, "CHANNEL_WATERMARK_TEXT", "")
     calls = _record_calls(monkeypatch)

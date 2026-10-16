@@ -110,5 +110,13 @@ YOUTUBE_TOKEN_SEED_FILE = (
 # (visible in its YouTube Studio URL) to turn it on.
 YOUTUBE_PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID", "")
 
+# Optional background-music bed mixed in quietly under the narration -- off by
+# default (no-op) since this requires the user to supply their own
+# royalty-free/licensed audio loops (we won't fabricate/bundle audio assets);
+# point this at a directory of .mp3/.wav/.m4a loops to turn it on. A track is
+# picked at random per video so a run of videos doesn't all sound identical.
+MUSIC_BED_DIR = Path(os.environ["MUSIC_BED_DIR"]) if os.environ.get("MUSIC_BED_DIR") else None
+MUSIC_BED_VOLUME = float(os.environ.get("MUSIC_BED_VOLUME", "0.12"))
+
 for d in (OUTPUT_DIR, CACHE_DIR):
     d.mkdir(parents=True, exist_ok=True)

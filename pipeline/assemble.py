@@ -1,4 +1,5 @@
 """Assembles per-scene visuals + narration into a single finished MP4 using ffmpeg."""
+import random
 import shutil
 import subprocess
 from pathlib import Path
@@ -225,6 +226,38 @@ def _overlay_watermark(video_path: Path, watermark_path: Path, out_path: Path) -
     ])
 
 
+def _pick_music_track(music_dir: Path) -> Path:
+    """Picks a random track from `music_dir` so repeated videos don't all use
+    the exact same loop. Returns None if the directory is missing/empty --
+    callers must treat that as "skip the music bed", not an error, since the
+    user may not have supplied any tracks yet even with MUSIC_BED_DIR set."""
+    if not music_dir or not music_dir.is_dir():
+        return None
+    tracks = sorted(p for p in music_dir.iterdir() if p.suffix.lower() in (".mp3", ".wav", ".m4a"))
+    if not tracks:
+        return None
+    return random.choice(tracks)
+
+
+def _mix_background_music(narration_path: Path, music_path: Path, volume: float, out_path: Path) -> None:
+    """Loops `music_path` for the full length of `narration_path` and mixes it
+    in quietly underneath. `duration=first` on amix ends the mix exactly when
+    the narration (first input) ends, regardless of how long the looped music
+    track runs -- keeping the mixed audio the same length as the narration it
+    replaces, which the rest of assemble_video's duration invariant depends on."""
+    duration = _probe_duration(narration_path)
+    _run([
+        FFMPEG_BIN, "-y",
+        "-i", str(narration_path),
+        "-stream_loop", "-1", "-i", str(music_path),
+        "-filter_complex",
+        f"[1:a]volume={volume},atrim=0:{duration}[bg];"
+        f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[aout]",
+        "-map", "[aout]", "-t", str(duration),
+        "-c:a", "aac", "-ar", "44100", "-ac", "2", str(out_path),
+    ])
+
+
 def assemble_video(
     scenes: list[dict],
     narration_paths: list[Path],
@@ -306,6 +339,13 @@ def assemble_video(
         FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(audio_concat_list),
         "-af", LOUDNORM_FILTER, "-c:a", "aac", "-ar", "44100", "-ac", "2", str(narration_concat_path),
     ])
+
+    if config.MUSIC_BED_DIR:
+        track = _pick_music_track(config.MUSIC_BED_DIR)
+        if track:
+            narration_with_music_path = work_dir / "narration_with_music.m4a"
+            _mix_background_music(narration_concat_path, track, config.MUSIC_BED_VOLUME, narration_with_music_path)
+            narration_concat_path = narration_with_music_path
 
     # Mux the narration onto the video. Both tracks total the same duration
     # (scene durations == narration durations, since each scene clip is built

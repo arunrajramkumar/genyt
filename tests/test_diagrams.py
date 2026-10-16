@@ -222,3 +222,27 @@ def test_validate_diagram_spec_rejects_trend_line_with_ungrounded_number():
     ok, reason = diagrams.validate_diagram_spec(spec, source_text="Revenue grew from 100 Cr in FY21 to 250 Cr in FY22.")
     assert ok is False
     assert "999" in reason
+
+
+def test_validate_diagram_spec_accepts_value_matching_comma_formatted_source():
+    # Regression: source text often formats large numbers with thousands
+    # separators ("₹1,112 crore") while a diagram's value is a bare int
+    # (1112) -- this must not be spuriously rejected as "ungrounded".
+    spec = {"kind": "trend_line", "labels": ["Cap"], "values": [1112]}
+    ok, reason = diagrams.validate_diagram_spec(spec, source_text="Market cap stands at ₹1,112 crore.")
+    assert ok is True
+    assert reason == ""
+
+
+def test_render_diagram_bar_compare_with_unit_shows_unit_on_each_value(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "bar_compare", "labels": ["A", "B"], "values": [10, 20], "unit": "Cr"}, 400, 300, tmp_path / "d.png"
+    )
+    assert out.exists()
+
+
+def test_render_diagram_trend_line_with_unit_shows_unit_on_each_value(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "trend_line", "labels": ["FY21", "FY22"], "values": [100, 250], "unit": "Cr"}, 400, 300, tmp_path / "d.png"
+    )
+    assert out.exists()

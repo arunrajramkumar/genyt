@@ -32,13 +32,13 @@ DIAGRAM_KINDS = {
     "number_line": {"required": {"min": int, "max": int}, "optional": {"highlight": list}},
     "triangular_dots": {"required": {"rows": int}, "optional": {"label": str}},
     "sequence_boxes": {"required": {"items": list}, "optional": {"highlight_index": (int, type(None))}},
-    "bar_compare": {"required": {"labels": list, "values": list}, "optional": {}},
+    "bar_compare": {"required": {"labels": list, "values": list}, "optional": {"unit": str}},
     "shape_progression": {"required": {"shape": str, "counts": list}, "optional": {}},
     # A connected line/curve rather than bar_compare's discrete bars -- suited
     # to a trend across an ordered sequence (years, quarters) rather than a
     # one-off comparison between a handful of unordered categories, e.g.
     # compound-interest growth over years or a company's revenue by year.
-    "trend_line": {"required": {"labels": list, "values": list}, "optional": {}},
+    "trend_line": {"required": {"labels": list, "values": list}, "optional": {"unit": str}},
 }
 
 _DIGIT_RE = re.compile(r"\d{2,}")
@@ -78,7 +78,12 @@ def validate_diagram_spec(spec: dict, source_text: str = "") -> tuple:
         if field not in spec or not isinstance(spec[field], typ):
             return False, f"missing/bad-typed required field {field!r}"
     for num in _numeric_labels(spec):
-        if num not in source_text:
+        # Source text often formats large numbers with thousands separators
+        # (e.g. "₹1,112 crore") while a diagram's numeric value is a bare int
+        # (1112) -- comparing against the comma-stripped source avoids
+        # spuriously rejecting (and silently dropping) a correctly-grounded
+        # diagram just because of punctuation.
+        if num not in source_text.replace(",", ""):
             return False, f"ungrounded number {num!r}"
     return True, ""
 
@@ -194,6 +199,7 @@ def _render_sequence_boxes(draw, spec, width, height):
 
 def _render_bar_compare(draw, spec, width, height):
     labels, values = spec["labels"][:6], spec["values"][:6]
+    unit = (spec.get("unit") or "").strip()
     max_v = max(values) if values else 1
     n = len(values)
     bar_w = int(width * 0.7 / max(1, n))
@@ -208,7 +214,8 @@ def _render_bar_compare(draw, spec, width, height):
         draw.rectangle([x, base_y - h, x + bar_w, base_y], fill=ACCENT_COLOR)
         label_font, label_text = _fit_text(draw, str(label), int(bar_w * 0.9), max(22, bar_w // 4))
         draw.text((x + bar_w // 2, base_y + 10), label_text, font=label_font, fill=TEXT_COLOR, anchor="ma")
-        value_font, value_text = _fit_text(draw, str(v), int(bar_w * 0.9), max(22, bar_w // 4))
+        value_display = f"{v} {unit}".strip() if unit else str(v)
+        value_font, value_text = _fit_text(draw, value_display, int(bar_w * 0.9), max(22, bar_w // 4))
         draw.text((x + bar_w // 2, base_y - h - 10), value_text, font=value_font, fill=(255, 255, 255), anchor="ms")
 
 
@@ -235,6 +242,7 @@ def _render_shape_progression(draw, spec, width, height):
 
 def _render_trend_line(draw, spec, width, height):
     labels, values = spec["labels"][:8], spec["values"][:8]
+    unit = (spec.get("unit") or "").strip()
     n = len(values)
     max_v, min_v = max(values), min(0, min(values))
     span = max_v - min_v or 1
@@ -252,7 +260,8 @@ def _render_trend_line(draw, spec, width, height):
     label_font_size = max(20, width // (n * 10 + 10))
     for (x, y), label, v in zip(points, labels, values):
         draw.ellipse([x - 7, y - 7, x + 7, y + 7], fill=ACCENT_COLOR)
-        value_font, value_text = _fit_text(draw, str(v), int(step_x * 0.9) or width, max(22, label_font_size))
+        value_display = f"{v} {unit}".strip() if unit else str(v)
+        value_font, value_text = _fit_text(draw, value_display, int(step_x * 0.9) or width, max(22, label_font_size))
         draw.text((x, y - 16), value_text, font=value_font, fill=(255, 255, 255), anchor="ms")
         label_font, label_text = _fit_text(draw, str(label), int(step_x * 0.9) or width, label_font_size)
         draw.text((x, base_y + 14), label_text, font=label_font, fill=TEXT_COLOR, anchor="ma")

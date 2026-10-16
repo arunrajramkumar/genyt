@@ -123,6 +123,30 @@ def test_extract_facts_plain_price_is_captured():
     assert any("913.05" in f for f in facts)
 
 
+def test_extract_facts_does_not_truncate_lakh_crore_to_lakh():
+    # Regression: "₹15 lakh crore" (how large-cap market caps are quoted)
+    # must not be truncated to "₹15 lakh" -- a 100,000x magnitude error.
+    content = "TCS has a market cap of ₹15 lakh crore."
+    facts = ss._extract_facts(content)
+    assert any("lakh crore" in f for f in facts)
+    assert not any(f.strip().endswith("₹15 lakh") for f in facts)
+
+
+def test_extract_facts_bare_percent_keeps_negative_sign():
+    # Regression: fundamentals.py phrases declines as "grew -12.3% YoY" -- the
+    # bare "%" fallback pattern must not drop the minus sign and silently
+    # display a decline as a positive figure.
+    content = "Revenue grew -12.3% year-on-year this quarter."
+    facts = ss._extract_facts(content)
+    assert any("-12.3%" in f for f in facts)
+
+
+def test_extract_facts_bare_percent_without_sign_still_works():
+    content = "Revenue grew 12.3% year-on-year this quarter."
+    facts = ss._extract_facts(content)
+    assert any("12.3%" in f for f in facts)
+
+
 def test_is_grounded_accepts_numbers_present_in_source():
     content = "Revenue grew 18% YoY to ₹3,120 crore."
     assert ss._is_grounded("₹3,120 crore revenue", content) is True
@@ -675,6 +699,26 @@ def test_normalize_indian_currency_units_never_touches_dollar_amounts():
 
 def test_normalize_indian_currency_units_is_case_insensitive():
     assert ss.normalize_indian_currency_units("₹49 Million") == "₹4.9 crore"
+
+
+def test_normalize_indian_currency_units_converts_trillion_to_lakh_crore():
+    assert ss.normalize_indian_currency_units("₹2.1 trillion") == "₹2.1 lakh crore"
+
+
+def test_normalize_indian_currency_units_converts_abbreviated_billion():
+    assert ss.normalize_indian_currency_units("₹11.12B market cap") == "₹1,112 crore market cap"
+
+
+def test_normalize_indian_currency_units_converts_abbreviated_million_with_space():
+    assert ss.normalize_indian_currency_units("₹500 Mn revenue") == "₹50 crore revenue"
+
+
+def test_normalize_indian_currency_units_converts_abbreviated_thousand():
+    assert ss.normalize_indian_currency_units("₹500K fee") == "₹5 lakh fee"
+
+
+def test_normalize_indian_currency_units_converts_large_billion_to_lakh_crore():
+    assert ss.normalize_indian_currency_units("₹1500 billion") == "₹1.5 lakh crore"
 
 
 def test_write_segment_scene_normalizes_million_billion_in_source_content(monkeypatch):

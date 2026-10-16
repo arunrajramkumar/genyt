@@ -46,7 +46,19 @@ def _extract_company_name(prompt: str):
 # number) fixes this at the root: once narration itself says "₹1,112 crore",
 # both the on-screen extraction (FACT_PATTERNS' crore/lakh pattern) and the
 # narration/captions stay correct and in sync.
-_CURRENCY_UNIT_RE = re.compile(r"₹\s?([\d,]+(?:\.\d+)?)\s*(million|billion|thousand)\b", re.IGNORECASE)
+#
+# Covers spelled-out units plus the abbreviations ("M"/"Mn", "B"/"Bn", "K")
+# and "trillion" that international finance snippets also commonly use --
+# any of these left unconverted falls through to FACT_PATTERNS' plain-price
+# pattern, which silently drops the unit exactly like the original bug.
+_CURRENCY_UNIT_RE = re.compile(
+    r"₹\s?([\d,]+(?:\.\d+)?)\s*(trillion|billion|million|thousand|bn\b|mn\b|[bmk]\b)",
+    re.IGNORECASE,
+)
+_CRORE_PER_UNIT = {
+    "trillion": 100_000, "billion": 100, "million": 0.1, "thousand": 0.0001,
+    "bn": 100, "mn": 0.1, "b": 100, "m": 0.1, "k": 0.0001,
+}
 
 
 def _format_indian_number(value: float) -> str:
@@ -59,22 +71,22 @@ def _format_indian_number(value: float) -> str:
 def _convert_currency_unit(match: re.Match) -> str:
     number = float(match.group(1).replace(",", ""))
     unit = match.group(2).lower()
-    if unit.startswith("billion"):
-        return f"₹{_format_indian_number(number * 100)} crore"
-    if unit.startswith("million"):
-        if number >= 10:
-            return f"₹{_format_indian_number(number / 10)} crore"
-        return f"₹{_format_indian_number(number * 10)} lakh"
-    # thousand
-    if number >= 100:
-        return f"₹{_format_indian_number(number / 100)} lakh"
-    return f"₹{_format_indian_number(number * 1000)}"  # sub-lakh: plain rupees reads clearer than "0.x lakh"
+    crore_value = number * _CRORE_PER_UNIT[unit]
+    if crore_value >= 100_000:  # >= 1 lakh crore -- the standard way large caps are quoted
+        return f"₹{_format_indian_number(crore_value / 100_000)} lakh crore"
+    if crore_value >= 1:
+        return f"₹{_format_indian_number(crore_value)} crore"
+    lakh_value = crore_value * 100
+    if lakh_value >= 1:
+        return f"₹{_format_indian_number(lakh_value)} lakh"
+    return f"₹{_format_indian_number(lakh_value * 100_000)}"  # sub-lakh: plain rupees reads clearer than "0.x lakh"
 
 
 def normalize_indian_currency_units(text: str) -> str:
-    """Rewrites "₹<N> million/billion/thousand" into the lakh/crore convention
-    Indian audiences actually use. Only touches amounts with a literal ₹
-    prefix, so a USD ($) figure is never misinterpreted as rupees."""
+    """Rewrites "₹<N> million/billion/thousand/trillion" (and common
+    abbreviations like M/Mn/B/Bn/K) into the lakh/crore convention Indian
+    audiences actually use. Only touches amounts with a literal ₹ prefix, so
+    a USD ($) figure is never misinterpreted as rupees."""
     return _CURRENCY_UNIT_RE.sub(_convert_currency_unit, text)
 
 
@@ -85,6 +97,11 @@ def clean_title(title: str) -> str:
     return re.sub(r"\s+", " ", title).strip()
 
 FACT_PATTERNS = [
+    # "lakh crore" must be matched as a single unit before the plain
+    # "lakh"/"crore" pattern below -- otherwise large-cap market caps (e.g.
+    # "₹15 lakh crore", the standard way Indian sources quote values over
+    # ₹1 trillion) get truncated to "₹15 lakh", a 100,000x magnitude error.
+    r"₹\s?[\d,]+(?:\.\d+)?\s*lakh\s*crore",
     r"₹\s?[\d,]+(?:\.\d+)?\s*(?:crore|cr\b|lakh)",
     # Allow a short run of words between the label and its number (e.g. "P/E
     # ratio stands at 20.09", "Price-to-Book at 5.51") -- real narration/source
@@ -94,7 +111,10 @@ FACT_PATTERNS = [
     r"EV/?EBITDA\b.{0,25}?[\d.]+",
     r"ROE\b.{0,20}?[\d.]+%?",
     r"ROCE\b.{0,20}?[\d.]+%?",
-    r"\d+(?:\.\d+)?\s?%\s*(?:YoY|QoQ|year[- ]on[- ]year)?",
+    # Leading "-?" so a decline (e.g. fundamentals.py's "grew -12.3% YoY") is
+    # never displayed as a positive figure -- same unit/sign-fidelity goal as
+    # normalize_indian_currency_units above.
+    r"-?\d+(?:\.\d+)?\s?%\s*(?:YoY|QoQ|year[- ]on[- ]year)?",
     r"NSE:\s*\w+",
     r"BSE:\s*\d+",
     r"₹\s?[\d,]+(?:\.\d+)?",  # plain price (e.g. "₹887.80"), lowest priority
@@ -150,12 +170,16 @@ Rules:
     {"kind": "number_line", "min": <int>, "max": <int>, "highlight": [<int>, ...]}
     {"kind": "triangular_dots", "rows": <int>, "label": "<short string>"}
     {"kind": "sequence_boxes", "items": ["<str>", ...], "highlight_index": <int or null>}
-    {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...]}
+    {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
     {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
-    {"kind": "trend_line", "labels": ["<str>", ...], "values": [<number>, ...]}
+    {"kind": "trend_line", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
   Prefer trend_line over bar_compare for a value changing across an ordered
   sequence (e.g. revenue/profit by year) -- reserve bar_compare for comparing
   a handful of unordered items (e.g. this company's P/E vs. a peer's).
+  For bar_compare/trend_line, "unit" must state what the values are in (e.g.
+  "Cr", "%", "x") exactly as the facts state it -- a number shown on a diagram
+  with no unit is as misleading as one with the wrong unit. Use "" only if the
+  values are genuinely unitless (e.g. a count).
   If none of these fit, or the scene has no literal facts to draw a diagram from
   (e.g. a Hook or Recap scene), leave diagram as null.
 """

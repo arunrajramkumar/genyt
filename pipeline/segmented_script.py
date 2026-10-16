@@ -194,13 +194,18 @@ Rules:
     {"kind": "bar_compare", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
     {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
     {"kind": "trend_line", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
+    {"kind": "donut_share", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
   Prefer trend_line over bar_compare for a value changing across an ordered
   sequence (e.g. revenue/profit by year) -- reserve bar_compare for comparing
-  a handful of unordered items (e.g. this company's P/E vs. a peer's).
-  For bar_compare/trend_line, "unit" must state what the values are in (e.g.
-  "Cr", "%", "x") exactly as the facts state it -- a number shown on a diagram
-  with no unit is as misleading as one with the wrong unit. Use "" only if the
-  values are genuinely unitless (e.g. a count).
+  a handful of unordered items (e.g. this company's P/E vs. a peer's). Use
+  donut_share only when the values are real parts of a single whole (e.g.
+  revenue split by segment, holding composition) -- never for an unrelated
+  comparison, which belongs in bar_compare instead.
+  For bar_compare/trend_line/donut_share, "unit" must state what the values
+  are in (e.g. "Cr", "%", "x") exactly as the facts state it -- a number
+  shown on a diagram with no unit is as misleading as one with the wrong
+  unit. Use "" only if the values are genuinely unitless (e.g. a count) --
+  for donut_share, leave "unit" as "" when the values are plain percentages.
   If none of these fit, or the scene has no literal facts to draw a diagram from
   (e.g. a Hook or Recap scene), leave diagram as null.
 """

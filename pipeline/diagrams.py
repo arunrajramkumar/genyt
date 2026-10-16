@@ -20,6 +20,12 @@ BG_COLOR = (16, 22, 36)
 ACCENT_COLOR = (60, 230, 110)
 TEXT_COLOR = (230, 230, 230)
 
+# Distinct per-slice colors for donut_share -- a single ACCENT_COLOR fill
+# would make every slice indistinguishable from its neighbours.
+DONUT_PALETTE = [
+    (60, 230, 110), (240, 180, 40), (90, 160, 250), (235, 90, 90), (190, 120, 240),
+]
+
 # textcard.render_text_card's caption bar starts at 0.68*height (see
 # pipeline/textcard.py) and is overlaid on top of a scene's clip -- including
 # diagram scenes, since a diagram is the scene's entire visual (see
@@ -39,6 +45,10 @@ DIAGRAM_KINDS = {
     # one-off comparison between a handful of unordered categories, e.g.
     # compound-interest growth over years or a company's revenue by year.
     "trend_line": {"required": {"labels": list, "values": list}, "optional": {"unit": str}},
+    # A share-of-whole breakdown (e.g. revenue by segment, holding composition)
+    # -- distinct from bar_compare, which compares magnitudes rather than parts
+    # that sum to a whole.
+    "donut_share": {"required": {"labels": list, "values": list}, "optional": {"unit": str}},
 }
 
 _DIGIT_RE = re.compile(r"\d{2,}")
@@ -121,6 +131,7 @@ def render_diagram(spec: dict, width: int, height: int, out_path: Path) -> Path:
         "bar_compare": _render_bar_compare,
         "shape_progression": _render_shape_progression,
         "trend_line": _render_trend_line,
+        "donut_share": _render_donut_share,
     }.get(kind)
     if renderer is None:
         raise ValueError(f"Unknown diagram kind: {kind!r}")
@@ -265,3 +276,39 @@ def _render_trend_line(draw, spec, width, height):
         draw.text((x, y - 16), value_text, font=value_font, fill=(255, 255, 255), anchor="ms")
         label_font, label_text = _fit_text(draw, str(label), int(step_x * 0.9) or width, label_font_size)
         draw.text((x, base_y + 14), label_text, font=label_font, fill=TEXT_COLOR, anchor="ma")
+
+
+def _render_donut_share(draw, spec, width, height):
+    labels, values = spec["labels"][:5], spec["values"][:5]
+    unit = (spec.get("unit") or "").strip()
+    total = sum(values) or 1
+    cx, cy = int(width * 0.3), height // 2
+    radius = min(cx, height // 2) - 10
+    inner_radius = int(radius * 0.55)
+    start_angle = -90.0
+    colors = []
+    for i, v in enumerate(values):
+        sweep = 360.0 * v / total
+        color = DONUT_PALETTE[i % len(DONUT_PALETTE)]
+        colors.append(color)
+        draw.pieslice(
+            [cx - radius, cy - radius, cx + radius, cy + radius],
+            start=start_angle, end=start_angle + sweep, fill=color,
+        )
+        start_angle += sweep
+    draw.ellipse([cx - inner_radius, cy - inner_radius, cx + inner_radius, cy + inner_radius], fill=BG_COLOR)
+
+    legend_x = int(width * 0.56)
+    row_h = max(28, int(height / (len(labels) * 1.6)))
+    legend_top = cy - (len(labels) * row_h) // 2
+    swatch = max(14, row_h // 3)
+    text_x = legend_x + swatch + 10
+    max_text_width = int(width * 0.96) - text_x
+    for i, (label, v, color) in enumerate(zip(labels, values, colors)):
+        y = legend_top + i * row_h
+        draw.rectangle([legend_x, y, legend_x + swatch, y + swatch], fill=color)
+        pct = round(100 * v / total)
+        text = f"{label} {pct}%" if not unit else f"{label} {v}{unit}"
+        font, text = _fit_text(draw, text, max_text_width, max(20, row_h // 2))
+        draw.text((text_x, y + swatch // 2), text, font=font, fill=TEXT_COLOR, anchor="lm")
+

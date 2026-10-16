@@ -84,6 +84,15 @@ def test_render_diagram_trend_line(tmp_path):
     assert Image.open(out).size == (400, 300)
 
 
+def test_render_diagram_donut_share(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "donut_share", "labels": ["Retail", "Wholesale", "Exports"], "values": [50, 30, 20]},
+        400, 300, tmp_path / "d.png",
+    )
+    assert out.exists()
+    assert Image.open(out).size == (400, 300)
+
+
 def test_render_diagram_raises_on_unknown_kind(tmp_path):
     import pytest
     with pytest.raises(ValueError):
@@ -210,6 +219,14 @@ def test_render_diagram_trend_line_avoids_caption_band(tmp_path):
     _assert_nothing_drawn_below_caption_bar(out, 400, 300)
 
 
+def test_render_diagram_donut_share_avoids_caption_band(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "donut_share", "labels": ["Retail", "Wholesale", "Exports"], "values": [50, 30, 20]},
+        400, 300, tmp_path / "d.png",
+    )
+    _assert_nothing_drawn_below_caption_bar(out, 400, 300)
+
+
 def test_validate_diagram_spec_accepts_trend_line():
     spec = {"kind": "trend_line", "labels": ["FY21", "FY22"], "values": [100, 250]}
     ok, reason = diagrams.validate_diagram_spec(spec, source_text="Revenue grew from 100 Cr in FY21 to 250 Cr in FY22.")
@@ -244,5 +261,26 @@ def test_render_diagram_bar_compare_with_unit_shows_unit_on_each_value(tmp_path)
 def test_render_diagram_trend_line_with_unit_shows_unit_on_each_value(tmp_path):
     out = diagrams.render_diagram(
         {"kind": "trend_line", "labels": ["FY21", "FY22"], "values": [100, 250], "unit": "Cr"}, 400, 300, tmp_path / "d.png"
+    )
+    assert out.exists()
+
+
+def test_validate_diagram_spec_accepts_donut_share():
+    spec = {"kind": "donut_share", "labels": ["Retail", "Wholesale"], "values": [60, 40]}
+    ok, reason = diagrams.validate_diagram_spec(spec, source_text="Retail makes up 60% of revenue, wholesale 40%.")
+    assert ok is True
+    assert reason == ""
+
+
+def test_validate_diagram_spec_rejects_donut_share_with_ungrounded_number():
+    spec = {"kind": "donut_share", "labels": ["Retail", "Wholesale"], "values": [60, 41]}
+    ok, reason = diagrams.validate_diagram_spec(spec, source_text="Retail makes up 60% of revenue, wholesale 40%.")
+    assert ok is False
+    assert "41" in reason
+
+
+def test_render_diagram_donut_share_with_unit_shows_unit_on_each_value(tmp_path):
+    out = diagrams.render_diagram(
+        {"kind": "donut_share", "labels": ["Retail", "Wholesale"], "values": [60, 40], "unit": "Cr"}, 400, 300, tmp_path / "d.png"
     )
     assert out.exists()

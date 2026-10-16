@@ -161,6 +161,27 @@ def test_assemble_video_skips_hook_clip_when_not_provided(monkeypatch, tmp_path)
     assert not (tmp_path / "work" / "scene_00_hook.mp4").exists()
 
 
+def test_assemble_video_applies_loudnorm_to_narration_concat(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 3.0)
+    narration = tmp_path / "n0.mp3"
+    narration.write_bytes(b"x")
+    visual = tmp_path / "v0.jpg"
+    visual.write_bytes(b"x")
+
+    assemble.assemble_video(
+        scenes=[{"narration": "hi", "on_screen_text": ""}],
+        narration_paths=[narration],
+        visual_paths=[(visual, "image")],
+        out_path=tmp_path / "final.mp4",
+        work_dir=tmp_path / "work",
+        width=720, height=1280,
+        hook_card_path=None,
+    )
+    audio_cmd = next(c for c in calls if str(c[-1]).endswith("narration_concat.m4a"))
+    assert audio_cmd[audio_cmd.index("-af") + 1] == assemble.LOUDNORM_FILTER
+
+
 def test_assemble_video_overlays_hook_card_onto_scene_zero_without_lengthening_video(monkeypatch, tmp_path):
     """Regression test: the hook card used to be prepended as its own clip,
     which made the video track longer than the narration track and

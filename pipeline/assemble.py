@@ -16,6 +16,15 @@ _VIDEO_BITRATE_ARGS = ["-b:v", "1200k", "-maxrate", "1500k", "-bufsize", "3000k"
 
 HOOK_CARD_DURATION = 2.0
 
+# YouTube re-normalizes playback loudness to roughly -14 LUFS anyway, but it
+# does so by turning the whole track down to match the loudest video on the
+# platform -- a narration track recorded quieter than that (which varies scene
+# to scene with Google TTS depending on voice/punctuation) just plays back
+# quieter than louder channels instead of getting boosted. Normalizing to the
+# same -14 LUFS target here means viewers don't have to reach for the volume
+# dial between this channel's videos and everyone else's.
+LOUDNORM_FILTER = "loudnorm=I=-14:TP=-1.5:LRA=11"
+
 
 def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True, capture_output=True)
@@ -236,7 +245,7 @@ def assemble_video(
     narration_concat_path = work_dir / "narration_concat.m4a"
     _run([
         FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0", "-i", str(audio_concat_list),
-        "-c:a", "aac", "-ar", "44100", "-ac", "2", str(narration_concat_path),
+        "-af", LOUDNORM_FILTER, "-c:a", "aac", "-ar", "44100", "-ac", "2", str(narration_concat_path),
     ])
 
     # Mux the narration onto the video. Both tracks total the same duration

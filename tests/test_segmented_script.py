@@ -757,3 +757,12 @@ def test_segment_prompt_steers_visual_query_away_from_generic_finance_imagery():
     # differs company to company.
     assert "stock market chart" in ss.SYSTEM_PROMPT_SEGMENT
     assert "sector" in ss.SYSTEM_PROMPT_SEGMENT
+
+
+def test_segment_prompt_prefers_diagram_over_stock_footage_for_numeric_scenes():
+    # A diagram built from this company's own numbers is unique to the video;
+    # generic stock footage of a chart/building looks the same everywhere --
+    # the model should prefer the diagram even when filmable stock exists,
+    # not reserve it only for when stock footage has no equivalent at all.
+    assert "prefer setting this" in ss.SYSTEM_PROMPT_SEGMENT
+    assert "ONLY set this" not in ss.SYSTEM_PROMPT_SEGMENT

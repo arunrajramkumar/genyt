@@ -400,3 +400,8 @@ def test_write_freeform_script_does_not_mistake_subscribe_cta_for_company_name(m
 def test_system_prompt_steers_visual_query_away_from_generic_finance_imagery():
     assert "stock market chart" in prompt_script.SYSTEM_PROMPT
     assert "sector" in prompt_script.SYSTEM_PROMPT
+
+
+def test_system_prompt_prefers_diagram_over_stock_footage_for_numeric_scenes():
+    assert "prefer setting this" in prompt_script.SYSTEM_PROMPT
+    assert "ONLY set this" not in prompt_script.SYSTEM_PROMPT

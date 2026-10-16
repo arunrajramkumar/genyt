@@ -116,6 +116,17 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         scene["_duration"] = duration
         narration_paths.append(wav_path)
 
+    # Generated before the per-scene fetch loop so a successful result can
+    # also become the hook SCENE's own in-video visual (not just the YouTube
+    # thumbnail) -- a unique, company-specific image no competitor's generic
+    # stock footage can match, on the single most-watched/highest-leverage
+    # scene of the video. Falls back to Pexels for that scene like any other
+    # when generation fails, same as before this was reused this way.
+    ai_hook_bg_path = ai_thumbnail.generate_hook_background(
+        script.get("company_name"), work_dir / "ai_hook_bg.png", on_progress,
+        width=orientation["width"], height=orientation["height"],
+    )
+
     on_progress("Fetching stock visuals")
     visual_paths = []
     used_visuals = set()
@@ -129,6 +140,9 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
                 continue
             except Exception as e:
                 on_progress(f"  scene {i}: diagram render failed ({e}), falling back to stock")
+        if i == 0 and ai_hook_bg_path is not None:
+            visual_paths.append((ai_hook_bg_path, "image"))
+            continue
         visual_path, kind = visuals.fetch_visual(
             scene.get("visual_query", "").strip() or "abstract background",
             orientation=orientation["orientation"],
@@ -140,10 +154,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
 
     on_progress("Rendering hook card / thumbnail")
     stat_text = _pick_hook_stat(script["scenes"])
-    hook_bg_path = ai_thumbnail.generate_hook_background(
-        script.get("company_name"), work_dir / "ai_hook_bg.png", on_progress,
-        width=orientation["width"], height=orientation["height"],
-    )
+    hook_bg_path = ai_hook_bg_path
     if hook_bg_path is None:
         hook_bg_path = _pick_hook_background(visual_paths, work_dir, on_progress)
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"

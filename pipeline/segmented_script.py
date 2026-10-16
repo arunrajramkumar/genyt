@@ -170,10 +170,13 @@ Rules:
 - on_screen_text: the single most important number, name, or fact from the given
   content, copied exactly as given, under 8 words (e.g. "Revenue: Rs 423 Cr FY26").
   Empty string only if the content truly has no concrete fact to show.
-- diagram: ONLY set this (instead of leaving it null) when this scene's concept is a
-  number pattern, sequence, shape progression, or numeric comparison that has NO real
-  filmable stock-footage equivalent. Use ONLY numbers/words that literally appear in
-  the facts given above -- never invent new ones. Must be one of:
+- diagram: prefer setting this whenever this scene's concept is a number pattern,
+  sequence, shape progression, or numeric comparison -- even when a filmable stock
+  visual also exists for the topic. A diagram built from this company's own real
+  numbers (e.g. its actual revenue trend) is unique to this video; generic finance
+  stock footage of a "stock chart" or "office building" looks the same on every
+  finance channel. Use ONLY numbers/words that literally appear in the facts given
+  above -- never invent new ones. Must be one of:
     {"kind": "number_line", "min": <int>, "max": <int>, "highlight": [<int>, ...]}
     {"kind": "triangular_dots", "rows": <int>, "label": "<short string>"}
     {"kind": "sequence_boxes", "items": ["<str>", ...], "highlight_index": <int or null>}

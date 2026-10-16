@@ -18,10 +18,11 @@ PHOTO_SEARCH_URL = "https://api.pexels.com/v1/search"
 # A single education video can easily have 5+ scenes sharing a near-identical
 # query (e.g. several "mathematics"/"numbers" scenes in one chapter) -- a
 # pool of 4 was getting exhausted mid-video, forcing _pick()'s repeat
-# fallback and producing the "same visuals repeating" symptom. 8 keeps one
-# search call's cost the same (still a single Pexels API request) while
-# giving `exclude` enough headroom to avoid repeats in most real videos.
-POOL_SIZE = 8
+# fallback and producing the "same visuals repeating" symptom. 16 (Pexels
+# allows per_page up to 80) gives `exclude` much more headroom to avoid
+# repeats even in long videos, at the cost of a slightly larger one-time
+# download per cache miss -- still a single Pexels API request either way.
+POOL_SIZE = 16
 
 # Pexels orders results by relevance, so always requesting page 1 means every
 # video asking for the same query (e.g. "stock market chart") draws from the
@@ -30,6 +31,12 @@ POOL_SIZE = 8
 # Drawing from a random page multiplies the effective pool ~4x at no extra
 # API-call cost (still one search request per cache miss).
 SEARCH_PAGE_CHOICES = [1, 2, 3, 4]
+
+# Deliberately NOT persisted across CI runs (e.g. via actions/cache): a cache
+# hit skips the network call entirely and reuses whatever page got picked the
+# first time, forever -- persisting would freeze each query's pool to its
+# first random page instead of letting the page roll fresh (see
+# SEARCH_PAGE_CHOICES) on every scheduled run, net *less* variety over time.
 
 
 def _cache_path(query: str, orientation: str, suffix: str, index: int = 0) -> Path:

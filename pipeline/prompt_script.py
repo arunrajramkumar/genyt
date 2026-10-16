@@ -66,9 +66,11 @@ Rules:
 - The very first scene's on_screen_text MUST be the name of the main subject of the
   video (e.g. the company name, the person's name, the place/topic name) if the user's
   prompt names one — always show it, even though scene 1 is the hook/intro.
-- diagram: ONLY set this (instead of leaving it null) when a scene's concept is a
-  numeric comparison, trend, or sequence that has NO real filmable stock-footage
-  equivalent (e.g. comparing two companies' P/E ratios, a revenue trend over time).
+- diagram: prefer setting this whenever a scene's concept is a numeric comparison,
+  trend, or sequence (e.g. comparing two companies' P/E ratios, a revenue trend over
+  time) -- even when a filmable stock-footage equivalent also exists. A diagram built
+  from this topic's own real numbers is unique to this video; generic stock footage
+  of a "stock chart" or "office building" looks the same on every finance channel.
   Use ONLY numbers that literally appear in this scene's own narration — never invent
   new ones. Must be one of:
     {"kind": "number_line", "min": <int>, "max": <int>, "highlight": [<int>, ...]}

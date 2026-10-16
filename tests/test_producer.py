@@ -409,6 +409,32 @@ def test_produce_from_script_passes_company_name_to_ai_background(mocked_pipelin
     assert captured["company_name"] == "Arrow Greentech"
 
 
+def test_produce_from_script_reuses_ai_background_as_hook_scene_visual(mocked_pipeline, monkeypatch, tmp_path):
+    # A unique, company-specific AI image is a stronger differentiator on the
+    # most-watched scene than generic Pexels stock footage -- reuse it as
+    # scene 0's own in-video visual, not just the separate thumbnail PNG.
+    ai_bg_path = tmp_path / "ai_bg.png"
+    monkeypatch.setattr(producer.ai_thumbnail, "generate_hook_background", lambda *a, **k: ai_bg_path)
+    fetch_calls = []
+    monkeypatch.setattr(
+        producer.visuals, "fetch_visual",
+        lambda query, orientation, target_width, exclude=None: (fetch_calls.append(query) or (tmp_path / "visual.jpg", "image")),
+    )
+
+    captured_visual_paths = {}
+    def fake_assemble_video(scenes, narration_paths, visual_paths, out_path, work_dir, width, height, hook_card_path):
+        captured_visual_paths["value"] = visual_paths
+        return out_path
+    monkeypatch.setattr(producer.assemble, "assemble_video", fake_assemble_video)
+
+    script = _stub_script()
+    script["company_name"] = "Arrow Greentech"
+    producer.produce_from_script(script, on_progress=lambda m: None)
+
+    assert captured_visual_paths["value"][0] == (ai_bg_path, "image")
+    assert fetch_calls == ["octopus color"]  # only scene 1 hit Pexels, not scene 0
+
+
 def test_produce_from_script_renders_diagram_instead_of_fetching_stock_visual(mocked_pipeline, monkeypatch):
     script = _stub_script()
     script["scenes"][0]["diagram"] = {"kind": "number_line", "min": 1, "max": 5, "highlight": [3]}

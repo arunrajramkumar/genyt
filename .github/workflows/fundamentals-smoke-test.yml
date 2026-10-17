@@ -1,0 +1,33 @@
+name: Fundamentals live smoke test
+
+# On-demand, un-mocked sweep across ~90 real NSE symbols (see
+# tests/integration/test_fundamentals_live_smoke.py) -- exists because the
+# default mocked pytest suite can only prove the code handles inputs we
+# imagined, not real-world Screener.in response shapes (two production bugs
+# this project hit were exactly that class: a title-truncation edge case and
+# a pre-listing IPO with no usable search facts). Runs here, on GitHub's
+# hosted runners, specifically because the local dev machine sits behind a
+# corporate proxy that can intermittently block/throttle outbound scraping
+# traffic to Screener.in -- this workflow is unaffected by that and reflects
+# what the real scheduled auto-video.yml run actually experiences.
+#
+# No API keys needed -- Screener.in's company pages are public, unauthenticated.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run live fundamentals smoke test
+        run: python3 -m pytest tests/integration/test_fundamentals_live_smoke.py -m live_network -v -s

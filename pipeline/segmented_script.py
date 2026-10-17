@@ -382,6 +382,13 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
         raw = llm.chat_json(system_prompt, user_prompt, max_tokens=512, timeout=60)
         try:
             scene = _extract_json(raw)
+            if not isinstance(scene, dict):
+                # Same failure mode as prompt_script.py's freeform path: the
+                # model occasionally returns a bare string/list instead of a
+                # JSON object -- scene.get(...) below would raise
+                # AttributeError, which isn't in this loop's except clause,
+                # crashing the whole run instead of retrying.
+                raise ValueError("Scene response must be a JSON object")
             if not (scene.get("narration") or "").strip():
                 raise ValueError("empty narration")
             break
@@ -527,6 +534,8 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
         raw = llm.chat_json(SYSTEM_PROMPT_METADATA, user_prompt, max_tokens=512, timeout=60)
         try:
             data = _extract_json(raw)
+            if not isinstance(data, dict):
+                raise ValueError("Metadata response must be a JSON object")
             if not (data.get("title") or "").strip():
                 raise ValueError("empty title")
             title = _truncate_title(_ensure_company_name_in_title(clean_title(data["title"]), company_name))

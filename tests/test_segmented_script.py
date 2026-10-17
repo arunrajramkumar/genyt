@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 import pytest
@@ -298,6 +299,20 @@ def test_write_segment_scene_raises_after_three_bad_attempts(monkeypatch):
     monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: "not json at all")
     with pytest.raises(RuntimeError, match="3 times in a row"):
         ss._write_segment_scene("Overview", "Some facts.", 10)
+
+
+def test_write_segment_scene_retries_instead_of_crashing_on_a_non_object_response(monkeypatch):
+    # A bare JSON string/list response used to raise an uncaught
+    # AttributeError from scene.get(...), crashing the whole run instead of
+    # retrying like every other malformed response (see prompt_script.py's
+    # equivalent fix for the freeform path).
+    responses = iter([
+        json.dumps("just a narration string, not an object"),
+        _mock_llm_response({"narration": "Second attempt works.", "visual_query": "factory", "on_screen_text": ""}),
+    ])
+    monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: next(responses))
+    scene = ss._write_segment_scene("Overview", "Some facts.", 10)
+    assert scene["narration"] == "Second attempt works."
 
 
 def test_write_segment_scene_keeps_grounded_diagram(monkeypatch):
@@ -692,6 +707,16 @@ def test_write_metadata_raises_after_three_bad_attempts(monkeypatch):
     monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: "not json at all")
     with pytest.raises(RuntimeError, match="3 times in a row"):
         ss._write_metadata([{"narration": "n"}])
+
+
+def test_write_metadata_retries_instead_of_crashing_on_a_non_object_response(monkeypatch):
+    responses = iter([
+        json.dumps(["title", "description"]),
+        _mock_llm_response({"title": "Second attempt", "description": "d", "tags": []}),
+    ])
+    monkeypatch.setattr(ss.llm, "chat_json", lambda *a, **k: next(responses))
+    meta = ss._write_metadata([{"narration": "n"}])
+    assert meta["title"] == "Second attempt"
 
 
 def test_write_metadata_includes_style_guidance_in_prompt_when_given(monkeypatch):

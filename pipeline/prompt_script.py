@@ -215,6 +215,15 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                     raise ValueError(f"Script missing required field: {key}")
             if not script["scenes"]:
                 raise ValueError("Script has zero scenes")
+            if not all(isinstance(scene, dict) for scene in script["scenes"]):
+                # Observed in production: the model occasionally collapses a
+                # scene to a bare narration string instead of an object (e.g.
+                # "scenes": ["Trent Ltd posted...", {...}]) -- scene.get(...)
+                # below then raises AttributeError, which this loop's
+                # (ValueError, KeyError) catch doesn't cover, crashing the
+                # whole run instead of retrying like every other malformed-
+                # response case. Raise ValueError here so it retries too.
+                raise ValueError("Script scenes must all be JSON objects")
             script["title"] = segmented_script.clean_title(script["title"])
             script["description"] = segmented_script.normalize_indian_currency_units(script["description"])
             script["tags"] = segmented_script.merge_tags(extra_tags or [], script["tags"] or ["short video"])

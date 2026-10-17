@@ -119,6 +119,18 @@ def test_write_freeform_script_rejects_zero_scenes(monkeypatch):
         prompt_script._write_freeform_script("octopuses")
 
 
+def test_write_freeform_script_retries_instead_of_crashing_on_a_non_object_scene(monkeypatch):
+    # Observed in production: the model collapsed a scene to a bare string
+    # (e.g. "scenes": ["Trent Ltd posted..."]) instead of an object -- this
+    # used to raise an uncaught AttributeError from scene.get(...) and crash
+    # the whole run instead of retrying like every other malformed response.
+    bad_script = dict(VALID_SCRIPT, scenes=["just a narration string, not an object"])
+    responses = iter([_json_response(bad_script), _json_response(VALID_SCRIPT)])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: next(responses))
+    result = prompt_script._write_freeform_script("octopuses")
+    assert result["title"] == VALID_SCRIPT["title"]
+
+
 def test_write_freeform_script_includes_channel_style_guidance_when_available(monkeypatch):
     monkeypatch.setattr(prompt_script.youtube_insights, "get_combined_guidance", lambda: "- Lead with a number")
     captured = {}

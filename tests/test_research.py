@@ -106,6 +106,28 @@ def test_fetch_grounding_facts_returns_empty_string_on_request_failure(monkeypat
     assert research.fetch_grounding_facts("Tata Motors stock") == ""
 
 
+def test_fetch_grounding_facts_requests_and_surfaces_tavilys_synthesized_answer(monkeypatch):
+    # Raw per-result "content" is often vague teaser prose with no hard
+    # numbers for a fast-moving story (e.g. a pre-listing IPO) -- Tavily's own
+    # "answer" synthesizes the real numbers across all sources into one
+    # paragraph, at no extra credit cost over a plain basic search (confirmed
+    # live: a video on a real pre-listing IPO theme came out with zero
+    # concrete numbers until this was turned on).
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    captured = {}
+    payload = dict(_SEARCH_RESULTS_PAYLOAD, answer="GMP is Rs 220, price band Rs 1,065-1,119.")
+
+    def fake_post(url, json, timeout):
+        captured["include_answer"] = json["include_answer"]
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(research.requests, "post", fake_post)
+    result = research.fetch_grounding_facts("Tata Motors stock")
+
+    assert captured["include_answer"] is True
+    assert "GMP is Rs 220, price band Rs 1,065-1,119." in result
+
+
 def test_fetch_grounding_facts_uses_basic_search_depth_to_minimize_credit_cost(monkeypatch):
     monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
     captured = {}

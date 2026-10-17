@@ -258,16 +258,28 @@ def _fetch_tavily_facts(topic: str) -> str:
                 "query": topic,
                 "search_depth": "basic",  # 1 credit/call instead of "advanced"'s 2
                 "max_results": 5,
-                "include_answer": False,
+                # Raw per-result "content" is often just teaser/marketing prose
+                # with no hard numbers (observed in production: a pre-listing
+                # IPO theme whose 5 search results were all generic "read our
+                # analysis" blurbs, producing a video with zero concrete
+                # figures). Tavily's own answer synthesizes the actual numbers
+                # (GMP, price band, issue size) across all 5 sources into one
+                # paragraph at no extra credit cost over a plain basic search.
+                "include_answer": True,
             },
             timeout=30,
         )
         resp.raise_for_status()
-        results = resp.json().get("results", [])
+        data = resp.json()
+        results = data.get("results", [])
     except (requests.RequestException, ValueError):
         return ""
 
-    lines = [
+    lines = []
+    answer = (data.get("answer") or "").strip()
+    if answer:
+        lines.append(f"- Summary of current sourced facts: {answer}")
+    lines += [
         f"- {r.get('title', '').strip()}: {r.get('content', '').strip()} (source: {r.get('url', '').strip()})"
         for r in results if r.get("content", "").strip()
     ]

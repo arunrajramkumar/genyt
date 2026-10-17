@@ -213,6 +213,11 @@ Rules:
     {"kind": "shape_progression", "shape": "<str>", "counts": [<int>, ...]}
     {"kind": "trend_line", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
     {"kind": "donut_share", "labels": ["<str>", ...], "values": [<number>, ...], "unit": "<str>"}
+  Prefer number_line whenever the narration states a ratio/ metric being
+  judged against a threshold or healthy range (e.g. "debt-to-equity below 1",
+  "P/E between 10 and 20") -- set min/max to a sensible range spanning that
+  threshold and highlight the company's actual value, so a muted viewer can
+  see at a glance where the real number falls, not just hear it read out.
   Prefer trend_line over bar_compare for a value changing across an ordered
   sequence (e.g. revenue/profit by year) -- reserve bar_compare for comparing
   a handful of unordered items (e.g. this company's P/E vs. a peer's). Use

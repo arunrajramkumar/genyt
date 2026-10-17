@@ -17,6 +17,10 @@ on:
         description: "One-off theme to run instead of the next themes.yaml entry (optional)"
         required: false
         default: ""
+      duration:
+        description: "Target seconds for the one-off --theme run (ignored for the scheduled/--trending path)"
+        required: false
+        default: "60"
 
 concurrency:
   group: auto-video
@@ -68,7 +72,7 @@ jobs:
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
-            python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts
+            python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
           else
             python3 run.py --trending
           fi

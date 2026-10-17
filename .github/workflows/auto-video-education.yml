@@ -15,6 +15,10 @@ on:
         description: "One-off theme to run instead of the next themes_education.yaml entry (optional)"
         required: false
         default: ""
+      duration:
+        description: "Target seconds for the one-off --theme run (ignored for the scheduled path)"
+        required: false
+        default: "60"
 
 concurrency:
   group: auto-video-education
@@ -66,7 +70,7 @@ jobs:
           GOOGLE_TTS_USAGE_FILE: google_tts_usage_education.json
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
-            python3 run.py --theme "${{ github.event.inputs.theme }}" --shorts
+            python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
           else
             python3 run.py --themes-file themes_education.yaml
           fi

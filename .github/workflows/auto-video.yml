@@ -81,7 +81,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add themes.yaml tavily_usage.json google_tts_usage.json
+          git add themes.yaml tavily_usage.json google_tts_usage.json visual_usage.json
           git diff --cached --quiet && exit 0
           git commit -m "Mark generated theme as done [skip ci]"
           # The pipeline run above can take close to an hour, so origin/main may

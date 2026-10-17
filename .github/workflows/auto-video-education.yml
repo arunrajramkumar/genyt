@@ -68,6 +68,10 @@ jobs:
           # workflows' independent commit+push steps never conflict on the
           # same file if their runs overlap.
           GOOGLE_TTS_USAGE_FILE: google_tts_usage_education.json
+          # Same reasoning, for the recent-Pexels-asset-usage record that
+          # pipeline/visuals.py uses to stop successive videos from repeating
+          # the same stock clips (see pipeline/config.py's VISUAL_USAGE_FILE).
+          VISUAL_USAGE_FILE: visual_usage_education.json
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
@@ -79,7 +83,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add themes_education.yaml google_tts_usage_education.json
+          git add themes_education.yaml google_tts_usage_education.json visual_usage_education.json
           git diff --cached --quiet && exit 0
           git commit -m "Mark generated theme as done (education) [skip ci]"
           # The pipeline run above can take close to an hour, so origin/main may

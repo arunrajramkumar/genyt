@@ -1,3 +1,5 @@
+import json
+import random
 from unittest import mock
 
 import pytest
@@ -82,6 +84,21 @@ def _fake_get_sequence(responses):
     return fake_get
 
 
+def _fixed_page_then_real_choice(page: int):
+    """Pins only the FIRST random.choice call (the page selection) to a fixed
+    value, then delegates any later calls (e.g. _pick's pool selection, which
+    shares the same random.choice) to the real implementation -- these tests
+    care about which page got requested, not which pooled item got picked."""
+    real_choice = random.choice
+    calls = iter([page])
+    def fake_choice(seq):
+        try:
+            return next(calls)
+        except StopIteration:
+            return real_choice(seq)
+    return fake_choice
+
+
 def _ok_response(json_body, content=b"bytes"):
     resp = mock.Mock()
     resp.raise_for_status.side_effect = None
@@ -110,7 +127,7 @@ def test_fetch_visual_prefers_video_results_closest_to_target_width(isolated_dir
 
 def test_fetch_visual_falls_back_to_photo_when_no_videos(isolated_dirs, monkeypatch):
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
-    monkeypatch.setattr(visuals.random, "choice", lambda choices: 1)
+    monkeypatch.setattr(visuals.random, "choice", _fixed_page_then_real_choice(1))
     video_response = _ok_response({"videos": []})
     photo_response = _ok_response({"photos": [{"src": {"large2x": "https://example.com/photo.jpg"}}]})
     monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([video_response, photo_response]))
@@ -137,7 +154,7 @@ def test_fetch_visual_uses_a_random_page_to_diversify_results(isolated_dirs, mon
     # every other channel doing the same query -- a random page multiplies
     # the effective pool for free.
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
-    monkeypatch.setattr(visuals.random, "choice", lambda choices: 3)
+    monkeypatch.setattr(visuals.random, "choice", _fixed_page_then_real_choice(3))
     video_search_response = _ok_response({
         "videos": [{"video_files": [{"width": 1280, "link": "https://example.com/clip.mp4"}]}],
     })
@@ -158,7 +175,7 @@ def test_fetch_visual_retries_page_one_when_random_page_has_no_videos(isolated_d
     # -- retrying page 1 before falling back to photos keeps variety-seeking
     # from making a thin query worse off than before.
     monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
-    monkeypatch.setattr(visuals.random, "choice", lambda choices: 3)
+    monkeypatch.setattr(visuals.random, "choice", _fixed_page_then_real_choice(3))
     empty_page = _ok_response({"videos": []})
     page_one_response = _ok_response({
         "videos": [{"video_files": [{"width": 1280, "link": "https://example.com/clip.mp4"}]}],
@@ -193,3 +210,60 @@ def test_fetch_visual_seeds_a_pool_of_distinct_clips_for_variety_on_reuse(isolat
     assert len(set(downloaded_urls)) == visuals.POOL_SIZE
     pool = visuals._pool_paths("recurring generic query", "landscape", "mp4")
     assert all(p.exists() for p in pool)
+
+
+# -- cross-video dedup: config.VISUAL_USAGE_FILE -------------------------------
+#
+# Every scheduled video runs in a fresh CI VM with an empty cache, so the pool/
+# exclude machinery above only ever stops repeats WITHIN one video -- these
+# tests cover the separate, persisted mechanism that avoids repeating a clip
+# shown in a recent PRIOR video (see pipeline/config.py's VISUAL_USAGE_FILE).
+
+def _video_response_with_ids(ids):
+    return _ok_response({
+        "videos": [
+            {"id": i, "video_files": [{"width": 1280, "link": f"https://example.com/clip{i}.mp4"}]}
+            for i in ids
+        ],
+    })
+
+
+def test_fetch_visual_avoids_a_video_id_used_in_a_recent_prior_video(isolated_dirs, monkeypatch):
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    config.VISUAL_USAGE_FILE.write_text('["video:1"]')
+    monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([_video_response_with_ids([1, 2])]))
+    monkeypatch.setattr(visuals, "_download", lambda url, dest: (dest.write_bytes(b"x"), dest)[1])
+
+    seen_urls = {visuals.fetch_visual("recurring generic query", orientation="landscape")[0] for _ in range(30)}
+    assert seen_urls == {visuals._pool_paths("recurring generic query", "landscape", "mp4")[0]}
+
+
+def test_fetch_visual_records_the_chosen_asset_as_recently_used(isolated_dirs, monkeypatch):
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([_video_response_with_ids([1])]))
+    monkeypatch.setattr(visuals, "_download", lambda url, dest: (dest.write_bytes(b"x"), dest)[1])
+
+    visuals.fetch_visual("recurring generic query", orientation="landscape")
+    assert visuals._load_recent_usage() == ["video:1"]
+
+
+def test_fetch_visual_reuses_a_clip_when_every_result_was_recently_used(isolated_dirs, monkeypatch):
+    # A thin/niche query can have fewer live Pexels results than the
+    # recent-usage window covers -- falling back to a repeat is still better
+    # than leaving a scene without any visual at all.
+    monkeypatch.setattr(config, "PEXELS_API_KEY", "dummy")
+    config.VISUAL_USAGE_FILE.write_text('["video:1", "video:2"]')
+    monkeypatch.setattr(visuals.requests, "get", _fake_get_sequence([_video_response_with_ids([1, 2])]))
+    monkeypatch.setattr(visuals, "_download", lambda url, dest: (dest.write_bytes(b"x"), dest)[1])
+
+    path, kind = visuals.fetch_visual("recurring generic query", orientation="landscape")
+    assert kind == "video"
+
+
+def test_record_usage_trims_to_the_max_recent_window(isolated_dirs):
+    config.VISUAL_USAGE_FILE.write_text(json.dumps([f"video:{i}" for i in range(visuals.MAX_RECENT_USAGE)]))
+    visuals._record_usage("video:new")
+    recent = visuals._load_recent_usage()
+    assert len(recent) == visuals.MAX_RECENT_USAGE
+    assert recent[-1] == "video:new"
+    assert "video:0" not in recent

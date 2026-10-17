@@ -37,6 +37,16 @@ THEMES_FILE = ROOT / "themes.yaml"
 OUTPUT_DIR = ROOT / "output"
 CACHE_DIR = ROOT / "cache"
 
+# Git-committed (not cache/, which is gitignored/ephemeral in CI -- every
+# scheduled run starts from a fresh VM with an empty cache) record of
+# recently-used Pexels asset IDs, so a new video's visual search can actively
+# avoid clips shown in recent prior videos instead of only avoiding repeats
+# within its own scenes (see pipeline/visuals.py). Configurable per-channel
+# via env var, same reasoning as GOOGLE_TTS_USAGE_FILE below: auto-video.yml
+# and auto-video-education.yml each independently commit+push their own
+# usage file, so a shared file risks a real git conflict if both runs overlap.
+VISUAL_USAGE_FILE = Path(os.environ.get("VISUAL_USAGE_FILE", str(ROOT / "visual_usage.json")))
+
 # Git-committed (not cache/, which is gitignored/ephemeral in CI) join table
 # of real uploaded video_id -> NSE symbol, keyed off the exact video_id
 # returned by a successful YouTube upload -- see pipeline/performance_log.py.

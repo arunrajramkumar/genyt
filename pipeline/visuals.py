@@ -1,5 +1,6 @@
 """Fetches stock video clips (falling back to photos) from Pexels for a scene query."""
 import hashlib
+import json
 import random
 from pathlib import Path
 
@@ -38,6 +39,40 @@ SEARCH_PAGE_CHOICES = [1, 2, 3, 4]
 # first random page instead of letting the page roll fresh (see
 # SEARCH_PAGE_CHOICES) on every scheduled run, net *less* variety over time.
 
+# Every scheduled video runs in a fresh CI VM with an empty CACHE_DIR, so the
+# pool/exclude machinery above only ever prevents repeats WITHIN one video --
+# it has no memory of what earlier videos already showed, and a generic
+# fallback query (e.g. "business professional presentation") draws from the
+# same small set of Pexels results every single day. config.VISUAL_USAGE_FILE
+# is git-committed (unlike CACHE_DIR) specifically so this list survives
+# across runs -- see config.py. ~800 entries is roughly 60-80 videos' worth
+# of scenes, long enough that a daily upload schedule won't visibly repeat a
+# clip within a week or two, without the file growing unbounded forever.
+MAX_RECENT_USAGE = 800
+
+
+def _load_recent_usage() -> list:
+    try:
+        return json.loads(config.VISUAL_USAGE_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _record_usage(asset_key: str) -> None:
+    recent = _load_recent_usage()
+    recent.append(asset_key)
+    config.VISUAL_USAGE_FILE.write_text(json.dumps(recent[-MAX_RECENT_USAGE:]))
+
+
+def _drop_recently_used(items: list, key_fn, recent: set) -> list:
+    """Filters out items whose identity was used in a recent video, falling
+    back to the full unfiltered list when every candidate has already been
+    seen recently (a thin/niche query can have fewer live results than the
+    recent-usage window covers) -- reusing a clip is still better than
+    leaving a scene without any visual at all."""
+    fresh = [item for item in items if key_fn(item) not in recent]
+    return fresh or items
+
 
 def _cache_path(query: str, orientation: str, suffix: str, index: int = 0) -> Path:
     key = hashlib.sha1(f"{orientation}:{query}".encode("utf-8")).hexdigest()[:16]
@@ -74,6 +109,13 @@ def fetch_visual(
     scenes sharing a generic query (e.g. a fallback like "business professional
     presentation") would otherwise have a real chance of landing on the exact
     same clip via random.choice over the same small cached pool.
+
+    On a fresh (non-cached) search, results are also filtered against
+    config.VISUAL_USAGE_FILE's record of assets used in recent PRIOR videos
+    (see _drop_recently_used) -- `exclude` alone only prevents repeats within
+    one video, which doesn't help since every scheduled video runs in a fresh
+    CI VM with no cache, so a generic query would otherwise draw from the same
+    handful of Pexels results every single day.
     """
     if not config.PEXELS_API_KEY:
         raise RuntimeError("PEXELS_API_KEY is not set in .env")
@@ -81,6 +123,7 @@ def fetch_visual(
     target_width = target_width or config.VIDEO_WIDTH
     headers = {"Authorization": config.PEXELS_API_KEY}
     exclude = exclude or set()
+    recent_usage = set(_load_recent_usage())
 
     video_pool = _pool_paths(query, orientation, "mp4")
     cached_videos = [p for p in video_pool if p.exists()]
@@ -112,8 +155,10 @@ def fetch_visual(
         )
         resp.raise_for_status()
         videos = resp.json().get("videos", [])
+    videos = _drop_recently_used(videos, lambda v: f"video:{v.get('id')}", recent_usage)
     if videos:
         downloaded = []
+        ids = []
         for video, dest in zip(videos[:POOL_SIZE], video_pool):
             files = sorted(
                 video["video_files"],
@@ -121,7 +166,10 @@ def fetch_visual(
             )
             best = next((f for f in files if f.get("width", 0) >= 720), files[0])
             downloaded.append(_download(best["link"], dest))
-        return _pick(downloaded, exclude), "video"
+            ids.append(video.get("id"))
+        chosen_path = _pick(downloaded, exclude)
+        _record_usage(f"video:{ids[downloaded.index(chosen_path)]}")
+        return chosen_path, "video"
 
     photo_page = random.choice(SEARCH_PAGE_CHOICES)
     resp = requests.get(
@@ -141,10 +189,15 @@ def fetch_visual(
         )
         resp.raise_for_status()
         photos = resp.json().get("photos", [])
+    photos = _drop_recently_used(photos, lambda p: f"photo:{p.get('id')}", recent_usage)
     if photos:
         downloaded = []
+        ids = []
         for photo, dest in zip(photos[:POOL_SIZE], image_pool):
             downloaded.append(_download(photo["src"]["large2x"], dest))
-        return _pick(downloaded, exclude), "image"
+            ids.append(photo.get("id"))
+        chosen_path = _pick(downloaded, exclude)
+        _record_usage(f"photo:{ids[downloaded.index(chosen_path)]}")
+        return chosen_path, "image"
 
     raise RuntimeError(f"No Pexels results (video or photo) for query: {query!r}")

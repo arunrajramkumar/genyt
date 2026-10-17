@@ -50,7 +50,7 @@ themes:
   style: confident, research-driven stock-market explainer
   duration_sec: 180
   shorts: true
-  done: false
+  done: true
 - theme: 3 promising midcap stocks with strong earnings growth and the risks investors
     must verify
   style: balanced, evidence-based stock analysis

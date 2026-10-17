@@ -549,6 +549,23 @@ def test_despeak_ticker_noop_when_narration_empty():
     assert ss.despeak_ticker("", "PIDILITIND", "Pidilite Industries Ltd") == ""
 
 
+def test_despeak_ticker_does_not_double_the_legal_suffix():
+    # If the model writes the ticker directly followed by the same legal
+    # suffix company_name already carries (e.g. "TRENT Ltd posted..."), a
+    # naive bare-ticker replacement would leave "Trent Ltd Ltd posted..." --
+    # tts.py then speaks "Limited" twice for one company (reported: "Trent
+    # Ltd" pronounced "Trent Limited Limited" in the generated audio).
+    narration = "TRENT Ltd posted record profits this quarter."
+    result = ss.despeak_ticker(narration, "TRENT", "Trent Ltd")
+    assert result == "Trent Ltd posted record profits this quarter."
+
+
+def test_despeak_ticker_does_not_double_the_word_limited():
+    narration = "Shares of trent limited surged today."
+    result = ss.despeak_ticker(narration, "TRENT", "Trent Ltd")
+    assert result == "Shares of Trent Ltd surged today."
+
+
 def test_ensure_company_name_in_title_leaves_title_untouched_when_already_present():
     title = "Premier Polyfilm: Is This Multibagger Overvalued?"
     assert ss._ensure_company_name_in_title(title, "Premier Polyfilm") == title

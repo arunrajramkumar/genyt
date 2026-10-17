@@ -54,10 +54,23 @@ def despeak_ticker(narration: str, symbol: str, company_name: str) -> str:
     ever meant to be read as on-screen text or metadata). SYSTEM_PROMPT/
     SYSTEM_PROMPT_SEGMENT already instruct the model not to speak a ticker in
     the first place; this is a backstop for when it doesn't comply. No-op if
-    either symbol or company_name is unknown -- never guesses a replacement."""
+    either symbol or company_name is unknown -- never guesses a replacement.
+
+    company_name is often Screener's own canonical name, which already carries
+    a legal suffix (e.g. "Trent Ltd"). If the model writes the ticker directly
+    followed by that same suffix (e.g. "TRENT Ltd posted..." -- easy to slip
+    into since grounding snippets are often phrased that way), matching only
+    the bare ticker and substituting company_name would double the suffix
+    ("Trent Ltd Ltd posted...") -- tts.py's abbreviation expansion then speaks
+    "Limited" twice for a single company. Consuming an optional trailing
+    suffix together with the ticker avoids that."""
     if not narration or not symbol or not company_name:
         return narration
-    return re.sub(rf"\b{re.escape(symbol)}\b", company_name, narration, flags=re.IGNORECASE)
+    pattern = (
+        rf"\b{re.escape(symbol)}\b"
+        r"(?:\s+(?:Private\s+Limited|Pvt\.?\s*Ltd|Limited|Ltd)\.?)?"
+    )
+    return re.sub(pattern, company_name, narration, flags=re.IGNORECASE)
 
 
 # Indian retail-investor audiences read rupee amounts in lakh/crore, never

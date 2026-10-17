@@ -56,7 +56,7 @@ themes:
   style: balanced, evidence-based stock analysis
   duration_sec: 180
   shorts: true
-  done: false
+  done: true
 - theme: 'Smallcap stock deep dive: revenue growth, margins, cash flow, debt, valuation,
     and risks'
   style: structured, fundamentals-first stock analysis

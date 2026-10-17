@@ -122,6 +122,26 @@ def _resolve_company_symbol(theme: str):
     return symbol or None
 
 
+def _resolve_company(theme: str) -> dict:
+    """Like _resolve_company_symbol, but also returns Screener's own
+    canonical company name for the resolved match, not just the ticker --
+    needed when the theme text itself never names the actual company (see
+    resolve_company_for_theme below) so the real name can be told to the
+    script writer instead of left for it to invent one. A sector/topic-wide
+    candidate (e.g. "Semiconductor") can resolve to a specific, differently
+    -named real company (e.g. "RRP Semiconductor Ltd") -- that real name is
+    what must be surfaced, not the caller's own search-query guess. Returns
+    {} under the same conditions _resolve_company_symbol returns None."""
+    candidate = _extract_company_name_candidate(theme)
+    if not candidate:
+        return {}
+    match = fundamentals.search_company(candidate)
+    symbol = match.get("symbol")
+    if not symbol or not fundamentals.fetch_fundamentals(symbol):
+        return {}
+    return {"symbol": symbol, "name": match.get("name") or candidate}
+
+
 def _looks_like_bare_company_name(theme: str) -> bool:
     """True for short, keyword-free, Title-Case phrases like "KPI Green
     Energy" -- an ad-hoc prompt that's just a company name, with none of the
@@ -317,6 +337,29 @@ def resolve_symbol_for_theme(topic: str):
     without re-deriving or guessing it, and can pass it into
     fetch_grounding_facts below to skip a redundant resolution."""
     return _extract_nse_symbol(topic) or _resolve_company_symbol(topic)
+
+
+def resolve_company_for_theme(topic: str) -> dict:
+    """Resolves topic to {"symbol": str, "name": str} for the real company it
+    should be about, when that company isn't already named in the theme's
+    own text. Used by prompt_script.py's freeform path: a theme can be
+    finance-grounded (needs_grounding) without naming any specific company at
+    all (e.g. "Semiconductor Stocks: Opportunity and Risk Analysis") --
+    _resolve_company_symbol still resolves ONE real company to fetch
+    fundamentals from (via a sector-ish name-search candidate), but without
+    this, that resolved company's actual name was never told to the script
+    writer, so the title/narration ended up naming no company at all (e.g.
+    "Semiconductor Stock: Risk & Reward" with no ticker/name anywhere).
+
+    Returns {} when the theme already carries an explicit "NSE: SYMBOL"
+    marker -- that case already puts the real company name directly in the
+    theme's own raw text (see build_finance_queue.py), so there's nothing new
+    to surface. Also returns {} when no company can be resolved at all (a
+    genuinely generic/creative theme) -- callers must never invent a name in
+    either case."""
+    if _extract_nse_symbol(topic):
+        return {}
+    return _resolve_company(topic)
 
 
 def fetch_grounding_facts(topic: str, symbol: str = None) -> str:

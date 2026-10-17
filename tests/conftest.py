@@ -32,14 +32,16 @@ def isolated_dirs(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _company_symbol_search_no_match_by_default(monkeypatch):
-    """research.resolve_symbol_for_theme (used by both pipeline/research.py and
-    pipeline/prompt_script.py) can call fundamentals.search_company_symbol, a
-    real network request against Screener.in's search endpoint, for any
+    """research.resolve_symbol_for_theme / resolve_company_for_theme (used by
+    both pipeline/research.py and pipeline/prompt_script.py) can call
+    fundamentals.search_company_symbol or fundamentals.search_company, real
+    network requests against Screener.in's search endpoint, for any
     finance-ish theme string that doesn't name an explicit "NSE: SYMBOL".
-    Default it to "no match" so tests that don't care about this resolution
+    Default both to "no match" so tests that don't care about this resolution
     path never silently hit the real network. Tests exercising the resolution
     path override this explicitly."""
     monkeypatch.setattr(fundamentals, "search_company_symbol", lambda name: "")
+    monkeypatch.setattr(fundamentals, "search_company", lambda name: {})
 
 
 @pytest.fixture

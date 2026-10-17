@@ -140,6 +140,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
     user_prompt = f"{prompt.strip()}\n\n"
 
     symbol = research.resolve_symbol_for_theme(prompt) if is_finance_theme else None
+    resolved_company = research.resolve_company_for_theme(prompt) if is_finance_theme else {}
     if is_finance_theme:
         facts = research.fetch_grounding_facts(prompt, symbol=symbol)
         if facts:
@@ -154,6 +155,19 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 "No verified real-world data could be retrieved for this topic. Do NOT "
                 "invent specific numbers, prices, percentages, or dates -- keep the "
                 "narration general and educational instead.\n\n"
+            )
+        if resolved_company.get("name"):
+            # The theme itself only named a sector/topic (e.g. "Semiconductor
+            # Stocks: Opportunity and Risk Analysis"), not a specific company --
+            # the facts above are all about ONE real, verified company resolved
+            # behind the scenes. Without telling the model which one, it has no
+            # way to name it in the title/narration (observed in production: a
+            # published video that never named its subject at all).
+            user_prompt += (
+                f"This video's facts above are specifically about {resolved_company['name']} "
+                f"(NSE/BSE: {resolved_company['symbol']}) -- always name this exact company in "
+                "the title, narration, and on-screen text; never leave it unnamed or refer to it "
+                "only generically (e.g. \"this stock\"), and never speak the ticker aloud.\n\n"
             )
 
     user_prompt += (
@@ -193,7 +207,23 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             segmented_script.append_subscribe_cta(script["scenes"])
             for i, scene in enumerate(script["scenes"]):
                 _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
-            script["company_name"] = _extract_freeform_company_name(script, is_finance_theme)
+            script["company_name"] = resolved_company.get("name") or _extract_freeform_company_name(script, is_finance_theme)
+            if resolved_company.get("name"):
+                # The theme never named a company for the model to echo into
+                # on_screen_text in the first place (see the comment on
+                # resolved_company above) -- SYSTEM_PROMPT's "first scene must
+                # show the subject name" rule has nothing to work from without
+                # this, so set it directly from the resolved real name instead.
+                script["scenes"][0]["on_screen_text"] = resolved_company["name"]
+            if script["company_name"]:
+                # Deterministic backstop -- same reasoning as
+                # segmented_script._ensure_company_name_in_title: the prompt
+                # instruction above isn't always enough on its own, so force
+                # the resolved company's real name into the title rather than
+                # trust the model to have included it.
+                script["title"] = segmented_script._truncate_title(
+                    segmented_script._ensure_company_name_in_title(script["title"], script["company_name"])
+                )
             if script["company_name"] and symbol:
                 for scene in script["scenes"]:
                     scene["narration"] = segmented_script.despeak_ticker(scene["narration"], symbol, script["company_name"])

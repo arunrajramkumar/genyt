@@ -3,9 +3,11 @@ from unittest import mock
 from pipeline import fundamentals
 
 # Captured before conftest.py's autouse fixture monkeypatches
-# fundamentals.search_company_symbol away by name, so the tests below that
-# exercise the real implementation can still call it directly.
+# fundamentals.search_company_symbol / fundamentals.search_company away by
+# name, so the tests below that exercise the real implementation can still
+# call it directly.
 _real_search_company_symbol = fundamentals.search_company_symbol
+_real_search_company = fundamentals.search_company
 
 
 def _fake_html(include_quarterly=True):
@@ -153,11 +155,13 @@ def _mock_json_response(payload, status_ok=True):
 def test_search_company_symbol_extracts_ticker_from_first_match(monkeypatch):
     payload = [{"id": 2478, "name": "Pidilite Industries Ltd", "url": "/company/PIDILITIND/consolidated/"}]
     monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response(payload))
+    monkeypatch.setattr(fundamentals, "search_company", _real_search_company)
     assert _real_search_company_symbol("Pidilite Industries") == "PIDILITIND"
 
 
 def test_search_company_symbol_returns_empty_string_on_no_results(monkeypatch):
     monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response([]))
+    monkeypatch.setattr(fundamentals, "search_company", _real_search_company)
     assert _real_search_company_symbol("Totally Madeup Company") == ""
 
 
@@ -165,4 +169,33 @@ def test_search_company_symbol_returns_empty_string_on_request_failure(monkeypat
     def raise_error(*a, **k):
         raise fundamentals.requests.RequestException("network down")
     monkeypatch.setattr(fundamentals.requests, "get", raise_error)
+    monkeypatch.setattr(fundamentals, "search_company", _real_search_company)
     assert _real_search_company_symbol("Pidilite Industries") == ""
+
+
+# -- search_company: resolves a plain company name to {"symbol", "name"} -----
+
+def test_search_company_returns_symbol_and_canonical_name_from_first_match(monkeypatch):
+    payload = [{"id": 2478, "name": "Pidilite Industries Ltd", "url": "/company/PIDILITIND/consolidated/"}]
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response(payload))
+    result = _real_search_company("Pidilite Industries")
+    assert result == {"symbol": "PIDILITIND", "name": "Pidilite Industries Ltd"}
+
+
+def test_search_company_matches_sector_query_to_differently_named_company(monkeypatch):
+    payload = [{"id": 1, "name": "RRP Semiconductor Ltd", "url": "/company/504346/consolidated/"}]
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response(payload))
+    result = _real_search_company("Semiconductor")
+    assert result == {"symbol": "504346", "name": "RRP Semiconductor Ltd"}
+
+
+def test_search_company_returns_empty_dict_on_no_results(monkeypatch):
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_json_response([]))
+    assert _real_search_company("Totally Madeup Company") == {}
+
+
+def test_search_company_returns_empty_dict_on_request_failure(monkeypatch):
+    def raise_error(*a, **k):
+        raise fundamentals.requests.RequestException("network down")
+    monkeypatch.setattr(fundamentals.requests, "get", raise_error)
+    assert _real_search_company("Pidilite Industries") == {}

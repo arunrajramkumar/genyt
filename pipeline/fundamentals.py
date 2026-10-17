@@ -119,15 +119,21 @@ def fetch_fundamentals(symbol: str) -> dict:
     return data
 
 
-def search_company_symbol(company_name: str) -> str:
-    """Resolves a plain company name (e.g. "Pidilite Industries") to its real
-    NSE symbol via Screener.in's free, no-API-key company-search endpoint --
+def search_company(company_name: str) -> dict:
+    """Resolves a plain company name (e.g. "Semiconductor") to Screener.in's
+    best-matching company via its free, no-API-key company-search endpoint --
     the same site this module already scrapes for fundamentals, just its
-    search index instead of a company page. Returns "" on no match or any
-    request/parse failure; callers must still verify the returned symbol by
-    calling fetch_fundamentals on it before trusting it (a name-search hit
-    only confirms a company with that name exists, not that the caller's
-    inferred name was exactly right)."""
+    search index instead of a company page. Returns {"symbol": str, "name":
+    str} for the first match, or {} on no match or any request/parse
+    failure. The "name" is Screener's own canonical company name (e.g. "RRP
+    Semiconductor Ltd") -- often not identical to the caller's search query,
+    since a generic/sector-wide query (e.g. "Semiconductor Stocks") can
+    resolve to one specific, differently-named real company; callers must
+    surface this real name wherever they name the company (title, narration)
+    rather than echo their own guess. Callers must still verify the returned
+    symbol by calling fetch_fundamentals on it before trusting it (a
+    name-search hit only confirms a company with that name exists, not that
+    the caller's inferred name was exactly right)."""
     try:
         resp = requests.get(
             SCREENER_SEARCH_URL,
@@ -137,12 +143,20 @@ def search_company_symbol(company_name: str) -> str:
         resp.raise_for_status()
         results = resp.json()
     except (requests.RequestException, ValueError):
-        return ""
+        return {}
 
     if not results:
-        return ""
+        return {}
     m = SYMBOL_FROM_URL_RE.search(results[0].get("url", ""))
-    return m.group(1) if m else ""
+    if not m:
+        return {}
+    return {"symbol": m.group(1), "name": (results[0].get("name") or "").strip()}
+
+
+def search_company_symbol(company_name: str) -> str:
+    """Thin wrapper over search_company for callers that only need the
+    ticker -- see search_company's docstring for match semantics."""
+    return search_company(company_name).get("symbol", "")
 
 
 def market_cap_cr(data: dict) -> float:

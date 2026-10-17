@@ -6,7 +6,7 @@ themes:
   done: true
 - theme: 3 red flags to check before investing in any IPO
   style: confident, no-nonsense stock-market explainer
-  duration_sec: 120
+  duration_sec: 60
   shorts: true
   done: true
 - theme: How to read a stock's balance sheet in under a minute
@@ -21,7 +21,7 @@ themes:
   done: true
 - theme: Why most people lose money in IPOs on listing day
   style: confident, slightly contrarian stock-market explainer
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: true
 - theme: 3 wealth creation habits of people who retire early
@@ -98,49 +98,49 @@ themes:
 - theme: 'Upcoming IPO analysis: business model, growth, profitability, valuation,
     and risks'
   style: structured, no-hype IPO analysis
-  duration_sec: 180
+  duration_sec: 60
   shorts: true
   done: false
 - theme: How to read a DRHP before applying for an IPO
   style: clear, practical, beginner-friendly IPO explainer
-  duration_sec: 180
+  duration_sec: 60
   shorts: true
   done: false
 - theme: 'IPO valuation explained: compare price-to-earnings, price-to-sales, and
     listed peers'
   style: data-driven, practical IPO analysis
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: false
 - theme: 'IPO GMP versus fundamentals: what matters for listing gains and long-term
     returns?'
   style: balanced, slightly contrarian IPO explainer
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: false
 - theme: 'Mainboard versus SME IPOs: eligibility, liquidity, risk, and reward'
   style: clear, risk-focused stock-market explainer
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: false
 - theme: 'OFS versus fresh issue: where the IPO money is really going'
   style: concise, no-nonsense IPO explainer
-  duration_sec: 120
+  duration_sec: 60
   shorts: true
   done: false
 - theme: How to evaluate promoter quality, debt, and cash flows in an upcoming IPO
   style: practical, fundamentals-first IPO analysis
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: false
 - theme: 'Upcoming IPO watchlist: 5 questions to answer before applying'
   style: confident, checklist-based IPO explainer
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: false
 - theme: IPO listing gains versus long-term wealth creation
   style: balanced, investor-focused stock-market explainer
-  duration_sec: 150
+  duration_sec: 60
   shorts: true
   done: false
 - theme: 'High-dividend stocks: yield, payout sustainability, and growth'

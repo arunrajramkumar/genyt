@@ -28,11 +28,40 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pipeline import config, fundamentals, market_trends, research, trending_stocks  # noqa: E402
 
-MIN_DURATION = 90
-MAX_DURATION = 120
+MIN_DURATION = 50
+MAX_DURATION = 65
+
+# Ratios worth leading with/keeping -- a retail viewer finds growth and
+# capital-efficiency numbers far more striking than, say, Face Value or Book
+# Value, but Screener.in's top-ratios dict is in its own scrape order, not a
+# "most interesting first" order. Used to both pick the hook's headline fact
+# and to cap the Key Metrics section instead of dumping every scraped ratio
+# into one scene (YouTube Analytics feedback on a real video: viewers dropped
+# off mid-way through a back-to-back recital of 8+ numbers with no pause).
+_STRIKING_RATIO_PRIORITY = ["ROCE", "ROE", "Stock P/E", "Price to Book Value", "Dividend Yield", "Market Cap"]
 
 
-def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100, competitor_tags: list = None) -> dict:
+def _select_striking_ratios(ratios: dict, limit: int = 3) -> dict:
+    ordered_keys = [k for k in _STRIKING_RATIO_PRIORITY if k in ratios]
+    ordered_keys += [k for k in ratios if k not in ordered_keys]
+    return {k: ratios[k] for k in ordered_keys[:limit]}
+
+
+def _pick_headline_fact(data: dict, ratios: dict) -> tuple:
+    """A profit/revenue growth % (e.g. "89% Profit CAGR") is a far stronger
+    hook than whatever ratio happens to be scraped first -- prefer it, then
+    fall back to the most striking available ratio."""
+    if "profit_growth_yoy_pct" in data:
+        return "Profit growth", f"{data['profit_growth_yoy_pct']}% year-on-year"
+    if "revenue_growth_yoy_pct" in data:
+        return "Revenue growth", f"{data['revenue_growth_yoy_pct']}% year-on-year"
+    striking = _select_striking_ratios(ratios, limit=1)
+    if striking:
+        return next(iter(striking.items()))
+    return "", ""
+
+
+def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, competitor_tags: list = None) -> dict:
     """Returns None if fundamentals couldn't be fetched for this symbol --
     callers must skip the company rather than queue a theme with no real
     facts to ground it in."""
@@ -44,9 +73,9 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100, c
     ratios = data["ratios"]
     quarterly = data.get("quarterly", {})
 
-    ratio_lines = "\n".join(f"{k}: {v}" for k, v in ratios.items())
-    headline_fact = next(iter(ratios.values()), company_name)
-    headline_label = next(iter(ratios.keys()), "")
+    striking_ratios = _select_striking_ratios(ratios, limit=3)
+    ratio_lines = "\n".join(f"{k}: {v}" for k, v in striking_ratios.items())
+    headline_label, headline_fact = _pick_headline_fact(data, ratios)
 
     growth_lines = []
     if "revenue_growth_yoy_pct" in data:
@@ -70,16 +99,21 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 100, c
 
     lines.append(f"{cursor}-{cursor + hook_dur} seconds - Hook")
     lines.append(
-        f'{company_name} (NSE: {symbol}). Write an exciting, curiosity-sparking opening question '
-        f"for stock-market viewers, using ONLY this headline fact: {headline_label}: {headline_fact}."
+        f"Write an exciting, curiosity-sparking opening question for stock-market viewers that leads "
+        f"immediately with this headline number -- {headline_label}: {headline_fact} -- before anything "
+        f"else; never open with the company name, a date, or other background framing first. "
+        f"Mention {company_name} (NSE: {symbol}) only after that number has hooked the viewer."
     )
     lines.append("")
     cursor += hook_dur
 
     lines.append(f"{cursor}-{cursor + metrics_dur} seconds - Key Metrics")
     lines.append(
-        f"Explain what these valuation metrics for {company_name} (NSE: {symbol}) mean for a retail "
-        f"investor, in simple terms. Facts:\n{ratio_lines}"
+        f"For {company_name} (NSE: {symbol}), pick ONLY the 2 or 3 most striking of these valuation "
+        "metrics -- do not list all of them. For each one you use, state the number and then immediately "
+        "translate it into one short plain-English clause a retail investor would understand (e.g. "
+        '"ROCE of 117% -- meaning it generates huge profit from the capital it employs"), not just the '
+        f"bare ratio name and figure. Facts:\n{ratio_lines}"
     )
     lines.append("")
     cursor += metrics_dur
@@ -158,7 +192,7 @@ def main():
         help="Theme queue YAML to skip already-covered NSE symbols from when using --trending (default: themes.yaml)",
     )
     parser.add_argument("--output", required=True)
-    parser.add_argument("--duration", type=int, default=100, help=f"Target seconds, clamped to [{MIN_DURATION}, {MAX_DURATION}]")
+    parser.add_argument("--duration", type=int, default=55, help=f"Target seconds, clamped to [{MIN_DURATION}, {MAX_DURATION}]")
     args = parser.parse_args()
 
     if not args.symbols and not args.trending:

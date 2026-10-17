@@ -54,6 +54,22 @@ Rules:
   out loud in narration, since text-to-speech mispronounces it as gibberish. Always
   refer to a company by its full name instead (e.g. say "Pidilite Industries", not
   "PIDILITIND"). A ticker is fine in on_screen_text, just never in narration.
+- The first scene (the hook) must lead with the single most dramatic/surprising
+  fact or figure from the prompt's content (e.g. a striking percentage, gain, or
+  comparison) -- never open with chronological/background setup (e.g. a date, "X
+  opened its subscription on...", or the subject's full name) before that figure.
+  The hook earns the viewer's attention with the payoff first; background details
+  belong later in the narration, not in scene 1.
+- Avoid rattling off many distinct numbers back-to-back in one scene or in
+  quick succession across consecutive scenes -- when the source content has many
+  figures (e.g. issue size, price band, lot size, minimum investment, several
+  ratios), pick only the 2-3 most important/striking ones to actually narrate in
+  detail and leave the rest out, rather than compressing every available number
+  into the script just because it was given. Whenever narration states a ratio or
+  technical term a retail viewer may not know (e.g. ROE, ROCE, P/E, CAGR,
+  EV/EBITDA, offer-for-sale), immediately follow it with a short plain-English
+  clause explaining what it practically means (e.g. "ROE of 92% -- meaning it
+  generates huge profit from shareholder money"), not just the bare number.
 - Keep total narration length close to the requested duration at ~140 words/minute.
 - visual_query must describe concrete, filmable subjects (avoid abstract concepts). If
   the topic names a specific company/industry, prefer a term tied to that company's
@@ -199,7 +215,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                     raise ValueError(f"Script missing required field: {key}")
             if not script["scenes"]:
                 raise ValueError("Script has zero scenes")
-            script["title"] = segmented_script.clean_title(script["title"])[:70]
+            script["title"] = segmented_script.clean_title(script["title"])
             script["description"] = segmented_script.normalize_indian_currency_units(script["description"])
             script["tags"] = segmented_script.merge_tags(extra_tags or [], script["tags"] or ["short video"])
             for scene in script["scenes"]:
@@ -225,10 +241,14 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 # segmented_script._ensure_company_name_in_title: the prompt
                 # instruction above isn't always enough on its own, so force
                 # the resolved company's real name into the title rather than
-                # trust the model to have included it.
-                script["title"] = segmented_script._truncate_title(
-                    segmented_script._ensure_company_name_in_title(script["title"], script["company_name"])
-                )
+                # trust the model to have included it. Insert it BEFORE the
+                # one-and-only truncation below -- truncating first and then
+                # prepending a name afterwards (the prior bug) silently pushed
+                # the title back over the limit and cut it a second time with
+                # no indication it was shortened (observed in production: a
+                # title truncated mid-clause with no ellipsis).
+                script["title"] = segmented_script._ensure_company_name_in_title(script["title"], script["company_name"])
+            script["title"] = segmented_script._truncate_title(script["title"])
             if script["company_name"] and symbol:
                 for scene in script["scenes"]:
                     scene["narration"] = segmented_script.despeak_ticker(scene["narration"], symbol, script["company_name"])

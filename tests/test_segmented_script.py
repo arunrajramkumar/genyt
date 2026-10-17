@@ -574,15 +574,24 @@ def test_truncate_title_backs_off_to_last_word_boundary():
     mid-word ("...Is It a Long-Term Wea" instead of stopping before "Wea")."""
     title = "Tips Music (TIPSMUSIC): 5-Year Profit CAGR 89% - Is It a Long-Term Wealth Builder?"
     result = ss._truncate_title(title)
-    assert len(result) <= 70
+    assert len(result) <= 71
     assert not result.endswith("Wea")
-    assert result == "Tips Music (TIPSMUSIC): 5-Year Profit CAGR 89% - Is It a Long-Term"
+    assert result == "Tips Music (TIPSMUSIC): 5-Year Profit CAGR 89% - Is It a Long-Term…"
+
+
+def test_truncate_title_marks_truncation_with_ellipsis_not_a_fake_sentence():
+    """Regression test: a published title read as a complete sentence that
+    just happened to stop ("...Is It a Long-Term Wealth") with no indication
+    it had been shortened -- an ellipsis makes a truncated title visibly
+    incomplete instead of silently wrong."""
+    title = "Tips Music (TIPSMUSIC): 5-Year Profit CAGR 89% - Is It a Long-Term Wealth Builder?"
+    assert ss._truncate_title(title).endswith("…")
 
 
 def test_truncate_title_hard_cuts_when_no_word_boundary_available():
     title = "x" * 100
     result = ss._truncate_title(title)
-    assert len(result) == 70
+    assert result == "x" * 70 + "…"
 
 
 def test_write_metadata_cleans_hashtags_and_double_spaces_from_title(monkeypatch):
@@ -665,7 +674,8 @@ def test_write_metadata_truncates_long_title(monkeypatch):
         lambda *a, **k: _mock_llm_response({"title": "x" * 100, "description": "d", "tags": []}),
     )
     meta = ss._write_metadata([{"narration": "n"}])
-    assert len(meta["title"]) == 70
+    assert len(meta["title"]) == 71
+    assert meta["title"].endswith("…")
 
 
 def test_write_metadata_retries_on_empty_title_then_succeeds(monkeypatch):

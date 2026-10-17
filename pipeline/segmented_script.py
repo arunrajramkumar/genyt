@@ -180,6 +180,18 @@ Rules:
 - narration: natural, TTS-friendly spoken sentences (no headers, no markdown, no bullet
   points), summarizing the given facts in about {target_words} words. If the facts
   already contain a fully-written narration passage, reproduce it exactly, word for word.
+- If this scene's label is the Hook/introduction, lead with the single most dramatic
+  or surprising figure in the facts (e.g. a striking percentage or gain) -- never open
+  with chronological/background setup (a date, "X opened its subscription on...", or
+  the subject's full name) before that figure.
+- Avoid rattling off many distinct numbers back-to-back -- if the facts given contain
+  more figures than this scene can comfortably cover in {target_words} words, pick
+  only the 2-3 most important/striking ones to narrate and leave the rest for the
+  facts alone to have provided, don't force every number in. Whenever narration states
+  a ratio or technical term a retail viewer may not know (e.g. ROE, ROCE, P/E, CAGR,
+  EV/EBITDA, offer-for-sale), immediately follow it with a short plain-English clause
+  explaining what it practically means (e.g. "ROE of 92% -- meaning it generates huge
+  profit from shareholder money"), not just the bare number.
 - The narration is read aloud by text-to-speech -- never speak a bare stock ticker/
   symbol (e.g. "PIDILITIND", "NSE: TCS", "(NSE: CDSL)") out loud, since it gets
   mispronounced as gibberish. Always refer to the company by its full name instead
@@ -488,12 +500,15 @@ def _ensure_company_name_in_title(title: str, company_name: str) -> str:
 def _truncate_title(title: str, limit: int = 70) -> str:
     """A hard `title[:limit]` cut mid-word (observed in production: "...Is It
     a Long-Term Wea" instead of "...Wealth Builder?") reads as broken on
-    YouTube -- back off to the last word boundary within the limit instead."""
+    YouTube -- back off to the last word boundary within the limit instead.
+    Appends an ellipsis whenever truncation actually happens, so a shortened
+    title never reads as a complete sentence that just happens to stop (the
+    word-boundary backoff alone still produced that illusion in production)."""
     if len(title) <= limit:
         return title
     truncated = title[:limit]
     cut = truncated.rfind(" ")
-    return (truncated[:cut] if cut > 0 else truncated).rstrip(" :-–—")
+    return (truncated[:cut] if cut > 0 else truncated).rstrip(" :-–—") + "…"
 
 
 def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = None) -> dict:

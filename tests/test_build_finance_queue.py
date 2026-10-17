@@ -48,7 +48,7 @@ def test_build_theme_entry_risk_segment_forbids_new_numbers_and_recommendations(
     assert "recommendation" in segments["Risk & Verdict"].lower()
 
 
-def test_build_theme_entry_duration_clamped_between_90_and_120(monkeypatch):
+def test_build_theme_entry_duration_clamped_to_min_and_max(monkeypatch):
     monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
     short_entry = build_theme_entry("CDSL", "CDSL", duration_sec=30)
     long_entry = build_theme_entry("CDSL", "CDSL", duration_sec=300)
@@ -76,6 +76,49 @@ def test_build_theme_entry_appends_competitor_tags(monkeypatch):
     monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
     entry = build_theme_entry("CDSL", "CDSL Ltd", competitor_tags=["mutual funds", "share market"])
     assert entry["extra_tags"][-2:] == ["mutual funds", "share market"]
+
+
+# -- hook/metrics content: lead with the most striking number, cap data dump -
+
+def test_build_theme_entry_hook_leads_with_headline_number_not_company_name(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    entry = build_theme_entry("CDSL", "CDSL")
+    segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
+    hook = segments["Hook"]
+    assert hook.index("44.8% year-on-year") < hook.index("CDSL (NSE: CDSL)")
+
+
+def test_build_theme_entry_hook_prefers_growth_pct_over_a_scraped_ratio(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    entry = build_theme_entry("CDSL", "CDSL")
+    segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
+    assert "Profit growth: 44.8% year-on-year" in segments["Hook"]
+
+
+def test_build_theme_entry_key_metrics_caps_to_three_most_striking_ratios(monkeypatch):
+    data = dict(_FAKE_DATA, ratios={
+        "Market Cap": "₹ 26,334 Cr.", "Face Value": "2", "Book Value": "120",
+        "Stock P/E": "57.2", "ROE": "31.3 %", "ROCE": "28.1 %", "Dividend Yield": "0.5 %",
+    })
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: data)
+    entry = build_theme_entry("CDSL", "CDSL")
+    segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
+    metrics = segments["Key Metrics"]
+    # Priority ratios survive the cap...
+    assert "28.1 %" in metrics  # ROCE
+    assert "31.3 %" in metrics  # ROE
+    assert "57.2" in metrics  # Stock P/E
+    # ...while a lower-priority ratio (7 were given, cap is 3) is dropped.
+    assert "Face Value" not in metrics
+    assert "Book Value" not in metrics
+
+
+def test_build_theme_entry_key_metrics_instructs_plain_english_translation(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    entry = build_theme_entry("CDSL", "CDSL")
+    segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
+    assert "plain-English" in segments["Key Metrics"]
+    assert "2 or 3" in segments["Key Metrics"]
 
 
 # -- existing_symbols: reads already-covered NSE symbols out of a queue file -

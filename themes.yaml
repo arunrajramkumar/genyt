@@ -62,7 +62,7 @@ themes:
   style: structured, fundamentals-first stock analysis
   duration_sec: 180
   shorts: true
-  done: false
+  done: true
 - theme: How to separate a genuine growth stock from a story stock
   style: sharp, no-nonsense stock-market explainer
   duration_sec: 150

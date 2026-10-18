@@ -64,6 +64,10 @@ jobs:
           # API instead. Render/local stay on edge-tts by default (var unset there).
           TTS_ENGINE: "google"
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          # Gemini 2.5 Flash Image ("Nano Banana") -- primary AI thumbnail/hook
+          # background generator (see pipeline/ai_thumbnail.py). Optional: if
+          # unset, generation falls back straight to Pollinations.ai.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # Separate usage-counter file from auto-video.yml's so the two
           # workflows' independent commit+push steps never conflict on the
           # same file if their runs overlap.
@@ -72,6 +76,8 @@ jobs:
           # pipeline/visuals.py uses to stop successive videos from repeating
           # the same stock clips (see pipeline/config.py's VISUAL_USAGE_FILE).
           VISUAL_USAGE_FILE: visual_usage_education.json
+          # Same reasoning, for the Gemini daily image-generation cap tracker.
+          GEMINI_IMAGE_USAGE_FILE: gemini_image_usage_education.json
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
@@ -83,7 +89,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add themes_education.yaml google_tts_usage_education.json visual_usage_education.json
+          git add themes_education.yaml google_tts_usage_education.json visual_usage_education.json gemini_image_usage_education.json
           git diff --cached --quiet && exit 0
           git commit -m "Mark generated theme as done (education) [skip ci]"
           # The pipeline run above can take close to an hour, so origin/main may

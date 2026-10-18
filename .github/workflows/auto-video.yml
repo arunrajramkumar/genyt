@@ -70,6 +70,10 @@ jobs:
           # API instead. Render/local stay on edge-tts by default (var unset there).
           TTS_ENGINE: "google"
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+          # Gemini 2.5 Flash Image ("Nano Banana") -- primary AI thumbnail/hook
+          # background generator (see pipeline/ai_thumbnail.py). Optional: if
+          # unset, generation falls back straight to Pollinations.ai.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
@@ -81,7 +85,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add themes.yaml tavily_usage.json google_tts_usage.json visual_usage.json
+          git add themes.yaml tavily_usage.json google_tts_usage.json visual_usage.json gemini_image_usage.json
           git diff --cached --quiet && exit 0
           git commit -m "Mark generated theme as done [skip ci]"
           # The pipeline run above can take close to an hour, so origin/main may

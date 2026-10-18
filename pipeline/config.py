@@ -90,6 +90,31 @@ GOOGLE_TTS_MONTHLY_CHAR_CAP = int(os.environ.get("GOOGLE_TTS_MONTHLY_CHAR_CAP", 
 # flip-flopping between "just under" and "just over" across retried runs.
 GOOGLE_TTS_SAFETY_BUFFER_CHARS = int(os.environ.get("GOOGLE_TTS_SAFETY_BUFFER_CHARS", "5000"))
 
+# Gemini 2.5 Flash Image ("Nano Banana") — Google AI Studio's free-tier
+# image-generation model, used as the primary AI thumbnail/hook-background
+# generator (see pipeline/ai_thumbnail.py) since it renders legible on-screen
+# text/numbers far more reliably than Pollinations.ai. Get a free key at
+# https://aistudio.google.com/apikey. Optional: if unset, ai_thumbnail.py
+# skips straight to the Pollinations.ai fallback, same as before this existed.
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+
+# Google AI Studio's free tier is rate-limited per day, not metered by
+# cost -- tracked the same way as GOOGLE_TTS_USAGE_FILE above (a git-committed
+# counter, since cache/ is gitignored/ephemeral in CI), so a preflight check
+# can proactively fall back to Pollinations.ai BEFORE actually hitting
+# Gemini's real daily limit, rather than only reacting to a 429 error.
+# Per-channel file (see VISUAL_USAGE_FILE comment above for why: each of
+# auto-video.yml / auto-video-education.yml commits+pushes its own file
+# independently, so sharing one risks a real git conflict).
+GEMINI_IMAGE_USAGE_FILE = Path(os.environ.get("GEMINI_IMAGE_USAGE_FILE", str(ROOT / "gemini_image_usage.json")))
+
+# Kept comfortably under the real free-tier daily request limit so a run that
+# retries a few times (or the other channel's workflow sharing the same key)
+# never risks tipping into billed usage.
+GEMINI_IMAGE_DAILY_CAP = int(os.environ.get("GEMINI_IMAGE_DAILY_CAP", "40"))
+GEMINI_IMAGE_SAFETY_BUFFER = int(os.environ.get("GEMINI_IMAGE_SAFETY_BUFFER", "5"))
+
 
 # Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays
 # under the ~512MB RAM ceiling of the free hosting tier this runs on.

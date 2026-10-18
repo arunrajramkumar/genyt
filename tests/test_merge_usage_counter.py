@@ -41,3 +41,23 @@ def test_missing_base_treated_as_zero(tmp_path, monkeypatch):
 
     assert _run_merge(monkeypatch, base, ours, theirs) == 0
     assert json.loads(ours.read_text()) == {"month": "2026-10", "calls": 3}
+
+
+def test_sums_independent_increments_for_day_requests_shape(tmp_path, monkeypatch):
+    base, ours, theirs = tmp_path / "base.json", tmp_path / "ours.json", tmp_path / "theirs.json"
+    _write(base, {"day": "2026-10-18", "requests": 2})
+    _write(ours, {"day": "2026-10-18", "requests": 3})
+    _write(theirs, {"day": "2026-10-18", "requests": 5})
+
+    assert _run_merge(monkeypatch, base, ours, theirs) == 0
+    assert json.loads(ours.read_text()) == {"day": "2026-10-18", "requests": 6}
+
+
+def test_takes_later_day_as_is_on_day_rollover(tmp_path, monkeypatch):
+    base, ours, theirs = tmp_path / "base.json", tmp_path / "ours.json", tmp_path / "theirs.json"
+    _write(base, {"day": "2026-10-17", "requests": 35})
+    _write(ours, {"day": "2026-10-18", "requests": 1})
+    _write(theirs, {"day": "2026-10-17", "requests": 38})
+
+    assert _run_merge(monkeypatch, base, ours, theirs) == 0
+    assert json.loads(ours.read_text()) == {"day": "2026-10-18", "requests": 1}

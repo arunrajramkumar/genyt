@@ -1,12 +1,11 @@
 """Renders short on-screen text (facts/figures) as a transparent PNG overlay
 using Pillow, since this ffmpeg build has no libass/freetype for drawtext.
 """
-import math
 import re
 import textwrap
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, features
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
 
 # Tamil/Kannada/Telugu/Malayalam/Devanagari reorder certain vowel signs before
 # their base consonant — plain freetype rendering (Pillow's default layout
@@ -227,47 +226,46 @@ def render_watermark(text: str, width: int, height: int, out_path: Path) -> Path
     return out_path
 
 
-# Hook card accent palette -- red badge, yellow stat-burst, green banner edge.
-# Chosen (over an electric-blue and a purple/gold alternative tried during
-# mockup review) because red/yellow is the better-tested high-CTR thumbnail
-# combo for "alert/opportunity" content, and green on the banner edge doubles
-# as a "gain" cue for a finance audience.
+# Hook card accent palette -- red badge + angled banner (the better-tested
+# high-CTR "alert" structure from the first mockup round), blended with a
+# glowing-green stat number and frosted-glass title bar after a real
+# AI-generated reference thumbnail (cooler "premium fintech" look, no flat
+# opaque bars) showed that look reading as more professional for a finance
+# stat callout than the original flat-yellow starburst.
 _HOOK_BADGE_COLOR = (235, 55, 60, 255)
-_HOOK_BURST_COLOR = (255, 196, 30, 255)
+_HOOK_STAT_GLOW_COLOR = (80, 255, 150, 255)
 _HOOK_STRIPE_COLOR = (50, 220, 120, 255)
 _HOOK_BANNER_SKEW_FRACTION = 0.06
-_HOOK_BURST_RADIUS_FRACTION = 0.21  # "large" in the mockup comparison -- fully
-# contains a 2-3 char number/percent without it spilling past the points.
 
 _STAT_NUMBER_RE = re.compile(r"[₹$]?[\d][\d,]*\.?\d*%?")
 
 
-def _draw_outlined_text(draw, xy, text, font, fill, outline_fill=(0, 0, 0, 255), outline_w=6, shadow=True) -> None:
-    """Draws `text` with a thick outline (and optional drop shadow) instead of
-    a flat fill -- keeps text legible directly on a busy photo background
-    without needing an opaque bar behind it."""
+def _draw_frosted_bar(img: Image.Image, y0: int, y1: int, width: int) -> None:
+    """Composites a translucent light-to-blue gradient band with a bright
+    top edge -- a "frosted glass" panel the background photo shows faintly
+    through, instead of an opaque flat-white bar that hides it completely."""
+    bar_h = y1 - y0
+    bar = Image.new("RGBA", (1, bar_h))
+    for y in range(bar_h):
+        t = y / max(1, bar_h)
+        bar.putpixel((0, y), (
+            int(245 - 50 * t), int(250 - 35 * t), int(255 - 20 * t), int(215 - 35 * t),
+        ))
+    bar = bar.resize((width, bar_h))
+    img.alpha_composite(bar, (0, y0))
+    glass_draw = ImageDraw.Draw(img)
+    glass_draw.line([(0, y0), (width, y0)], fill=(255, 255, 255, 170), width=2)
+
+
+def _draw_glow_text(img: Image.Image, xy, text, font, fill, blur_radius=10) -> None:
+    """Draws `text` with a soft colored glow halo behind a crisp fill --
+    the "neon stat number" look, vs. a hard outline."""
     x, y = xy
-    if shadow:
-        offset = max(4, outline_w)
-        draw.text((x + offset, y + offset), text, font=font, fill=(0, 0, 0, 160))
-    for ox in range(-outline_w, outline_w + 1, max(1, outline_w // 2)):
-        for oy in range(-outline_w, outline_w + 1, max(1, outline_w // 2)):
-            if ox == 0 and oy == 0:
-                continue
-            draw.text((x + ox, y + oy), text, font=font, fill=outline_fill)
-    draw.text((x, y), text, font=font, fill=fill)
-
-
-def _centered_outlined_lines(draw, lines, font, fill, top_y, width, line_gap, outline_w=6) -> int:
-    """Outlined-text version of _draw_centered_lines; returns the y position
-    just below the last line."""
-    y = top_y
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        _draw_outlined_text(draw, ((width - text_w) // 2, y), line, font, fill, outline_w=outline_w)
-        y += text_h + line_gap
-    return y
+    glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(glow).text((x, y), text, font=font, fill=fill)
+    glow = glow.filter(ImageFilter.GaussianBlur(blur_radius))
+    img.alpha_composite(glow)
+    ImageDraw.Draw(img).text((x, y), text, font=font, fill=fill)
 
 
 def _apply_vignette(img: Image.Image, width: int, height: int) -> Image.Image:
@@ -348,18 +346,22 @@ def render_hook_card(
         draw.text((badge_x0 + pad_x + skew // 2, badge_y0 + pad_y), badge_text.upper(), font=badge_font, fill=(255, 255, 255, 255))
         badge_bottom = badge_y0 + badge_h
 
-    # Title: bold outlined/shadowed text floating directly on the (now
-    # vignetted) photo, instead of sitting inside an opaque white bar that
-    # hid the background entirely.
-    title_font = _load_font(max(40, width // 12), title)
-    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.9))
-    title_top = max(int(height * 0.1), badge_bottom + int(height * 0.03))
-    _centered_outlined_lines(draw, title_lines, title_font, (255, 250, 230, 255), title_top, width, 14, outline_w=7)
+    # Title: bold text on a translucent frosted-glass bar -- keeps the photo
+    # faintly visible behind it (unlike the old opaque white bar) while still
+    # giving the text a clean, high-contrast panel to sit on.
+    title_font = _load_font(max(36, width // 13), title)
+    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.88))
+    line_h = draw.textbbox((0, 0), "A", font=title_font)[3]
+    bar_h = len(title_lines) * (line_h + 10) + int(width * 0.05)
+    bar_y0 = max(int(height * 0.08), badge_bottom + int(height * 0.02))
+    _draw_frosted_bar(img, bar_y0, bar_y0 + bar_h, width)
+    draw = ImageDraw.Draw(img)
+    _draw_centered_lines(draw, title_lines, title_font, (15, 20, 35, 255), bar_y0 + int(width * 0.025), width, 10)
 
-    # Stat: the leading number is pulled out and given a hero treatment (huge
-    # font, starburst behind it) since a number is the actual "hook"; any
-    # trailing label (e.g. "Revenue") is drawn smaller underneath on an
-    # angled banner, instead of a flat full-width bar.
+    # Stat: a glowing green number (no flat starburst) is the hero element,
+    # with any trailing label (e.g. "Revenue") in a small pill above it --
+    # modeled on a real AI-generated finance thumbnail's "FY27 TARGET: ₹600
+    # CR" treatment, which reads as more premium than a flat colored block.
     if stat_text:
         match = _STAT_NUMBER_RE.search(stat_text)
         if match:
@@ -380,32 +382,27 @@ def render_hook_card(
             fill=_HOOK_STRIPE_COLOR,
         )
 
-        cx, cy = width // 2, banner_y0 + int((banner_y1 - banner_y0) * 0.38)
-        r = int(min(width, height) * _HOOK_BURST_RADIUS_FRACTION)
-        burst = Image.new("RGBA", (r * 2, r * 2), (0, 0, 0, 0))
-        burst_draw = ImageDraw.Draw(burst)
-        spikes = 14
-        points = []
-        for i in range(spikes * 2):
-            angle = math.pi * i / spikes
-            radius = r if i % 2 == 0 else int(r * 0.78)
-            points.append((r + radius * math.cos(angle), r + radius * math.sin(angle)))
-        burst_draw.polygon(points, fill=_HOOK_BURST_COLOR)
-        img.alpha_composite(burst, (cx - r, cy - r))
-        draw = ImageDraw.Draw(img)
+        content_top = banner_y0 + int(height * 0.035)
+        if label:
+            label_font = _load_font(max(26, width // 24), label)
+            label_lines = _wrapped_lines(draw, label.upper(), label_font, int(width * 0.8))
+            label_bbox = draw.textbbox((0, 0), label_lines[0], font=label_font)
+            label_w, label_h = label_bbox[2] - label_bbox[0], label_bbox[3] - label_bbox[1]
+            pad_x, pad_y = int(width * 0.025), int(width * 0.012)
+            pill_x0 = (width - label_w) // 2 - pad_x
+            pill_x1 = (width + label_w) // 2 + pad_x
+            draw.rounded_rectangle(
+                [pill_x0, content_top, pill_x1, content_top + label_h + pad_y * 2],
+                radius=10, fill=(235, 240, 248, 225),
+            )
+            draw.text(((width - label_w) // 2, content_top + pad_y), label_lines[0].upper(), font=label_font, fill=(15, 20, 35, 255))
+            content_top += label_h + pad_y * 2 + int(height * 0.015)
 
-        num_font = _load_font(max(70, width // 7), number)
+        num_font = _load_font(max(64, width // 8), number)
         num_bbox = draw.textbbox((0, 0), number, font=num_font)
         num_w, num_h = num_bbox[2] - num_bbox[0], num_bbox[3] - num_bbox[1]
-        _draw_outlined_text(
-            draw, ((width - num_w) // 2, cy - num_h // 2), number, num_font,
-            (20, 15, 5, 255), outline_fill=(255, 255, 255, 255), outline_w=4, shadow=False,
-        )
-
-        if label:
-            label_font = _load_font(max(34, width // 18), label)
-            label_lines = _wrapped_lines(draw, label.upper(), label_font, int(width * 0.85))
-            _centered_outlined_lines(draw, label_lines, label_font, (255, 255, 255, 255), cy + r - int(height * 0.01), width, 10, outline_w=4)
+        _draw_glow_text(img, ((width - num_w) // 2, content_top), number, num_font, _HOOK_STAT_GLOW_COLOR)
+        draw = ImageDraw.Draw(img)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out_path)

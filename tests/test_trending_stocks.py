@@ -134,6 +134,51 @@ def test_weighted_pick_without_replacement_gives_zero_market_cap_a_nonzero_chanc
     assert chosen[0][0]["symbol"] == "ZERO"
 
 
+def test_select_trending_symbols_excludes_companies_already_on_the_channel(monkeypatch):
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(
+        ts, "_extract_candidates",
+        lambda text: [
+            {"symbol": "TATAMOTORS", "name": "Tata Motors Ltd"},
+            {"symbol": "CDSL", "name": "CDSL"},
+            {"symbol": "TCS", "name": "Tata Consultancy Services"},
+        ],
+    )
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+    channel = [
+        "Tata Motors: Is the EV bet working?\nA deep dive.\nstocks",
+        "Some title\nDeep dive: CDSL (NSE: CDSL)\n",
+    ]
+    result = ts.select_trending_symbols(limit=5, channel_texts=channel)
+    assert [c["symbol"] for c in result] == ["TCS"]
+
+
+def test_select_trending_symbols_widens_search_when_all_candidates_are_covered(monkeypatch):
+    batches_seen = []
+
+    def fake_news(queries=None):
+        batches_seen.append(queries)
+        return "text"
+
+    def fake_extract(text):
+        return [{"symbol": "CDSL", "name": "CDSL"}] if len(batches_seen) == 1 else [{"symbol": "TCS", "name": "TCS"}]
+
+    monkeypatch.setattr(ts, "_search_trending_stock_news", fake_news)
+    monkeypatch.setattr(ts, "_extract_candidates", fake_extract)
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+
+    result = ts.select_trending_symbols(exclude_symbols=["CDSL"], limit=1)
+    assert result == [{"symbol": "TCS", "name": "TCS"}]
+    assert batches_seen == [None, ts.EXTRA_QUERY_BATCHES[0]]
+
+
+def test_select_trending_symbols_returns_empty_when_every_batch_is_covered(monkeypatch):
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(ts, "_extract_candidates", lambda text: [{"symbol": "CDSL", "name": "CDSL"}])
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+    assert ts.select_trending_symbols(exclude_symbols=["CDSL"]) == []
+
+
 def test_select_trending_symbols_returns_empty_on_unexpected_failure(monkeypatch, capsys):
     def boom(queries=None):
         raise RuntimeError("network down")

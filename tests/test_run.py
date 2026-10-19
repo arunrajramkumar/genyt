@@ -1,7 +1,14 @@
 from pathlib import Path
 
+import pytest
+
 import run
 from pipeline import config
+
+
+@pytest.fixture(autouse=True)
+def _channel_unreachable_by_default(monkeypatch):
+    monkeypatch.setattr(run.youtube_insights, "fetch_channel_texts", lambda: [])
 
 
 def test_load_themes_returns_empty_list_when_file_missing(tmp_path):
@@ -160,14 +167,25 @@ def test_main_theme_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch):
 # -- --trending: produce one video about a currently-trending NSE stock -------
 
 def test_next_trending_entry_returns_none_when_no_candidates(monkeypatch, tmp_path):
-    monkeypatch.setattr(run.trending_stocks, "select_trending_symbols", lambda exclude_symbols, limit: [])
+    monkeypatch.setattr(run.trending_stocks, "select_trending_symbols", lambda exclude_symbols, limit, channel_texts: [])
     assert run.next_trending_entry(tmp_path / "themes.yaml") is None
+
+
+def test_next_trending_entry_passes_channel_texts_to_selection(monkeypatch, tmp_path):
+    monkeypatch.setattr(run.youtube_insights, "fetch_channel_texts", lambda: ["CDSL: deep dive"])
+    captured = {}
+    monkeypatch.setattr(
+        run.trending_stocks, "select_trending_symbols",
+        lambda exclude_symbols, limit, channel_texts: captured.setdefault("texts", channel_texts) and [],
+    )
+    run.next_trending_entry(tmp_path / "themes.yaml")
+    assert captured["texts"] == ["CDSL: deep dive"]
 
 
 def test_next_trending_entry_builds_entry_from_top_candidate(monkeypatch, tmp_path):
     captured = {}
 
-    def fake_select(exclude_symbols, limit):
+    def fake_select(exclude_symbols, limit, channel_texts):
         captured["exclude_symbols"] = exclude_symbols
         captured["limit"] = limit
         return [{"symbol": "CDSL", "name": "CDSL Ltd"}]
@@ -193,7 +211,7 @@ def test_next_trending_entry_excludes_symbols_already_in_themes_file(monkeypatch
     captured = {}
     monkeypatch.setattr(
         run.trending_stocks, "select_trending_symbols",
-        lambda exclude_symbols, limit: captured.setdefault("exclude_symbols", exclude_symbols) and [],
+        lambda exclude_symbols, limit, channel_texts: captured.setdefault("exclude_symbols", exclude_symbols) and [],
     )
 
     run.next_trending_entry(themes_file)
@@ -228,7 +246,7 @@ def test_main_trending_flag_produces_entry_and_appends_it_marked_done(monkeypatc
     assert themes[1]["done"] is True
 
 
-def test_main_trending_flag_falls_back_to_static_queue_when_no_candidate(monkeypatch, tmp_path):
+def test_main_trending_flag_skips_run_instead_of_falling_back_when_no_candidate(monkeypatch, tmp_path):
     themes_file = tmp_path / "themes.yaml"
     run.save_themes(themes_file, [{"theme": "Static fallback theme", "done": False}])
 
@@ -243,8 +261,8 @@ def test_main_trending_flag_falls_back_to_static_queue_when_no_candidate(monkeyp
 
     run.main()
 
-    assert produced == ["Static fallback theme"]
-    assert run.load_themes(themes_file)[0]["done"] is True
+    assert produced == []
+    assert run.load_themes(themes_file)[0]["done"] is False
 
 
 def test_main_trending_flag_ignored_when_all_flag_also_set(monkeypatch, tmp_path):

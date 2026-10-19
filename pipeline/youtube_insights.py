@@ -69,6 +69,25 @@ def _video_snippets(youtube, video_ids: list) -> dict:
     return snippets
 
 
+def fetch_channel_texts(max_videos: int = 500) -> list:
+    """Title (first line) + description + tags for every video on the
+    authenticated channel, private and unlisted included (the uploads
+    playlist lists them all for the owner). Returns [] on any failure
+    (unconfigured/expired token, API error) -- callers must treat that as
+    "unknown", not "channel is empty"."""
+    try:
+        youtube = youtube_upload._client()
+        ids = _uploaded_video_ids(youtube, max_videos)
+        snippets = _video_snippets(youtube, ids)
+    except Exception as e:
+        print(f"[channel] could not list existing videos: {type(e).__name__}: {e}")
+        return []
+    return [
+        "\n".join([sn.get("title", ""), sn.get("description", ""), " ".join(sn.get("tags", []))])
+        for sn in snippets.values()
+    ]
+
+
 def _analytics_rows(analytics, video_ids: list) -> dict:
     """Returns {video_id: {metric_name: value}}. Falls back to a smaller
     metric set if the full one (impressions/CTR) isn't queryable for this

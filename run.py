@@ -8,9 +8,9 @@ Usage:
     python3 run.py --theme "..." --shorts   # vertical 9:16 output for YouTube Shorts
     python3 run.py --trending      # produce one video about a currently-trending NSE
                                     # stock (see pipeline/trending_stocks.py) instead of
-                                    # pulling the next entry from themes.yaml; falls back
-                                    # to the themes.yaml queue if no trending candidate
-                                    # can be found/verified right now
+                                    # pulling the next entry from themes.yaml; only picks
+                                    # companies not already in themes.yaml or on the
+                                    # YouTube channel, and skips the run if none is found
 """
 import argparse
 import sys
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from pipeline import config, prompt_script, producer, trending_stocks
+from pipeline import config, prompt_script, producer, trending_stocks, youtube_insights
 from pipeline.tts import TTSQuotaExceededError
 from scripts import build_finance_queue
 
@@ -63,7 +63,12 @@ def next_trending_entry(themes_file: Path) -> dict | None:
     verified right now, so callers fall back to the static queue instead of
     producing a video with no real candidate behind it."""
     exclude = build_finance_queue.existing_symbols(str(themes_file))
-    candidates = trending_stocks.select_trending_symbols(exclude_symbols=exclude, limit=1)
+    channel_texts = youtube_insights.fetch_channel_texts()
+    if not channel_texts:
+        print("[trending] channel video list unavailable -- excluding only themes-file symbols")
+    candidates = trending_stocks.select_trending_symbols(
+        exclude_symbols=exclude, limit=1, channel_texts=channel_texts,
+    )
     if not candidates:
         return None
     candidate = candidates[0]
@@ -106,7 +111,10 @@ def main():
     if args.trending and not args.all:
         trending_entry = next_trending_entry(themes_file)
         if trending_entry is None:
-            print("No trending candidate found/verified right now -- falling back to the themes.yaml queue")
+            # Never fall back to the static queue: its generic entries are what
+            # produced repeated videos. Skip this run instead.
+            print("No new trending candidate (not already in themes or on the channel) found right now -- skipping this run")
+            return
         else:
             try:
                 produce_video(

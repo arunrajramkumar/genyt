@@ -309,3 +309,22 @@ def test_get_posting_time_guidance_recommends_best_hour(monkeypatch):
     assert "05:00 UTC" in guidance
     assert "150.0 views/day" in guidance
 
+
+def test_fetch_channel_texts_joins_title_description_and_tags(monkeypatch):
+    monkeypatch.setattr(yi.youtube_upload, "_client", lambda: object())
+    monkeypatch.setattr(yi, "_uploaded_video_ids", lambda yt, n: ["a"])
+    monkeypatch.setattr(
+        yi, "_video_snippets",
+        lambda yt, ids: {"a": {"title": "CDSL deep dive", "description": "NSE: CDSL", "tags": ["x", "y"]}},
+    )
+    assert yi.fetch_channel_texts() == ["CDSL deep dive\nNSE: CDSL\nx y"]
+
+
+def test_fetch_channel_texts_returns_empty_when_api_fails(monkeypatch, capsys):
+    def boom():
+        raise RuntimeError("token expired")
+
+    monkeypatch.setattr(yi.youtube_upload, "_client", boom)
+    assert yi.fetch_channel_texts() == []
+    assert "token expired" in capsys.readouterr().out
+

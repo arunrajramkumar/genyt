@@ -32,6 +32,17 @@ TRENDING_QUERIES = [
     "NSE auto and pharma stocks news today",
 ]
 
+# Tried in order, only when every candidate from the primary queries is already
+# covered (themes file or the real channel) -- so a day with only
+# already-covered headline names widens the search instead of giving up.
+EXTRA_QUERY_BATCHES = [
+    ["NSE midcap stocks news today", "NSE FMCG and consumer stocks news today"],
+    ["NSE energy and metals stocks news today", "NSE smallcap stocks in focus India"],
+    ["NSE infrastructure and realty stocks news today", "NSE stocks hitting 52 week high India"],
+]
+
+_NAME_SUFFIX_RE = re.compile(r"\b(ltd|limited|inc|corp|corporation)\b\.?", re.IGNORECASE)
+
 SYSTEM_PROMPT_TRENDING = """You are a financial news analyst. You will be given real
 search-result snippets about the Indian stock market. Identify NSE-listed companies that
 are EXPLICITLY named in the snippets below -- never a company you merely happen to know
@@ -115,13 +126,41 @@ def _weighted_pick_without_replacement(pairs: list, k: int) -> list:
     return chosen
 
 
-def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = None) -> list:
+def _normalize_name(name: str) -> str:
+    stripped = _NAME_SUFFIX_RE.sub("", name.lower())
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9& ]", " ", stripped)).strip()
+
+
+def _already_on_channel(candidate: dict, channel_symbols: set, channel_titles: list) -> bool:
+    """True if the candidate's symbol is tagged (NSE: SYMBOL) anywhere on the
+    channel, or its company name appears in an existing video title -- titles
+    always carry the company name (producer._ensure_company_name_in_title)
+    but not necessarily the ticker."""
+    if candidate["symbol"] in channel_symbols:
+        return True
+    name = _normalize_name(candidate["name"])
+    return len(name) >= 3 and any(name in title for title in channel_titles)
+
+
+def _candidates_from(queries) -> list:
+    facts_text = _search_trending_stock_news(queries)
+    candidates = _extract_candidates(facts_text)
+    print(f"[trending] {len(facts_text)} chars of news snippets, {len(candidates)} grounded candidate(s)")
+    return candidates
+
+
+def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = None, channel_texts=()) -> list:
     """Best-effort list of up to `limit` currently-trending, verified-real NSE
-    symbols not already in exclude_symbols: [{symbol, name}, ...]. Returns []
-    on any failure (Tavily not configured/quota exhausted, LLM failure, no
-    companies found) -- callers must treat [] as "no trending candidates
-    available right now" and fall back to requiring a manual --symbols list,
-    never queue a theme with no real candidate behind it.
+    symbols not already covered: [{symbol, name}, ...]. "Covered" means in
+    exclude_symbols (the themes file) OR present on the real YouTube channel,
+    given as channel_texts (video title first line + description + tags,
+    private and public). If every candidate from the primary queries is
+    already covered, further query batches (EXTRA_QUERY_BATCHES) are tried
+    before giving up.
+
+    Returns [] on failure or when nothing new can be found -- callers must
+    treat [] as "no new trending candidate available right now" and never
+    queue a theme with no real candidate behind it.
 
     Picked via market-cap-weighted random sampling (without replacement) from
     among all verified candidates, rather than strictly the top `limit` by
@@ -132,27 +171,37 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
     this channel never covers anything but the same mega-caps every other
     finance channel already covers."""
     exclude = {s.strip().upper() for s in exclude_symbols}
-    try:
-        facts_text = _search_trending_stock_news(queries)
-        candidates = _extract_candidates(facts_text)
-    except Exception as e:
-        print(f"[trending] search/extraction failed: {type(e).__name__}: {e}")
-        return []
-    print(f"[trending] {len(facts_text)} chars of news snippets, {len(candidates)} grounded candidate(s)")
+    channel_symbols = set()
+    for text in channel_texts:
+        channel_symbols.update(research.NSE_SYMBOL_RE.findall(text.upper()))
+    channel_titles = [_normalize_name(t.split("\n")[0]) for t in channel_texts]
 
+    batches = [queries] if queries else [None] + EXTRA_QUERY_BATCHES
     verified, seen = [], set()
-    excluded = unverified = 0
-    for c in candidates:
-        if c["symbol"] in exclude or c["symbol"] in seen:
-            excluded += 1
+    for index, batch in enumerate(batches):
+        try:
+            candidates = _candidates_from(batch)
+        except Exception as e:
+            print(f"[trending] search/extraction failed: {type(e).__name__}: {e}")
+            if index == 0:
+                return []
             continue
-        seen.add(c["symbol"])
-        data = fundamentals.fetch_fundamentals(c["symbol"])
-        if data:
-            verified.append((c, fundamentals.market_cap_cr(data)))
-        else:
-            unverified += 1
-    print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified")
+
+        excluded = unverified = 0
+        for c in candidates:
+            if (c["symbol"] in exclude or c["symbol"] in seen
+                    or _already_on_channel(c, channel_symbols, channel_titles)):
+                excluded += 1
+                continue
+            seen.add(c["symbol"])
+            data = fundamentals.fetch_fundamentals(c["symbol"])
+            if data:
+                verified.append((c, fundamentals.market_cap_cr(data)))
+            else:
+                unverified += 1
+        print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified")
+        if verified:
+            break
 
     chosen = _weighted_pick_without_replacement(verified, limit)
     chosen.sort(key=lambda pair: pair[1], reverse=True)

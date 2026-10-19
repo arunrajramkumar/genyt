@@ -1,6 +1,7 @@
 """Renders short on-screen text (facts/figures) as a transparent PNG overlay
 using Pillow, since this ffmpeg build has no libass/freetype for drawtext.
 """
+import math
 import re
 import textwrap
 from pathlib import Path
@@ -226,6 +227,69 @@ def render_watermark(text: str, width: int, height: int, out_path: Path) -> Path
     return out_path
 
 
+# Hook card accent palette -- red badge, yellow stat-burst, green banner edge.
+# Chosen (over an electric-blue and a purple/gold alternative tried during
+# mockup review) because red/yellow is the better-tested high-CTR thumbnail
+# combo for "alert/opportunity" content, and green on the banner edge doubles
+# as a "gain" cue for a finance audience.
+_HOOK_BADGE_COLOR = (235, 55, 60, 255)
+_HOOK_BURST_COLOR = (255, 196, 30, 255)
+_HOOK_STRIPE_COLOR = (50, 220, 120, 255)
+_HOOK_BANNER_SKEW_FRACTION = 0.06
+_HOOK_BURST_RADIUS_FRACTION = 0.21  # "large" in the mockup comparison -- fully
+# contains a 2-3 char number/percent without it spilling past the points.
+
+_STAT_NUMBER_RE = re.compile(r"[₹$]?[\d][\d,]*\.?\d*%?")
+
+
+def _draw_outlined_text(draw, xy, text, font, fill, outline_fill=(0, 0, 0, 255), outline_w=6, shadow=True) -> None:
+    """Draws `text` with a thick outline (and optional drop shadow) instead of
+    a flat fill -- keeps text legible directly on a busy photo background
+    without needing an opaque bar behind it."""
+    x, y = xy
+    if shadow:
+        offset = max(4, outline_w)
+        draw.text((x + offset, y + offset), text, font=font, fill=(0, 0, 0, 160))
+    for ox in range(-outline_w, outline_w + 1, max(1, outline_w // 2)):
+        for oy in range(-outline_w, outline_w + 1, max(1, outline_w // 2)):
+            if ox == 0 and oy == 0:
+                continue
+            draw.text((x + ox, y + oy), text, font=font, fill=outline_fill)
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def _centered_outlined_lines(draw, lines, font, fill, top_y, width, line_gap, outline_w=6) -> int:
+    """Outlined-text version of _draw_centered_lines; returns the y position
+    just below the last line."""
+    y = top_y
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        _draw_outlined_text(draw, ((width - text_w) // 2, y), line, font, fill, outline_w=outline_w)
+        y += text_h + line_gap
+    return y
+
+
+def _apply_vignette(img: Image.Image, width: int, height: int) -> Image.Image:
+    """Darkens the top and bottom bands (where title/stat text sit) while
+    keeping the middle band comparatively bright, so a background photo still
+    reads as a photo instead of disappearing under one flat overlay."""
+    vignette = Image.new("L", (1, height))
+    for y in range(height):
+        t = y / height
+        if t < 0.32:
+            alpha = int(170 * (1 - t / 0.32))
+        elif t > 0.62:
+            alpha = int(190 * ((t - 0.62) / 0.38))
+        else:
+            alpha = 40
+        vignette.putpixel((0, y), alpha)
+    vignette = vignette.resize((width, height))
+    dark = Image.new("RGBA", (width, height), (5, 8, 15, 255))
+    dark.putalpha(vignette)
+    return Image.alpha_composite(img, dark)
+
+
 def render_hook_card(
     title: str,
     stat_text: str,
@@ -240,7 +304,7 @@ def render_hook_card(
     the standalone downloadable YouTube thumbnail for the same video.
 
     `background_path` (optional): a still image to crop/cover behind the text,
-    e.g. the video's own first-scene visual, darkened for text contrast.
+    e.g. the video's own first-scene visual, with a vignette for text contrast.
     `badge_text` (optional): a short label stamped in a corner pill, e.g.
     "CBSE | GRADE 6 MATHS" for an education-channel video, so series/syllabus
     identity is visible even in the small thumbnail grid on a channel page.
@@ -257,55 +321,91 @@ def render_hook_card(
         top = (bg.height - height) // 2
         bg = bg.crop((left, top, left + width, top + height))
         img = bg.convert("RGBA")
-        dark = Image.new("RGBA", (width, height), (10, 15, 25, 150))
-        img = Image.alpha_composite(img, dark)
     else:
         img = Image.new("RGBA", (width, height), (12, 18, 30, 255))
-
+    img = _apply_vignette(img, width, height)
     draw = ImageDraw.Draw(img)
 
-    # Badge geometry is needed before laying out the title bar (below) so the
-    # title can start clear of it -- previously the title bar always started
-    # at a fixed 0.08*height regardless of the badge, so a badge tall enough
-    # (e.g. a two-word syllabus label) visually overlapped the first line of
-    # the title text drawn on top of it.
+    # Badge: an angled pill (parallelogram) instead of a flat rectangle, for a
+    # more dynamic look -- geometry is needed before the title (below) so the
+    # title can start clear of it, same as before this redesign.
     badge_bottom = 0
     if badge_text:
-        badge_font = _load_font(max(22, width // 28), badge_text)
+        badge_font = _load_font(max(26, width // 26), badge_text)
         text_bbox = draw.textbbox((0, 0), badge_text.upper(), font=badge_font)
         text_w, text_h = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
-        pad_x, pad_y = int(width * 0.025), int(width * 0.015)
-        badge_x0, badge_y0 = int(width * 0.03), int(width * 0.03)
-        badge_bottom = badge_y0 + text_h + pad_y * 2
-
-    # Bold white title bar near the top, like a headline.
-    title_font = _load_font(max(36, width // 14), title)
-    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.88))
-    title_bar_y0 = max(int(height * 0.08), badge_bottom + int(height * 0.02))
-    line_h = draw.textbbox((0, 0), "A", font=title_font)[3]
-    title_bar_h = len(title_lines) * (line_h + 10) + int(width * 0.05)
-    draw.rectangle([0, title_bar_y0, width, title_bar_y0 + title_bar_h], fill=(255, 255, 255, 235))
-    _draw_centered_lines(
-        draw, title_lines, title_font, (15, 20, 35, 255),
-        title_bar_y0 + int(width * 0.025), width, 10,
-    )
-
-    # Bright green stat callout near the bottom, for the "FY27 TARGET: ..."-style hook.
-    if stat_text:
-        stat_font = _load_font(max(30, width // 20), stat_text)
-        stat_lines = _wrapped_lines(draw, stat_text.upper(), stat_font, int(width * 0.9))
-        stat_line_h = draw.textbbox((0, 0), "A", font=stat_font)[3]
-        stat_block_h = len(stat_lines) * (stat_line_h + 8)
-        stat_y0 = height - stat_block_h - int(height * 0.08)
-        draw.rectangle([0, stat_y0 - int(height * 0.02), width, height], fill=(5, 10, 18, 210))
-        _draw_centered_lines(draw, stat_lines, stat_font, (60, 230, 110, 255), stat_y0, width, 8)
-
-    if badge_text:
-        draw.rectangle(
-            [badge_x0, badge_y0, badge_x0 + text_w + pad_x * 2, badge_y0 + text_h + pad_y * 2],
-            fill=(230, 60, 50, 255),
+        pad_x, pad_y = int(width * 0.03), int(width * 0.018)
+        badge_x0, badge_y0 = int(width * 0.04), int(width * 0.04)
+        badge_w, badge_h = text_w + pad_x * 2, text_h + pad_y * 2
+        skew = int(badge_h * 0.35)
+        draw.polygon(
+            [
+                (badge_x0 + skew, badge_y0), (badge_x0 + badge_w, badge_y0),
+                (badge_x0 + badge_w - skew, badge_y0 + badge_h), (badge_x0, badge_y0 + badge_h),
+            ],
+            fill=_HOOK_BADGE_COLOR, outline=(0, 0, 0, 255), width=4,
         )
-        draw.text((badge_x0 + pad_x, badge_y0 + pad_y), badge_text.upper(), font=badge_font, fill=(255, 255, 255, 255))
+        draw.text((badge_x0 + pad_x + skew // 2, badge_y0 + pad_y), badge_text.upper(), font=badge_font, fill=(255, 255, 255, 255))
+        badge_bottom = badge_y0 + badge_h
+
+    # Title: bold outlined/shadowed text floating directly on the (now
+    # vignetted) photo, instead of sitting inside an opaque white bar that
+    # hid the background entirely.
+    title_font = _load_font(max(40, width // 12), title)
+    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.9))
+    title_top = max(int(height * 0.1), badge_bottom + int(height * 0.03))
+    _centered_outlined_lines(draw, title_lines, title_font, (255, 250, 230, 255), title_top, width, 14, outline_w=7)
+
+    # Stat: the leading number is pulled out and given a hero treatment (huge
+    # font, starburst behind it) since a number is the actual "hook"; any
+    # trailing label (e.g. "Revenue") is drawn smaller underneath on an
+    # angled banner, instead of a flat full-width bar.
+    if stat_text:
+        match = _STAT_NUMBER_RE.search(stat_text)
+        if match:
+            number = match.group(0)
+            label = (stat_text[:match.start()] + stat_text[match.end():]).strip()
+        else:
+            number, label = stat_text, ""
+
+        banner_y0 = int(height * 0.74)
+        banner_y1 = height - int(height * 0.03)
+        skew = int(width * _HOOK_BANNER_SKEW_FRACTION)
+        draw.polygon(
+            [(0, banner_y0 + skew), (width, banner_y0), (width, banner_y1), (0, banner_y1 - skew)],
+            fill=(10, 14, 20, 225),
+        )
+        draw.polygon(
+            [(0, banner_y0 + skew), (width, banner_y0), (width, banner_y0 + 10), (0, banner_y0 + skew + 10)],
+            fill=_HOOK_STRIPE_COLOR,
+        )
+
+        cx, cy = width // 2, banner_y0 + int((banner_y1 - banner_y0) * 0.38)
+        r = int(min(width, height) * _HOOK_BURST_RADIUS_FRACTION)
+        burst = Image.new("RGBA", (r * 2, r * 2), (0, 0, 0, 0))
+        burst_draw = ImageDraw.Draw(burst)
+        spikes = 14
+        points = []
+        for i in range(spikes * 2):
+            angle = math.pi * i / spikes
+            radius = r if i % 2 == 0 else int(r * 0.78)
+            points.append((r + radius * math.cos(angle), r + radius * math.sin(angle)))
+        burst_draw.polygon(points, fill=_HOOK_BURST_COLOR)
+        img.alpha_composite(burst, (cx - r, cy - r))
+        draw = ImageDraw.Draw(img)
+
+        num_font = _load_font(max(70, width // 7), number)
+        num_bbox = draw.textbbox((0, 0), number, font=num_font)
+        num_w, num_h = num_bbox[2] - num_bbox[0], num_bbox[3] - num_bbox[1]
+        _draw_outlined_text(
+            draw, ((width - num_w) // 2, cy - num_h // 2), number, num_font,
+            (20, 15, 5, 255), outline_fill=(255, 255, 255, 255), outline_w=4, shadow=False,
+        )
+
+        if label:
+            label_font = _load_font(max(34, width // 18), label)
+            label_lines = _wrapped_lines(draw, label.upper(), label_font, int(width * 0.85))
+            _centered_outlined_lines(draw, label_lines, label_font, (255, 255, 255, 255), cy + r - int(height * 0.01), width, 10, outline_w=4)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out_path)

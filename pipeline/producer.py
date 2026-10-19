@@ -46,6 +46,22 @@ def _extract_max_number(text: str) -> float:
     return max(float(n.replace(",", "")) for n in numbers)
 
 
+def _extract_stat_phrase(narration: str) -> str:
+    """Pulls a short "NN% <word>" hook phrase out of a sentence, e.g. from
+    "posted a 24.3% year-on-year revenue jump" -> "24.3% Revenue". Used as a
+    fallback when no scene's on_screen_text carries a percentage (see
+    _pick_hook_stat) so the thumbnail's stat callout isn't silently empty for
+    a video whose only numeric hook lives in the narration itself."""
+    match = re.search(
+        r"(\d[\d,]*\.?\d*)\s*%\s*(?:year-on-year|quarter-on-quarter|yoy|qoq)?\s*([a-zA-Z]+)?",
+        narration,
+    )
+    if not match:
+        return ""
+    number, word = match.group(1), match.group(2)
+    return f"{number}% {word.capitalize()}" if word else f"{number}%"
+
+
 def _pick_hook_stat(scenes: list) -> str:
     """Picks the on_screen_text to headline the thumbnail/hook card.
 
@@ -60,9 +76,13 @@ def _pick_hook_stat(scenes: list) -> str:
     """
     candidates = [(scene.get("on_screen_text") or "").strip() for scene in scenes]
     candidates = [c for c in candidates if any(ch.isdigit() for ch in c)]
-    if not candidates:
-        return ""
-    return max(candidates, key=lambda text: ("%" in text, _extract_max_number(text)))
+    if candidates:
+        return max(candidates, key=lambda text: ("%" in text, _extract_max_number(text)))
+    for scene in scenes:
+        stat = _extract_stat_phrase(scene.get("narration") or "")
+        if stat:
+            return stat
+    return ""
 
 
 def _pick_hook_background(visual_paths: list, work_dir, on_progress=print):
@@ -171,9 +191,15 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     if hook_bg_path is None:
         hook_bg_path = _pick_hook_background(visual_paths, work_dir, on_progress)
     thumb_path = config.OUTPUT_DIR / f"{slug}.thumbnail.png"
+    # The title already gets the company name prepended when missing (see
+    # segmented_script._ensure_company_name_in_title), but long titles wrap
+    # and the company name can end up on a line that's cut off visually in a
+    # small feed thumbnail -- the corner badge is a second, always-intact
+    # placement for it, same slot a channel-specific badge would otherwise use.
+    badge_text = thumbnail_badge or script.get("company_name")
     textcard.render_hook_card(
         script["title"], stat_text, orientation["width"], orientation["height"],
-        thumb_path, background_path=hook_bg_path, badge_text=thumbnail_badge,
+        thumb_path, background_path=hook_bg_path, badge_text=badge_text,
     )
 
     on_progress("Building captions")

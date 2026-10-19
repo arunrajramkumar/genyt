@@ -222,6 +222,19 @@ def test_pick_hook_stat_skips_scenes_with_no_on_screen_text():
     assert producer._pick_hook_stat(scenes) == "22% ROE"
 
 
+def test_pick_hook_stat_falls_back_to_narration_percentage_when_no_on_screen_text_has_a_number():
+    scenes = [
+        {"narration": "Titan Company Ltd posted a 24.3% year-on-year revenue jump.", "on_screen_text": ""},
+        {"narration": "The stock looks promising.", "on_screen_text": "Intro"},
+    ]
+    assert producer._pick_hook_stat(scenes) == "24.3% Revenue"
+
+
+def test_pick_hook_stat_still_returns_empty_string_when_neither_source_has_a_number():
+    scenes = [{"narration": "Intro", "on_screen_text": "Intro"}]
+    assert producer._pick_hook_stat(scenes) == ""
+
+
 # -- _pick_hook_background: use a real visual instead of a blank card --------
 
 def test_pick_hook_background_uses_first_scene_image_directly():
@@ -432,6 +445,32 @@ def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
     producer.produce_from_script(_stub_script(), on_progress=lambda m: None, thumbnail_badge="CBSE | Grade 6 Maths")
     assert captured["badge_text"] == "CBSE | Grade 6 Maths"
+
+
+def test_produce_from_script_defaults_badge_to_company_name_when_no_explicit_badge(mocked_pipeline, monkeypatch):
+    captured = {}
+
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+        captured["badge_text"] = badge_text
+        return out_path
+
+    monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
+    script = _stub_script()
+    script["company_name"] = "Titan Company Ltd"
+    producer.produce_from_script(script, on_progress=lambda m: None)
+    assert captured["badge_text"] == "Titan Company Ltd"
+
+
+def test_produce_from_script_leaves_badge_empty_when_no_badge_and_no_company_name(mocked_pipeline, monkeypatch):
+    captured = {}
+
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+        captured["badge_text"] = badge_text
+        return out_path
+
+    monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert captured["badge_text"] is None
 
 
 # -- Google TTS whole-video budget preflight -------------------------------------

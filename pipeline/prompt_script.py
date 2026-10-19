@@ -156,14 +156,21 @@ def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: li
 
 def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:
     target_words = int(duration_sec / 60 * 140)
-    is_finance_theme = research.needs_grounding(prompt)
+    # write_script_from_prompt appends "\n\nStyle/tone: ..." to the prompt; that
+    # label's capitalized "Style" otherwise gets picked as a company-name
+    # candidate for any theme that names no company, and Screener's search for
+    # "Style" resolves to "Baazar Style Retail" -- the same company, every time
+    # (observed in production: 4 different generic themes -> 4 near-identical
+    # Baazar Style Retail videos). Ground/resolve on the user's own text only.
+    grounding_text = prompt.split("\n\nStyle/tone:")[0]
+    is_finance_theme = research.needs_grounding(grounding_text)
 
     user_prompt = f"{prompt.strip()}\n\n"
 
-    symbol = research.resolve_symbol_for_theme(prompt) if is_finance_theme else None
-    resolved_company = research.resolve_company_for_theme(prompt) if is_finance_theme else {}
+    symbol = research.resolve_symbol_for_theme(grounding_text) if is_finance_theme else None
+    resolved_company = research.resolve_company_for_theme(grounding_text) if is_finance_theme else {}
     if is_finance_theme:
-        facts = research.fetch_grounding_facts(prompt, symbol=symbol)
+        facts = research.fetch_grounding_facts(grounding_text, symbol=symbol)
         if facts:
             user_prompt += (
                 "Below are real, sourced facts from a live web search -- use ONLY "

@@ -291,6 +291,7 @@ def test_extract_company_name_candidate_trims_generic_finance_words(theme, expec
 @pytest.mark.parametrize("theme", [
     "5 Facts About Octopuses",
     "Upcoming IPO analysis for this month",
+    "Can high sales growth create wealth if cash flow is weak?",
 ])
 def test_extract_company_name_candidate_returns_empty_for_generic_themes(theme):
     # These themes have no real company name in them -- the leftover word(s)

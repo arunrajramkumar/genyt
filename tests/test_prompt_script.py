@@ -193,6 +193,23 @@ def test_write_freeform_script_injects_grounding_facts_for_finance_themes(monkey
     assert "use ONLY" in captured["user_prompt"]
 
 
+def test_write_freeform_script_does_not_resolve_a_company_from_the_style_suffix(monkeypatch):
+    # Regression: write_script_from_prompt appends "\n\nStyle/tone: ..." and the
+    # capitalized "Style" was resolved by Screener to "Baazar Style Retail" for
+    # every generic, company-less theme -- the same video generated repeatedly.
+    seen = {}
+    monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda text: seen.setdefault("needs", text) and True)
+    monkeypatch.setattr(prompt_script.research, "resolve_symbol_for_theme", lambda text: seen.setdefault("symbol", text) and None)
+    monkeypatch.setattr(prompt_script.research, "resolve_company_for_theme", lambda text: seen.setdefault("company", text) and {})
+    monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda text, symbol=None: "")
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(VALID_SCRIPT))
+    prompt_script._write_freeform_script(
+        "How to separate a genuine growth stock from a story stock\n\nStyle/tone: sharp explainer"
+    )
+    for key in ("needs", "symbol", "company"):
+        assert "Style" not in seen[key]
+
+
 def test_write_freeform_script_warns_against_fabrication_when_grounding_unavailable(monkeypatch):
     monkeypatch.setattr(prompt_script.research, "needs_grounding", lambda theme: True)
     monkeypatch.setattr(prompt_script.research, "fetch_grounding_facts", lambda theme, symbol=None: "")

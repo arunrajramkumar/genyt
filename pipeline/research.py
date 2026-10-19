@@ -62,6 +62,10 @@ _TOPIC_FRAMING_WORDS = {
     "history", "historical", "fact", "facts", "guide", "tips",
     "way", "ways", "thing", "things", "reason", "reasons",
     "secret", "secrets", "trick", "tricks", "basics", "introduction", "intro",
+    # Sentence-opening modals/auxiliaries ("Can high sales growth create
+    # wealth...?") -- capitalized only because they start the sentence, but
+    # otherwise looked like a one-word company name to Screener's search.
+    "can", "should", "does", "do", "will", "would", "could",
 }
 
 

@@ -67,7 +67,7 @@ themes:
   style: sharp, no-nonsense stock-market explainer
   duration_sec: 150
   shorts: true
-  done: false
+  done: true
 - theme: Can high sales growth create wealth if cash flow is weak?
   style: clear, contrarian, beginner-friendly stock analysis
   duration_sec: 150

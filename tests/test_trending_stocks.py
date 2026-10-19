@@ -179,6 +179,20 @@ def test_select_trending_symbols_returns_empty_when_every_batch_is_covered(monke
     assert ts.select_trending_symbols(exclude_symbols=["CDSL"]) == []
 
 
+def test_select_trending_symbols_prefers_well_known_companies_when_enough_exist(monkeypatch):
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(
+        ts, "_extract_candidates",
+        lambda text: [{"symbol": s, "name": s} for s in ["TINY", "BIG1", "BIG2"]],
+    )
+    caps = {"TINY": 300.0, "BIG1": 90000.0, "BIG2": 50000.0}
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+    monkeypatch.setattr(ts.fundamentals, "market_cap_cr", lambda data: caps[data["symbol"]])
+    for _ in range(20):
+        result = ts.select_trending_symbols(limit=2)
+        assert {c["symbol"] for c in result} == {"BIG1", "BIG2"}
+
+
 def test_select_trending_symbols_returns_empty_on_unexpected_failure(monkeypatch, capsys):
     def boom(queries=None):
         raise RuntimeError("network down")

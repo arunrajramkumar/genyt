@@ -28,9 +28,15 @@ from . import fundamentals, llm, research
 TRENDING_QUERIES = [
     "NSE stocks in the news India today",
     "most talked about Indian stocks this week",
+    "Nifty 50 top gainers and losers today India",
+    "Indian companies quarterly results announced today NSE",
     "NSE banking and IT stocks news today",
     "NSE auto and pharma stocks news today",
 ]
+
+# Companies below this market cap (Rs crore) almost never have search demand,
+# so they're only picked when too few well-known ones are available.
+WELL_KNOWN_MARKET_CAP_CR = 10000
 
 # Tried in order, only when every candidate from the primary queries is already
 # covered (themes file or the real channel) -- so a day with only
@@ -202,6 +208,10 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
         print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified")
         if verified:
             break
+
+    preferred = [pair for pair in verified if pair[1] >= WELL_KNOWN_MARKET_CAP_CR]
+    if len(preferred) >= limit:
+        verified = preferred
 
     chosen = _weighted_pick_without_replacement(verified, limit)
     chosen.sort(key=lambda pair: pair[1], reverse=True)

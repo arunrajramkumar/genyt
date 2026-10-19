@@ -566,6 +566,17 @@ def test_despeak_ticker_does_not_double_the_word_limited():
     assert result == "Shares of Trent Ltd surged today."
 
 
+def test_despeak_ticker_does_not_double_a_multi_word_legal_suffix():
+    # Observed in production: company_name itself carries a multi-word legal
+    # suffix ("Titan Company Ltd"), and the model wrote the ticker directly
+    # followed by that same suffix -- a naive match only on the hardcoded
+    # single-word suffix list left "Company Ltd" dangling after the
+    # replacement ("Titan Company Ltd Company Ltd just reported...").
+    narration = "TITAN Company Ltd just reported a 24% revenue jump."
+    result = ss.despeak_ticker(narration, "TITAN", "Titan Company Ltd")
+    assert result == "Titan Company Ltd just reported a 24% revenue jump."
+
+
 def test_ensure_company_name_in_title_leaves_title_untouched_when_already_present():
     title = "Premier Polyfilm: Is This Multibagger Overvalued?"
     assert ss._ensure_company_name_in_title(title, "Premier Polyfilm") == title

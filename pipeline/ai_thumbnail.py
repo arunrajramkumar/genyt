@@ -71,6 +71,17 @@ def _record_gemini_image_usage() -> None:
     config.GEMINI_IMAGE_USAGE_FILE.write_text(json.dumps(usage))
 
 
+def _record_gemini_quota_exhausted() -> None:
+    """Called when Gemini itself returns 429 (quota/rate-limit exceeded) --
+    bumps today's local counter straight to the cap so any later call this
+    same day (e.g. a manual workflow re-run, or a per-channel run that
+    generates more than one thumbnail) skips straight to Pollinations instead
+    of making a call already known to fail."""
+    usage = _load_gemini_image_usage()
+    usage["requests"] = max(usage["requests"], config.GEMINI_IMAGE_DAILY_CAP)
+    config.GEMINI_IMAGE_USAGE_FILE.write_text(json.dumps(usage))
+
+
 def gemini_image_within_cap() -> bool:
     """True if one more Gemini image request today would stay within
     config.GEMINI_IMAGE_DAILY_CAP (minus a fixed safety buffer)."""
@@ -105,6 +116,11 @@ def _generate_via_gemini(company_name: str, out_path: Path, on_progress, width: 
                 on_progress(f"[ai_thumbnail] generated Gemini thumbnail background for {company_name!r}")
                 return out_path
         on_progress("[ai_thumbnail] Gemini returned no image data; falling back to Pollinations")
+        return None
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            _record_gemini_quota_exhausted()
+        on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); falling back to Pollinations")
         return None
     except Exception as e:
         on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); falling back to Pollinations")

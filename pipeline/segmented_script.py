@@ -57,19 +57,26 @@ def despeak_ticker(narration: str, symbol: str, company_name: str) -> str:
     either symbol or company_name is unknown -- never guesses a replacement.
 
     company_name is often Screener's own canonical name, which already carries
-    a legal suffix (e.g. "Trent Ltd"). If the model writes the ticker directly
-    followed by that same suffix (e.g. "TRENT Ltd posted..." -- easy to slip
-    into since grounding snippets are often phrased that way), matching only
-    the bare ticker and substituting company_name would double the suffix
-    ("Trent Ltd Ltd posted...") -- tts.py's abbreviation expansion then speaks
+    a legal suffix -- sometimes more than one word of it (e.g. "Trent Ltd",
+    "Titan Company Ltd"). If the model writes the ticker directly followed by
+    that same suffix (e.g. "TRENT Ltd posted..." or "TITAN Company Ltd
+    posted..." -- easy to slip into since grounding snippets are often phrased
+    that way), matching only the bare ticker and substituting company_name
+    would double the suffix ("Trent Ltd Ltd posted...", "Titan Company Ltd
+    Company Ltd posted...") -- tts.py's abbreviation expansion then speaks
     "Limited" twice for a single company. Consuming an optional trailing
-    suffix together with the ticker avoids that."""
+    suffix together with the ticker avoids that. The suffix alternatives are
+    drawn both from company_name's own trailing words (so any multi-word
+    suffix it happens to carry is covered) and a fixed list of common
+    variants (so narration phrased differently from company_name's exact
+    wording, e.g. "Pvt Ltd" vs. "Private Limited", is still covered)."""
     if not narration or not symbol or not company_name:
         return narration
-    pattern = (
-        rf"\b{re.escape(symbol)}\b"
-        r"(?:\s+(?:Private\s+Limited|Pvt\.?\s*Ltd|Limited|Ltd)\.?)?"
-    )
+    words = company_name.split()
+    suffixes = {re.escape(" ".join(words[i:])) for i in range(1, len(words))}
+    suffixes |= {r"Private\s+Limited", r"Pvt\.?\s*Ltd", r"Limited", r"Ltd"}
+    suffix_pattern = "|".join(sorted(suffixes, key=len, reverse=True))
+    pattern = rf"\b{re.escape(symbol)}\b(?:\s+(?:{suffix_pattern})\.?)?"
     return re.sub(pattern, company_name, narration, flags=re.IGNORECASE)
 
 

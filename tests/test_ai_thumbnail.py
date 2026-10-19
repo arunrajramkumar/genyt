@@ -2,6 +2,8 @@ import base64
 import json
 from unittest import mock
 
+import requests
+
 from pipeline import ai_thumbnail, config
 
 
@@ -123,6 +125,30 @@ def test_generate_hook_background_falls_back_to_pollinations_when_gemini_fails(m
     assert result == out_path
     assert out_path.read_bytes() == b"pollinations-bytes"
     assert ai_thumbnail._load_gemini_image_usage()["requests"] == 0
+
+
+def test_generate_hook_background_marks_quota_exhausted_on_429_so_same_day_retries_skip_gemini(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "dummy")
+    rate_limited = mock.Mock()
+    http_error = requests.HTTPError("429 Client Error: Too Many Requests")
+    http_error.response = mock.Mock(status_code=429)
+    rate_limited.raise_for_status.side_effect = http_error
+    monkeypatch.setattr(ai_thumbnail.requests, "post", lambda *a, **k: rate_limited)
+    fake_response = mock.Mock()
+    fake_response.raise_for_status = lambda: None
+    fake_response.headers = {"content-type": "image/jpeg"}
+    fake_response.content = b"pollinations-bytes"
+    monkeypatch.setattr(ai_thumbnail.requests, "get", lambda *a, **k: fake_response)
+
+    ai_thumbnail.generate_hook_background("Arrow Greentech", tmp_path / "bg.png", on_progress=lambda m: None)
+    assert ai_thumbnail._load_gemini_image_usage()["requests"] == config.GEMINI_IMAGE_DAILY_CAP
+    assert ai_thumbnail.gemini_image_within_cap() is False
+
+    # A second call the same day must skip straight to Pollinations without
+    # hitting Gemini again.
+    monkeypatch.setattr(ai_thumbnail.requests, "post", mock.Mock(side_effect=AssertionError("should not retry Gemini")))
+    result = ai_thumbnail.generate_hook_background("Arrow Greentech", tmp_path / "bg2.png", on_progress=lambda m: None)
+    assert result == tmp_path / "bg2.png"
 
 
 def test_generate_hook_background_falls_back_to_pollinations_when_gemini_over_daily_cap(monkeypatch, tmp_path):

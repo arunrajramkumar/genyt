@@ -66,14 +66,22 @@ def despeak_ticker(narration: str, symbol: str, company_name: str) -> str:
     Company Ltd posted...") -- tts.py's abbreviation expansion then speaks
     "Limited" twice for a single company. Consuming an optional trailing
     suffix together with the ticker avoids that. The suffix alternatives are
-    drawn both from company_name's own trailing words (so any multi-word
-    suffix it happens to carry is covered) and a fixed list of common
-    variants (so narration phrased differently from company_name's exact
-    wording, e.g. "Pvt Ltd" vs. "Private Limited", is still covered)."""
+    drawn both from company_name's own trailing words -- every contiguous
+    prefix of every trailing word-sequence, not just the full tail, since the
+    model sometimes only echoes part of a multi-word suffix (e.g. "GABRIEL
+    India delivers..." for "Gabriel India Ltd" -- matching only the full
+    "India Ltd" tail would leave "India" dangling: "Gabriel India Ltd India
+    delivers...") -- and a fixed list of common variants (so narration
+    phrased differently from company_name's exact wording, e.g. "Pvt Ltd" vs.
+    "Private Limited", is still covered)."""
     if not narration or not symbol or not company_name:
         return narration
     words = company_name.split()
-    suffixes = {re.escape(" ".join(words[i:])) for i in range(1, len(words))}
+    suffixes = {
+        re.escape(" ".join(words[i:j]))
+        for i in range(1, len(words))
+        for j in range(i + 1, len(words) + 1)
+    }
     suffixes |= {r"Private\s+Limited", r"Pvt\.?\s*Ltd", r"Limited", r"Ltd"}
     suffix_pattern = "|".join(sorted(suffixes, key=len, reverse=True))
     pattern = rf"\b{re.escape(symbol)}\b(?:\s+(?:{suffix_pattern})\.?)?"

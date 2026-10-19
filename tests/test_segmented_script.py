@@ -577,6 +577,17 @@ def test_despeak_ticker_does_not_double_a_multi_word_legal_suffix():
     assert result == "Titan Company Ltd just reported a 24% revenue jump."
 
 
+def test_despeak_ticker_does_not_leave_a_partial_suffix_word_dangling():
+    # Observed in production: company_name is "Gabriel India Ltd", but the
+    # model only echoed the FIRST word of the multi-word suffix ("GABRIEL
+    # India delivers...") rather than the full "India Ltd" tail -- matching
+    # only the full tail left "India" dangling after the replacement
+    # ("Gabriel India Ltd India delivers...").
+    narration = "GABRIEL India delivers a 26.5% return on capital."
+    result = ss.despeak_ticker(narration, "GABRIEL", "Gabriel India Ltd")
+    assert result == "Gabriel India Ltd delivers a 26.5% return on capital."
+
+
 def test_ensure_company_name_in_title_leaves_title_untouched_when_already_present():
     title = "Premier Polyfilm: Is This Multibagger Overvalued?"
     assert ss._ensure_company_name_in_title(title, "Premier Polyfilm") == title

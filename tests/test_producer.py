@@ -327,9 +327,11 @@ def test_produce_from_script_sets_thumbnail_after_successful_upload(mocked_pipel
         producer.youtube_upload, "set_thumbnail",
         lambda video_id, thumbnail_path: captured.update(video_id=video_id, thumbnail_path=thumbnail_path),
     )
-    result = producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    logs = []
+    result = producer.produce_from_script(_stub_script(), on_progress=logs.append)
     assert captured["video_id"] == "abc"
     assert captured["thumbnail_path"] == result["thumbnail"]
+    assert any("Custom thumbnail set" in msg and "abc" in msg for msg in logs)
 
 
 def test_produce_from_script_records_performance_log_entry_for_finance_video(mocked_pipeline, monkeypatch):

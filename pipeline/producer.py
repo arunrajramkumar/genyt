@@ -226,6 +226,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
                 performance_log.record(upload["video_id"], script["symbol"], script.get("company_name"))
             try:
                 youtube_upload.set_thumbnail(upload["video_id"], thumb_path)
+                on_progress(f"Custom thumbnail set for {upload['video_id']}")
             except Exception as e:
                 on_progress(f"Thumbnail upload failed (video still published): {e}")
             if config.YOUTUBE_PLAYLIST_ID:

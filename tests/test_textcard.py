@@ -183,6 +183,23 @@ def test_render_watermark_produces_a_nonempty_png(tmp_path):
     assert out.exists() and out.stat().st_size > 0
 
 
+def test_render_hook_card_calm_style_produces_a_nonempty_png(tmp_path):
+    out = textcard.render_hook_card(
+        "Start a ₹5,000 SIP Today, Retire With ₹2 Crore", "₹2 Crore",
+        1080, 1920, tmp_path / "calm.png", badge_text="Wealth Building",
+        style="calm",
+    )
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_hook_card_calm_style_works_without_stat_or_badge(tmp_path):
+    out = textcard.render_hook_card(
+        "The Power Of Compounding", "", 1080, 1920, tmp_path / "calm_plain.png",
+        style="calm",
+    )
+    assert out.exists() and out.stat().st_size > 0
+
+
 def test_render_hook_card_badge_does_not_overlap_title_bar(tmp_path):
     # Regression for a real generated video's opening frame: the red corner
     # badge sat at a fixed top-left position while the white title bar always

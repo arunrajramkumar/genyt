@@ -237,6 +237,15 @@ _HOOK_STAT_GLOW_COLOR = (80, 255, 150, 255)
 _HOOK_STRIPE_COLOR = (50, 220, 120, 255)
 _HOOK_BANNER_SKEW_FRACTION = 0.06
 
+# "calm" style palette -- gold-on-dark-green, no angled badge/banner, for
+# SIP/wealth-building/personal-finance content where the "breaking news"
+# red-alert urgency of the default style reads as tonally wrong (modeled on
+# a real AI-generated reference thumbnail for that content type: stacked
+# gold-bevelled headline bars, no slanted badge, warm instead of stark vignette).
+_CALM_ACCENT_COLOR = (230, 180, 70, 255)
+_CALM_PANEL_COLOR = (8, 16, 10, 215)
+_CALM_TINT_COLOR = (20, 28, 15, 90)
+
 _STAT_NUMBER_RE = re.compile(r"[₹$]?[\d][\d,]*\.?\d*%?")
 
 
@@ -288,6 +297,73 @@ def _apply_vignette(img: Image.Image, width: int, height: int) -> Image.Image:
     return Image.alpha_composite(img, dark)
 
 
+def _crop_to_cover(background_path: Path, width: int, height: int) -> Image.Image:
+    bg = Image.open(background_path).convert("RGB")
+    src_w, src_h = bg.size
+    scale = max(width / src_w, height / src_h)
+    bg = bg.resize((max(1, int(src_w * scale)), max(1, int(src_h * scale))))
+    left = (bg.width - width) // 2
+    top = (bg.height - height) // 2
+    return bg.crop((left, top, left + width, top + height)).convert("RGBA")
+
+
+def _render_hook_card_calm(
+    title: str, stat_text: str, width: int, height: int, out_path: Path,
+    background_path: Path = None, badge_text: str = None,
+) -> Path:
+    if background_path and Path(background_path).exists():
+        img = _crop_to_cover(background_path, width, height)
+    else:
+        img = Image.new("RGBA", (width, height), (10, 20, 14, 255))
+    tint = Image.new("RGBA", (width, height), _CALM_TINT_COLOR)
+    img = Image.alpha_composite(img, tint)
+    draw = ImageDraw.Draw(img)
+
+    title_font = _load_font(max(40, width // 11), title)
+    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.86))
+    y = int(height * 0.08)
+    for line in title_lines:
+        bbox = draw.textbbox((0, 0), line, font=title_font)
+        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        pad_x, pad_y = int(width * 0.05), int(width * 0.025)
+        bar_x0 = (width - (text_w + pad_x * 2)) // 2
+        bar_h = text_h + pad_y * 2
+        draw.rounded_rectangle(
+            [bar_x0, y, bar_x0 + text_w + pad_x * 2, y + bar_h],
+            radius=16, fill=_CALM_PANEL_COLOR, outline=_CALM_ACCENT_COLOR, width=4,
+        )
+        draw.text(((width - text_w) // 2, y + pad_y), line, font=title_font, fill=_CALM_ACCENT_COLOR)
+        y += bar_h + 14
+
+    if badge_text:
+        badge_font = _load_font(max(24, width // 30), badge_text)
+        bbox = draw.textbbox((0, 0), badge_text.upper(), font=badge_font)
+        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        pad_x, pad_y = int(width * 0.025), int(width * 0.012)
+        bx0 = int(width * 0.04)
+        draw.rounded_rectangle(
+            [bx0, y + 10, bx0 + text_w + pad_x * 2, y + 10 + text_h + pad_y * 2],
+            radius=10, fill=(15, 20, 12, 220),
+        )
+        draw.text((bx0 + pad_x, y + 10 + pad_y), badge_text.upper(), font=badge_font, fill=_CALM_ACCENT_COLOR)
+
+    if stat_text:
+        panel_y0, panel_y1 = int(height * 0.76), height - int(height * 0.04)
+        draw.rounded_rectangle(
+            [int(width * 0.06), panel_y0, int(width * 0.94), panel_y1],
+            radius=28, fill=_CALM_PANEL_COLOR, outline=_CALM_ACCENT_COLOR, width=3,
+        )
+        num_font = _load_font(max(60, width // 9), stat_text)
+        bbox = draw.textbbox((0, 0), stat_text, font=num_font)
+        num_w, num_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        cy = (panel_y0 + panel_y1) // 2 - num_h // 2
+        _draw_glow_text(img, ((width - num_w) // 2, cy), stat_text, num_font, _CALM_ACCENT_COLOR, blur_radius=8)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.convert("RGB").save(out_path)
+    return out_path
+
+
 def render_hook_card(
     title: str,
     stat_text: str,
@@ -296,6 +372,7 @@ def render_hook_card(
     out_path: Path,
     background_path: Path = None,
     badge_text: str = None,
+    style: str = "alert",
 ) -> Path:
     """Renders a bold, full-bleed branded "hook card": used as both the opening
     ~2s clip of a video (to grab attention before the narration starts) and as
@@ -306,19 +383,21 @@ def render_hook_card(
     `badge_text` (optional): a short label stamped in a corner pill, e.g.
     "CBSE | GRADE 6 MATHS" for an education-channel video, so series/syllabus
     identity is visible even in the small thumbnail grid on a channel page.
+    `style`: "alert" (default) is the red-badge/angled-banner/glow-green-stat
+    "breaking news" treatment; "calm" is a gold-on-dark-green treatment with
+    no badge/banner angling, for SIP/wealth-building/personal-finance content
+    where the alert urgency reads as tonally wrong.
     """
     title = sanitize_display_text(title)
     stat_text = sanitize_display_text(stat_text) if stat_text else stat_text
     badge_text = sanitize_display_text(badge_text) if badge_text else badge_text
+    if style == "calm":
+        return _render_hook_card_calm(
+            title, stat_text, width, height, out_path,
+            background_path=background_path, badge_text=badge_text,
+        )
     if background_path and Path(background_path).exists():
-        bg = Image.open(background_path).convert("RGB")
-        src_w, src_h = bg.size
-        scale = max(width / src_w, height / src_h)
-        bg = bg.resize((max(1, int(src_w * scale)), max(1, int(src_h * scale))))
-        left = (bg.width - width) // 2
-        top = (bg.height - height) // 2
-        bg = bg.crop((left, top, left + width, top + height))
-        img = bg.convert("RGBA")
+        img = _crop_to_cover(background_path, width, height)
     else:
         img = Image.new("RGBA", (width, height), (12, 18, 30, 255))
     img = _apply_vignette(img, width, height)

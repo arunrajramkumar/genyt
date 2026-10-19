@@ -85,6 +85,32 @@ def _pick_hook_stat(scenes: list) -> str:
     return ""
 
 
+_CALM_HOOK_STYLE_KEYWORDS = (
+    "sip", "crore", "lakh", "wealth", "retire", "retirement", "compound",
+    "compounding", "mutual fund", "pension", "financial freedom", "crorepati",
+    "nest egg", "long-term invest", "long term invest",
+)
+
+
+def _pick_hook_style(title: str) -> str:
+    """Picks the hook-card/thumbnail visual treatment from the video's title.
+
+    The default "alert" style (red badge, angled banner, glow-green stat) is
+    built for breaking-news/earnings-surprise urgency -- it reads as tonally
+    wrong for patient, long-horizon topics like SIP/wealth-building, which a
+    real AI-generated reference thumbnail for that content type instead used
+    a calm gold-on-dark-green treatment with no urgency badge at all. There's
+    no structured content-type field on a theme/script (see produce_from_script),
+    so this infers style from a keyword match on the title rather than adding
+    one -- cheap, zero-config, and the title is written by the same prompt
+    that would otherwise have to carry a separate explicit field anyway.
+    """
+    title_lower = title.lower()
+    if any(keyword in title_lower for keyword in _CALM_HOOK_STYLE_KEYWORDS):
+        return "calm"
+    return "alert"
+
+
 def _pick_hook_background(visual_paths: list, work_dir, on_progress=print):
     """Picks a still image to sit behind the hook card/thumbnail text.
 
@@ -200,6 +226,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     textcard.render_hook_card(
         script["title"], stat_text, orientation["width"], orientation["height"],
         thumb_path, background_path=hook_bg_path, badge_text=badge_text,
+        style=_pick_hook_style(script["title"]),
     )
 
     on_progress("Building captions")

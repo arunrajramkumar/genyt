@@ -184,7 +184,7 @@ def test_produce_from_script_upload_description_includes_hashtags(mocked_pipelin
 
 def test_produce_from_script_picks_first_numeric_on_screen_text_as_stat_for_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
         captured["stat_text"] = stat_text
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
@@ -233,6 +233,26 @@ def test_pick_hook_stat_falls_back_to_narration_percentage_when_no_on_screen_tex
 def test_pick_hook_stat_still_returns_empty_string_when_neither_source_has_a_number():
     scenes = [{"narration": "Intro", "on_screen_text": "Intro"}]
     assert producer._pick_hook_stat(scenes) == ""
+
+
+# -- _pick_hook_style: calm (SIP/wealth) vs. default alert (breaking news) ---
+
+def test_pick_hook_style_defaults_to_alert_for_a_plain_stock_title():
+    assert producer._pick_hook_style("Titan Company Ltd: 24% Revenue Jump") == "alert"
+
+
+@pytest.mark.parametrize("title", [
+    "Start a ₹5,000 SIP Today, Retire With ₹2 Crore",
+    "How to Become a Crorepati With Mutual Funds",
+    "The Power of Compounding Explained",
+    "Achieve Financial Freedom in 10 Years",
+])
+def test_pick_hook_style_picks_calm_for_wealth_building_titles(title):
+    assert producer._pick_hook_style(title) == "calm"
+
+
+def test_pick_hook_style_is_case_insensitive():
+    assert producer._pick_hook_style("BUILD YOUR WEALTH WITH SIP") == "calm"
 
 
 # -- _pick_hook_background: use a real visual instead of a blank card --------
@@ -438,7 +458,7 @@ def test_produce_from_script_playlist_add_failure_does_not_fail_the_job(mocked_p
 def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
 
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
         captured["badge_text"] = badge_text
         return out_path
 
@@ -450,7 +470,7 @@ def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline
 def test_produce_from_script_defaults_badge_to_company_name_when_no_explicit_badge(mocked_pipeline, monkeypatch):
     captured = {}
 
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
         captured["badge_text"] = badge_text
         return out_path
 
@@ -464,7 +484,7 @@ def test_produce_from_script_defaults_badge_to_company_name_when_no_explicit_bad
 def test_produce_from_script_leaves_badge_empty_when_no_badge_and_no_company_name(mocked_pipeline, monkeypatch):
     captured = {}
 
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
         captured["badge_text"] = badge_text
         return out_path
 
@@ -513,7 +533,7 @@ def test_produce_from_script_uses_ai_background_when_generated(mocked_pipeline, 
     monkeypatch.setattr(producer, "_pick_hook_background", fake_pick_hook_background)
 
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
         captured["background_path"] = background_path
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
@@ -528,7 +548,7 @@ def test_produce_from_script_falls_back_to_stock_background_when_ai_background_u
     monkeypatch.setattr(producer.ai_thumbnail, "generate_hook_background", lambda *a, **k: None)
 
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
         captured["background_path"] = background_path
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)

@@ -68,6 +68,12 @@ jobs:
           # background generator (see pipeline/ai_thumbnail.py). Optional: if
           # unset, generation falls back straight to Pollinations.ai.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Cloudflare Workers AI -- second-tier AI thumbnail background
+          # generator, tried when Gemini is unconfigured/over-cap/fails
+          # (see pipeline/ai_thumbnail.py). Optional: if either is unset,
+          # generation falls back straight from Gemini to Pollinations.ai.
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           # Separate usage-counter file from auto-video.yml's so the two
           # workflows' independent commit+push steps never conflict on the
           # same file if their runs overlap.
@@ -78,6 +84,8 @@ jobs:
           VISUAL_USAGE_FILE: visual_usage_education.json
           # Same reasoning, for the Gemini daily image-generation cap tracker.
           GEMINI_IMAGE_USAGE_FILE: gemini_image_usage_education.json
+          # Same reasoning, for the Cloudflare daily image-generation cap tracker.
+          CLOUDFLARE_IMAGE_USAGE_FILE: cloudflare_image_usage_education.json
         run: |
           if [ -n "${{ github.event.inputs.theme }}" ]; then
             python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
@@ -89,7 +97,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add themes_education.yaml google_tts_usage_education.json visual_usage_education.json gemini_image_usage_education.json
+          git add themes_education.yaml google_tts_usage_education.json visual_usage_education.json gemini_image_usage_education.json cloudflare_image_usage_education.json
           git diff --cached --quiet && exit 0
           git commit -m "Mark generated theme as done (education) [skip ci]"
           # The pipeline run above can take close to an hour, so origin/main may

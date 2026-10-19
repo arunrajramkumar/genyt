@@ -115,6 +115,28 @@ GEMINI_IMAGE_USAGE_FILE = Path(os.environ.get("GEMINI_IMAGE_USAGE_FILE", str(ROO
 GEMINI_IMAGE_DAILY_CAP = int(os.environ.get("GEMINI_IMAGE_DAILY_CAP", "40"))
 GEMINI_IMAGE_SAFETY_BUFFER = int(os.environ.get("GEMINI_IMAGE_SAFETY_BUFFER", "5"))
 
+# Cloudflare Workers AI — second-tier free image generator (see
+# pipeline/ai_thumbnail.py), tried when Gemini is unconfigured, over its
+# daily cap, or fails outright, before finally falling back to Pollinations.ai.
+# No credit card required to start. Get CLOUDFLARE_ACCOUNT_ID from the
+# Cloudflare dashboard's Workers & Pages overview page (right-hand sidebar),
+# and CLOUDFLARE_API_TOKEN from My Profile -> API Tokens -> Create Token
+# (the "Workers AI" template, or a custom token scoped to "Account - Workers
+# AI - Edit"). Optional: if either is unset, ai_thumbnail.py skips straight
+# from Gemini to Pollinations, same as before this existed.
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+CLOUDFLARE_IMAGE_MODEL = os.environ.get("CLOUDFLARE_IMAGE_MODEL", "@cf/black-forest-labs/flux-1-schnell")
+
+# Same git-committed daily-counter pattern as GEMINI_IMAGE_USAGE_FILE above.
+# Workers AI's free plan grants a real daily Neurons allowance rather than
+# metering by cost -- kept conservative here since each model's
+# Neurons-per-image cost differs; check the Cloudflare dashboard's AI
+# Analytics tab and raise this if there's clear headroom.
+CLOUDFLARE_IMAGE_USAGE_FILE = Path(os.environ.get("CLOUDFLARE_IMAGE_USAGE_FILE", str(ROOT / "cloudflare_image_usage.json")))
+CLOUDFLARE_IMAGE_DAILY_CAP = int(os.environ.get("CLOUDFLARE_IMAGE_DAILY_CAP", "40"))
+CLOUDFLARE_IMAGE_SAFETY_BUFFER = int(os.environ.get("CLOUDFLARE_IMAGE_SAFETY_BUFFER", "5"))
+
 
 # Video output settings — kept modest (720p/24fps) so ffmpeg's encode stays
 # under the ~512MB RAM ceiling of the free hosting tier this runs on.

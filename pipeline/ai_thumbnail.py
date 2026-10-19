@@ -4,22 +4,29 @@ attention-grabbing on a feed than whatever stock-footage frame happened to get
 picked, and doesn't depend on Pexels having a matching clip for an obscure
 small-cap stock.
 
-Primary generator: Gemini 2.5 Flash Image ("Nano Banana"), Google AI Studio's
-free-tier image model (set GEMINI_API_KEY) — it renders legible on-screen
-text/numbers far more reliably than Pollinations.ai, and is called via plain
-`requests` (no new SDK/pip dependency), the same way pipeline/tts.py calls
-Google Cloud TTS. A git-committed daily usage counter
-(config.GEMINI_IMAGE_USAGE_FILE) is checked BEFORE each call so a run
-proactively falls back to Pollinations once the free daily allowance is used
-up, instead of only reacting to a 429.
+Three tiers, tried in order, each never raising (always returns None on any
+failure so the next tier/caller can take over):
 
-Fallback generator: Pollinations.ai — needs no API key/account/billing, just an
-unauthenticated GET request that returns the image bytes directly. Used
-whenever Gemini is unconfigured, over its daily cap, or fails outright.
+1. Gemini 2.5 Flash Image ("Nano Banana") — Google AI Studio's free-tier image
+   model (set GEMINI_API_KEY). Renders legible on-screen text/numbers far more
+   reliably than the other two tiers.
+2. Cloudflare Workers AI (set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN) —
+   a genuinely free, no-credit-card-required daily allowance, used when Gemini
+   is unconfigured, over its daily cap, or fails outright.
+3. Pollinations.ai — needs no API key/account/billing at all, just an
+   unauthenticated GET request. Always available as the last resort.
 
-Both are public, best-effort services with no SLA, so this stays best-effort
-throughout: any failure in either tier just means producer.py falls back to
-its existing Pexels-frame background — never a blocked video.
+All three are called via plain `requests` (no new SDK/pip dependency), the
+same way pipeline/tts.py calls Google Cloud TTS. Tiers 1 and 2 each check a
+git-committed daily usage counter BEFORE calling, so a run proactively moves
+to the next tier once that day's free allowance is used up, instead of only
+reacting to a 429 -- and a 429 itself still immediately maxes out that
+counter, so a same-day retry doesn't repeat a call already known to fail.
+
+All three are public/free services with no real SLA, so this stays
+best-effort throughout: any failure cascades down, and failure of all three
+just means producer.py falls back to its existing Pexels-frame background —
+never a blocked video.
 """
 import base64
 import json
@@ -34,6 +41,9 @@ from . import config
 POLLINATIONS_ENDPOINT = "https://image.pollinations.ai/prompt/{prompt}"
 GEMINI_GENERATE_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+)
+CLOUDFLARE_RUN_ENDPOINT = (
+    "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
 )
 
 
@@ -55,9 +65,9 @@ def _current_day() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _load_gemini_image_usage() -> dict:
+def _load_usage(usage_file: Path) -> dict:
     try:
-        data = json.loads(config.GEMINI_IMAGE_USAGE_FILE.read_text())
+        data = json.loads(usage_file.read_text())
     except (FileNotFoundError, ValueError):
         data = {}
     if data.get("day") != _current_day():
@@ -65,28 +75,62 @@ def _load_gemini_image_usage() -> dict:
     return data
 
 
-def _record_gemini_image_usage() -> None:
-    usage = _load_gemini_image_usage()
+def _record_usage(usage_file: Path) -> None:
+    usage = _load_usage(usage_file)
     usage["requests"] += 1
-    config.GEMINI_IMAGE_USAGE_FILE.write_text(json.dumps(usage))
+    usage_file.write_text(json.dumps(usage))
+
+
+def _record_quota_exhausted(usage_file: Path, daily_cap: int) -> None:
+    """Called when a provider itself returns 429 (quota/rate-limit exceeded)
+    -- bumps today's local counter straight to the cap so any later call this
+    same day (e.g. a manual workflow re-run, or a per-channel run that
+    generates more than one thumbnail) skips this tier instead of making a
+    call already known to fail."""
+    usage = _load_usage(usage_file)
+    usage["requests"] = max(usage["requests"], daily_cap)
+    usage_file.write_text(json.dumps(usage))
+
+
+def _within_cap(usage_file: Path, daily_cap: int, safety_buffer: int) -> bool:
+    usable_cap = daily_cap - safety_buffer
+    return _load_usage(usage_file)["requests"] < usable_cap
+
+
+def _load_gemini_image_usage() -> dict:
+    return _load_usage(config.GEMINI_IMAGE_USAGE_FILE)
+
+
+def _record_gemini_image_usage() -> None:
+    _record_usage(config.GEMINI_IMAGE_USAGE_FILE)
 
 
 def _record_gemini_quota_exhausted() -> None:
-    """Called when Gemini itself returns 429 (quota/rate-limit exceeded) --
-    bumps today's local counter straight to the cap so any later call this
-    same day (e.g. a manual workflow re-run, or a per-channel run that
-    generates more than one thumbnail) skips straight to Pollinations instead
-    of making a call already known to fail."""
-    usage = _load_gemini_image_usage()
-    usage["requests"] = max(usage["requests"], config.GEMINI_IMAGE_DAILY_CAP)
-    config.GEMINI_IMAGE_USAGE_FILE.write_text(json.dumps(usage))
+    _record_quota_exhausted(config.GEMINI_IMAGE_USAGE_FILE, config.GEMINI_IMAGE_DAILY_CAP)
 
 
 def gemini_image_within_cap() -> bool:
     """True if one more Gemini image request today would stay within
     config.GEMINI_IMAGE_DAILY_CAP (minus a fixed safety buffer)."""
-    usable_cap = config.GEMINI_IMAGE_DAILY_CAP - config.GEMINI_IMAGE_SAFETY_BUFFER
-    return _load_gemini_image_usage()["requests"] < usable_cap
+    return _within_cap(config.GEMINI_IMAGE_USAGE_FILE, config.GEMINI_IMAGE_DAILY_CAP, config.GEMINI_IMAGE_SAFETY_BUFFER)
+
+
+def _load_cloudflare_image_usage() -> dict:
+    return _load_usage(config.CLOUDFLARE_IMAGE_USAGE_FILE)
+
+
+def _record_cloudflare_image_usage() -> None:
+    _record_usage(config.CLOUDFLARE_IMAGE_USAGE_FILE)
+
+
+def _record_cloudflare_quota_exhausted() -> None:
+    _record_quota_exhausted(config.CLOUDFLARE_IMAGE_USAGE_FILE, config.CLOUDFLARE_IMAGE_DAILY_CAP)
+
+
+def cloudflare_image_within_cap() -> bool:
+    """True if one more Cloudflare Workers AI image request today would stay
+    within config.CLOUDFLARE_IMAGE_DAILY_CAP (minus a fixed safety buffer)."""
+    return _within_cap(config.CLOUDFLARE_IMAGE_USAGE_FILE, config.CLOUDFLARE_IMAGE_DAILY_CAP, config.CLOUDFLARE_IMAGE_SAFETY_BUFFER)
 
 
 def _generate_via_gemini(company_name: str, out_path: Path, on_progress, width: int, height: int):
@@ -115,15 +159,57 @@ def _generate_via_gemini(company_name: str, out_path: Path, on_progress, width: 
                 _record_gemini_image_usage()
                 on_progress(f"[ai_thumbnail] generated Gemini thumbnail background for {company_name!r}")
                 return out_path
-        on_progress("[ai_thumbnail] Gemini returned no image data; falling back to Pollinations")
+        on_progress("[ai_thumbnail] Gemini returned no image data; trying next fallback")
         return None
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code == 429:
             _record_gemini_quota_exhausted()
-        on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); falling back to Pollinations")
+        on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); trying next fallback")
         return None
     except Exception as e:
-        on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); falling back to Pollinations")
+        on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); trying next fallback")
+        return None
+
+
+def _generate_via_cloudflare(company_name: str, out_path: Path, on_progress, width: int, height: int):
+    """Returns out_path on success, None on any failure (never raises).
+
+    Workers AI's response shape varies by model: Stable Diffusion-family
+    models return the image as raw bytes (content-type image/*), while
+    FLUX-family models wrap a base64-encoded image in a JSON envelope
+    ({"result": {"image": "..."}}) -- handled generically here so swapping
+    config.CLOUDFLARE_IMAGE_MODEL doesn't require a code change."""
+    try:
+        response = requests.post(
+            CLOUDFLARE_RUN_ENDPOINT.format(
+                account_id=config.CLOUDFLARE_ACCOUNT_ID, model=config.CLOUDFLARE_IMAGE_MODEL,
+            ),
+            headers={"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"},
+            json={"prompt": _build_prompt(company_name)},
+            timeout=60,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").split(";")[0].strip()
+        if content_type.startswith("image/"):
+            image_bytes = response.content
+        else:
+            image_b64 = response.json().get("result", {}).get("image")
+            if not image_b64:
+                on_progress("[ai_thumbnail] Cloudflare Workers AI returned no image data; trying next fallback")
+                return None
+            image_bytes = base64.b64decode(image_b64)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(image_bytes)
+        _record_cloudflare_image_usage()
+        on_progress(f"[ai_thumbnail] generated Cloudflare Workers AI thumbnail background for {company_name!r}")
+        return out_path
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 429:
+            _record_cloudflare_quota_exhausted()
+        on_progress(f"[ai_thumbnail] Cloudflare Workers AI request failed ({e}); trying next fallback")
+        return None
+    except Exception as e:
+        on_progress(f"[ai_thumbnail] Cloudflare Workers AI request failed ({e}); trying next fallback")
         return None
 
 
@@ -154,8 +240,9 @@ def generate_hook_background(company_name: str, out_path: Path, on_progress=prin
     company name to work with or every generator tier fails.
 
     Tries Gemini 2.5 Flash Image first (if GEMINI_API_KEY is configured and
-    today's usage is under its daily cap), then falls back to Pollinations.ai,
-    then finally lets the caller fall back to a Pexels stock-footage frame."""
+    today's usage is under its daily cap), then Cloudflare Workers AI (if
+    configured and under cap), then Pollinations.ai, then finally lets the
+    caller fall back to a Pexels stock-footage frame."""
     if not company_name:
         on_progress("[ai_thumbnail] no company name available; skipping AI thumbnail background")
         return None
@@ -166,6 +253,14 @@ def generate_hook_background(company_name: str, out_path: Path, on_progress=prin
             if result:
                 return result
         else:
-            on_progress("[ai_thumbnail] Gemini daily image cap reached; using Pollinations fallback")
+            on_progress("[ai_thumbnail] Gemini daily image cap reached; trying next fallback")
+
+    if config.CLOUDFLARE_ACCOUNT_ID and config.CLOUDFLARE_API_TOKEN:
+        if cloudflare_image_within_cap():
+            result = _generate_via_cloudflare(company_name, out_path, on_progress, width, height)
+            if result:
+                return result
+        else:
+            on_progress("[ai_thumbnail] Cloudflare Workers AI daily image cap reached; using Pollinations fallback")
 
     return _generate_via_pollinations(company_name, out_path, on_progress, width, height)

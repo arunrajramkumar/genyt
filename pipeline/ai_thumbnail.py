@@ -162,7 +162,13 @@ def _generate_via_gemini(company_name: str, out_path: Path, on_progress, width: 
         on_progress("[ai_thumbnail] Gemini returned no image data; trying next fallback")
         return None
     except requests.HTTPError as e:
-        if e.response is not None and e.response.status_code == 429:
+        status = e.response.status_code if e.response is not None else None
+        if status in (429, 402):
+            # 429 = real rate/quota limit hit. 402 = Google gating this model
+            # behind billing being enabled on the project, independent of the
+            # daily free-tier cap -- in both cases, retrying again today is
+            # known to fail, so skip straight to the next tier for the rest
+            # of the day instead of wasting another call per thumbnail.
             _record_gemini_quota_exhausted()
         on_progress(f"[ai_thumbnail] Gemini thumbnail request failed ({e}); trying next fallback")
         return None

@@ -151,6 +151,31 @@ def test_generate_hook_background_marks_quota_exhausted_on_429_so_same_day_retri
     assert result == tmp_path / "bg2.png"
 
 
+def test_generate_hook_background_marks_quota_exhausted_on_402_so_same_day_retries_skip_gemini(monkeypatch, tmp_path):
+    # 402 Payment Required means Google is gating this model behind billing
+    # being enabled on the project -- distinct from a 429 rate limit, but the
+    # same "don't bother retrying today" handling applies.
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "dummy")
+    payment_required = mock.Mock()
+    http_error = requests.HTTPError("402 Client Error: Payment Required")
+    http_error.response = mock.Mock(status_code=402)
+    payment_required.raise_for_status.side_effect = http_error
+    monkeypatch.setattr(ai_thumbnail.requests, "post", lambda *a, **k: payment_required)
+    fake_response = mock.Mock()
+    fake_response.raise_for_status = lambda: None
+    fake_response.headers = {"content-type": "image/jpeg"}
+    fake_response.content = b"pollinations-bytes"
+    monkeypatch.setattr(ai_thumbnail.requests, "get", lambda *a, **k: fake_response)
+
+    ai_thumbnail.generate_hook_background("Arrow Greentech", tmp_path / "bg.png", on_progress=lambda m: None)
+    assert ai_thumbnail._load_gemini_image_usage()["requests"] == config.GEMINI_IMAGE_DAILY_CAP
+    assert ai_thumbnail.gemini_image_within_cap() is False
+
+    monkeypatch.setattr(ai_thumbnail.requests, "post", mock.Mock(side_effect=AssertionError("should not retry Gemini")))
+    result = ai_thumbnail.generate_hook_background("Arrow Greentech", tmp_path / "bg2.png", on_progress=lambda m: None)
+    assert result == tmp_path / "bg2.png"
+
+
 def test_generate_hook_background_falls_back_to_pollinations_when_gemini_over_daily_cap(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "GEMINI_API_KEY", "dummy")
     config.GEMINI_IMAGE_USAGE_FILE.write_text(json.dumps({

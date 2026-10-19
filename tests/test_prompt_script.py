@@ -260,8 +260,8 @@ def test_write_freeform_script_appends_subscribe_cta_to_last_scene(monkeypatch):
     ])
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(two_scene_script))
     result = prompt_script._write_freeform_script("octopuses")
-    assert result["scenes"][-1]["narration"] == "Fact two. If this helped, subscribe for more videos like it."
-    assert result["scenes"][-1]["on_screen_text"] == "SUBSCRIBE FOR MORE"
+    assert result["scenes"][-1]["narration"] == "Fact two." + prompt_script.segmented_script.SUBSCRIBE_CTA_NARRATION
+    assert result["scenes"][-1]["on_screen_text"] == prompt_script.segmented_script.SUBSCRIBE_CTA_ON_SCREEN_TEXT
     assert result["scenes"][0]["narration"] == "Fact one."
 
 
@@ -442,7 +442,7 @@ def test_write_freeform_script_does_not_mistake_subscribe_cta_for_company_name(m
     ])
     monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(one_scene_script))
     result = prompt_script._write_freeform_script("Tata Motors stock analysis")
-    assert result["company_name"] != "SUBSCRIBE FOR MORE"
+    assert result["company_name"] != prompt_script.segmented_script.SUBSCRIBE_CTA_ON_SCREEN_TEXT
 
 
 def test_system_prompt_steers_visual_query_away_from_generic_finance_imagery():

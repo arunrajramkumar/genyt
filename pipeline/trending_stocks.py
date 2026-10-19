@@ -26,17 +26,13 @@ from . import fundamentals, llm, research
 # quota runs dry, so these extra queries never go unanswered even on a
 # maxed-out Tavily month.
 TRENDING_QUERIES = [
-    "NSE stocks in the news India today",
-    "most talked about Indian stocks this week",
-    "Nifty 50 top gainers and losers today India",
     "Indian companies quarterly results announced today NSE",
-    "NSE banking and IT stocks news today",
-    "NSE auto and pharma stocks news today",
+    "NSE stocks in the news India today",
+    "IPO opening this week India GMP subscription status",
+    "NSE stock order win guidance announcement today",
+    "most talked about Indian stocks this week",
+    "Nifty midcap smallcap stocks results news today",
 ]
-
-# Companies below this market cap (Rs crore) almost never have search demand,
-# so they're only picked when too few well-known ones are available.
-WELL_KNOWN_MARKET_CAP_CR = 10000
 
 # Tried in order, only when every candidate from the primary queries is already
 # covered (themes file or the real channel) -- so a day with only
@@ -63,6 +59,10 @@ Rules:
 - "symbol" is the company's standard NSE ticker (e.g. "TCS", "RELIANCE") -- a wrong guess
   here is fine, it gets independently verified afterwards, but never invent a company that
   isn't named in the text.
+- Prefer companies with a fresh event in the snippets (quarterly results, IPO opening or
+  listing, guidance, order win) over companies merely mentioned in passing, and list those
+  first. Include IPO companies too (use the best-guess NSE ticker; unlisted ones get dropped
+  by verification).
 - If no real companies are named in the snippets, return {"candidates": []}.
 """
 
@@ -125,7 +125,7 @@ def _weighted_pick_without_replacement(pairs: list, k: int) -> list:
     pool = list(pairs)
     chosen = []
     for _ in range(min(k, len(pool))):
-        weights = [cap + 1 for _, cap in pool]  # +1 so an unparseable/zero market cap still has a nonzero chance
+        weights = [cap ** 0.5 + 1 for _, cap in pool]  # sqrt flattens mega-cap dominance; +1 keeps zero-cap pickable
         pick = random.choices(pool, weights=weights, k=1)[0]
         chosen.append(pick)
         pool.remove(pick)
@@ -208,10 +208,6 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
         print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified")
         if verified:
             break
-
-    preferred = [pair for pair in verified if pair[1] >= WELL_KNOWN_MARKET_CAP_CR]
-    if len(preferred) >= limit:
-        verified = preferred
 
     chosen = _weighted_pick_without_replacement(verified, limit)
     chosen.sort(key=lambda pair: pair[1], reverse=True)

@@ -16,7 +16,7 @@ whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, n
 commentary) matching this schema:
 
 {
-  "title": "punchy, clickable YouTube title, under 70 characters",
+  "title": "punchy, clickable YouTube title, under 60 characters",
   "description": "2-3 sentence YouTube description",
   "tags": ["8-15 relevant search tags"],
   "scenes": [
@@ -33,7 +33,10 @@ Rules:
 - The title must use correct English grammar and punctuation, including
   apostrophes in contractions and possessives (e.g. "What's", "India's").
   Never put hashtags in the title — put them in tags instead.
-- If the user's prompt includes specific facts, figures, names, or claims, use ONLY
+- For stock/company videos the title is a search query: company name first, then
+  the concrete event or number from the prompt (e.g. "Apollo Micro Q1 FY27:
+  Revenue Up 88%"). Never use a ticker symbol, emoji, or filler like "Long-Term
+  Wealth", "Wealth Play", "Growth Outlook" or "Deep Dive". specific facts, figures, names, or claims, use ONLY
   those — never invent, estimate, or add extra numbers, dates, or claims that were
   not given to you. If the prompt is an analysis of something (e.g. a stock, a
   product, a place), stay neutral and do not add a recommendation/verdict unless

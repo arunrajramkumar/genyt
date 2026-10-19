@@ -459,8 +459,8 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
     }
 
 
-SUBSCRIBE_CTA_NARRATION = " If this helped, subscribe for more videos like it."
-SUBSCRIBE_CTA_ON_SCREEN_TEXT = "SUBSCRIBE FOR MORE"
+SUBSCRIBE_CTA_NARRATION = " I cover one Indian stock result or IPO every day, so subscribe to catch tomorrow's."
+SUBSCRIBE_CTA_ON_SCREEN_TEXT = "NEW STOCK EVERY DAY - SUBSCRIBE"
 
 
 def merge_tags(required: list, generated: list, char_budget: int = 460) -> list:
@@ -503,12 +503,17 @@ narration below. Output ONLY valid JSON (no markdown fences, no commentary):
 {"title": "...", "description": "...", "tags": ["...", "..."]}
 
 Rules:
-- title: punchy, clickable, under 70 characters. Must name the specific subject
+- title: punchy, clickable, under 60 characters. Must name the specific subject
   (company, person, place, event, topic) the narration is actually about — never
   a generic placeholder like "Stock Analysis" or "Interesting Facts". Use correct
   English grammar and punctuation, including apostrophes in contractions and
   possessives (e.g. "What's", "India's"). Never put hashtags in the title —
   put them in tags instead.
+- Titles are what people type into YouTube search. Put the company name FIRST,
+  then the concrete event or number the narration reports (e.g. "Q1 results",
+  "IPO", "revenue up 88%"), e.g. "Apollo Micro Q1 FY27: Revenue Up 88%". Never
+  use a stock ticker symbol, emoji, or filler like "Long-Term Wealth", "Wealth
+  Play", "Growth Outlook" or "Deep Dive" in the title.
 - If the subject is a company/stock, never phrase the title as a verdict or
   recommendation (e.g. avoid "Buy or Sell", "Apply or Avoid", "Cheap or
   Overvalued") -- this channel stays neutral, per the narration's own stance.

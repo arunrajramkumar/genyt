@@ -134,9 +134,24 @@ def test_weighted_pick_without_replacement_gives_zero_market_cap_a_nonzero_chanc
     assert chosen[0][0]["symbol"] == "ZERO"
 
 
-def test_select_trending_symbols_returns_empty_on_unexpected_failure(monkeypatch):
+def test_select_trending_symbols_returns_empty_on_unexpected_failure(monkeypatch, capsys):
     def boom(queries=None):
         raise RuntimeError("network down")
 
     monkeypatch.setattr(ts, "_search_trending_stock_news", boom)
     assert ts.select_trending_symbols() == []
+    assert "network down" in capsys.readouterr().out
+
+
+def test_select_trending_symbols_logs_why_nothing_was_selected(monkeypatch, capsys):
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(
+        ts, "_extract_candidates",
+        lambda text: [{"symbol": "CDSL", "name": "CDSL"}, {"symbol": "FAKECO", "name": "Fake Co"}],
+    )
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {})
+
+    assert ts.select_trending_symbols(exclude_symbols=["CDSL"]) == []
+    out = capsys.readouterr().out
+    assert "2 grounded candidate(s)" in out
+    assert "1 already covered/duplicate, 1 failed Screener verification, 0 verified" in out

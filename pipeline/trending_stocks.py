@@ -135,17 +135,24 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
     try:
         facts_text = _search_trending_stock_news(queries)
         candidates = _extract_candidates(facts_text)
-    except Exception:
+    except Exception as e:
+        print(f"[trending] search/extraction failed: {type(e).__name__}: {e}")
         return []
+    print(f"[trending] {len(facts_text)} chars of news snippets, {len(candidates)} grounded candidate(s)")
 
     verified, seen = [], set()
+    excluded = unverified = 0
     for c in candidates:
         if c["symbol"] in exclude or c["symbol"] in seen:
+            excluded += 1
             continue
         seen.add(c["symbol"])
         data = fundamentals.fetch_fundamentals(c["symbol"])
         if data:
             verified.append((c, fundamentals.market_cap_cr(data)))
+        else:
+            unverified += 1
+    print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified")
 
     chosen = _weighted_pick_without_replacement(verified, limit)
     chosen.sort(key=lambda pair: pair[1], reverse=True)

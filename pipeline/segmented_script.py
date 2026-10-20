@@ -180,6 +180,7 @@ QUALITATIVE_FALLBACKS = [
 
 VISUAL_FALLBACKS = [
     ("hook", ["industrial factory establishing shot", "city skyline aerial view", "busy trading floor"]),
+    ("did you know", ["curious person thinking", "lightbulb idea", "newspaper headlines"]),
     ("overview", ["steel factory workers", "office team meeting", "business professional presentation"]),
     ("revenue", ["factory production line", "cash counting machine", "warehouse logistics"]),
     ("financial", ["stock market chart growth", "stock ticker screen", "financial analyst at desk"]),

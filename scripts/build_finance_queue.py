@@ -26,7 +26,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from pipeline import config, fundamentals, market_trends, research, trending_stocks  # noqa: E402
+from pipeline import company_insights, config, fundamentals, market_trends, research, trending_stocks  # noqa: E402
 
 MIN_DURATION = 50
 MAX_DURATION = 65
@@ -88,11 +88,19 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
         growth_lines.append(f"Latest quarterly net profit: Rs {quarterly['net_profit_cr'][-1]} crore")
     growth_text = "\n".join(growth_lines) or "No recent quarterly trend data is available."
 
-    hook_dur = max(6, round(duration_sec * 0.12))
-    metrics_dur = max(15, round(duration_sec * 0.28))
-    growth_dur = max(15, round(duration_sec * 0.25))
-    risk_dur = max(15, round(duration_sec * 0.22))
-    remaining = duration_sec - hook_dur - metrics_dur - growth_dur - risk_dur
+    did_you_know = [f for f in (
+        company_insights.find_story_fact(company_name),
+        company_insights.peer_comparison_fact(fundamentals.fetch_peers(data)),
+    ) if f]
+    dyk_dur = 0 if not did_you_know else 7 if len(did_you_know) == 1 else 10
+    body_sec = duration_sec - dyk_dur
+    min_seg = 15 if not dyk_dur else 12
+
+    hook_dur = max(6, round(body_sec * 0.12))
+    metrics_dur = max(min_seg, round(body_sec * 0.28))
+    growth_dur = max(min_seg, round(body_sec * 0.25))
+    risk_dur = max(min_seg, round(body_sec * 0.22))
+    remaining = body_sec - hook_dur - metrics_dur - growth_dur - risk_dur
     recap_dur = max(6, remaining)
 
     lines, cursor = [], 0
@@ -106,6 +114,17 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
     )
     lines.append("")
     cursor += hook_dur
+
+    if did_you_know:
+        facts = "\n".join(f"- {f}" for f in did_you_know)
+        lines.append(f"{cursor}-{cursor + dyk_dur} seconds - Did You Know")
+        lines.append(
+            f"State this as one surprising, specific 'did you know' fact about {company_name} in 1-2 "
+            "punchy sentences, using ONLY the fact(s) below and no new numbers or claims. Never state it "
+            f"as a recommendation. Facts:\n{facts}"
+        )
+        lines.append("")
+        cursor += dyk_dur
 
     lines.append(f"{cursor}-{cursor + metrics_dur} seconds - Key Metrics")
     lines.append(

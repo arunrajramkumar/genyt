@@ -16,6 +16,7 @@ import requests
 
 SCREENER_URL = "https://www.screener.in/company/{symbol}/"
 SCREENER_SEARCH_URL = "https://www.screener.in/api/company/search/"
+SCREENER_PEERS_URL = "https://www.screener.in/api/company/{warehouse_id}/peers/"
 USER_AGENT = "Mozilla/5.0 (compatible; ytagent-fundamentals/1.0)"
 
 RATIO_ROW_RE = re.compile(
@@ -86,12 +87,77 @@ def _yoy_growth(values: list):
     return round((latest - year_ago) / abs(year_ago) * 100, 1)
 
 
+def _parse_warehouse_id(html: str):
+    m = re.search(r'data-warehouse-id="(\d+)"', html)
+    return m.group(1) if m else None
+
+
+def _parse_peers(html: str, own_symbol: str = "") -> list:
+    """Parses Screener's peer-comparison table into [{name, symbol, pe,
+    market_cap_cr, roce, is_self}, ...]. Header cells are matched by name
+    (not position) so a column reorder doesn't silently misattribute values.
+    Returns [] when no recognizable table is present."""
+    headers = [_strip_tags(h).lower() for h in re.findall(r"<th[^>]*>(.*?)</th>", html, re.DOTALL)]
+
+    def col(*needles):
+        for i, h in enumerate(headers):
+            if any(n in h for n in needles):
+                return i
+        return None
+
+    name_i, pe_i, cap_i, roce_i = col("name"), col("p/e"), col("mar cap"), col("roce")
+    if name_i is None or (pe_i is None and roce_i is None):
+        return []
+
+    def num(cells, i):
+        if i is None or i >= len(cells):
+            return None
+        m = re.fullmatch(r"-?[\d,]+\.?\d*", _strip_tags(cells[i]))
+        return float(m.group(0).replace(",", "")) if m else None
+
+    peers = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.DOTALL):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
+        if len(cells) <= name_i:
+            continue
+        name = _strip_tags(cells[name_i])
+        if not name or "median" in name.lower():
+            continue
+        link = SYMBOL_FROM_URL_RE.search(cells[name_i])
+        symbol = link.group(1) if link else ""
+        peers.append({
+            "name": name, "symbol": symbol,
+            "pe": num(cells, pe_i), "market_cap_cr": num(cells, cap_i), "roce": num(cells, roce_i),
+            "is_self": bool(own_symbol) and symbol.upper() == own_symbol.upper(),
+        })
+    return peers
+
+
+def fetch_peers(data: dict) -> list:
+    """Peer table for a company returned by fetch_fundamentals (best-effort:
+    [] on any failure). Screener loads this table via a separate endpoint
+    keyed by the page's warehouse id, so it costs one extra request."""
+    warehouse_id = (data or {}).get("warehouse_id")
+    if not warehouse_id:
+        return []
+    try:
+        resp = requests.get(
+            SCREENER_PEERS_URL.format(warehouse_id=warehouse_id),
+            headers={"User-Agent": USER_AGENT}, timeout=15,
+        )
+        resp.raise_for_status()
+        return _parse_peers(resp.text, data.get("symbol", ""))
+    except requests.RequestException:
+        return []
+
+
 def fetch_fundamentals(symbol: str) -> dict:
     """Returns {} on any failure. On success:
     {"symbol": str, "ratios": {name: value, ...},
      "quarterly": {"quarter_dates": [...], "sales_cr": [...], "net_profit_cr": [...]},
-     "revenue_growth_yoy_pct": float, "profit_growth_yoy_pct": float}
-    (the last four keys are omitted when they can't be computed)."""
+     "revenue_growth_yoy_pct": float, "profit_growth_yoy_pct": float,
+     "warehouse_id": str}
+    (everything after "ratios" is omitted when it can't be computed/found)."""
     try:
         resp = requests.get(
             SCREENER_URL.format(symbol=symbol.upper()),
@@ -107,6 +173,9 @@ def fetch_fundamentals(symbol: str) -> dict:
         return {}
 
     data = {"symbol": symbol.upper(), "ratios": ratios}
+    warehouse_id = _parse_warehouse_id(html)
+    if warehouse_id:
+        data["warehouse_id"] = warehouse_id
     quarterly = _parse_quarterly(html)
     if quarterly:
         data["quarterly"] = quarterly

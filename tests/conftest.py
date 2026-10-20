@@ -47,6 +47,16 @@ def _company_symbol_search_no_match_by_default(monkeypatch):
     monkeypatch.setattr(fundamentals, "search_company", lambda name: {})
 
 
+@pytest.fixture(autouse=True)
+def _no_company_insights_network_by_default(monkeypatch):
+    """build_theme_entry looks up a web-sourced story fact and Screener's peer
+    table; default both to "nothing found" so tests never hit the network.
+    Tests exercising the did-you-know segment override these explicitly."""
+    from pipeline import company_insights
+    monkeypatch.setattr(company_insights, "find_story_fact", lambda name: "")
+    monkeypatch.setattr(fundamentals, "fetch_peers", lambda data: [])
+
+
 @pytest.fixture
 def no_api_keys(monkeypatch):
     """Explicitly blanks API keys for tests asserting the "not configured" error paths."""

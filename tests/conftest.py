@@ -48,6 +48,15 @@ def _company_symbol_search_no_match_by_default(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _google_news_fallback_empty_by_default(monkeypatch):
+    """research.search_web's last-resort Google News RSS fetch must never hit
+    the real network from tests; tests of it call the real implementation
+    captured at import time in tests/test_research.py."""
+    from pipeline import research
+    monkeypatch.setattr(research, "_fetch_google_news_facts", lambda topic: "")
+
+
+@pytest.fixture(autouse=True)
 def _no_company_insights_network_by_default(monkeypatch):
     """build_theme_entry and prompt_script's freeform path look up a sourced
     story fact (Wikipedia/web search) and Screener's peer table via

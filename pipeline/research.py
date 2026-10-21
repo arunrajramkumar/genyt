@@ -16,6 +16,7 @@ no credit limit, so a dry Tavily account for the rest of the month doesn't
 turn into "no grounding at all" for every theme after that. Only if both come
 back empty does the caller fall back to the "don't invent numbers" instruction.
 """
+import html as html_lib
 import json
 import re
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from . import config, fundamentals, segmented_script
 
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 TAVILY_USAGE_URL = "https://api.tavily.com/usage"
+GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
 # DuckDuckGo's plain (JS-free) HTML results page -- undocumented but stable
 # and widely used for exactly this (no official API, no key, no credit cap).
@@ -245,11 +247,18 @@ def _fetch_tavily_facts(topic: str) -> str:
     search, or "" if Tavily isn't configured, either credit guardrail has
     tripped, or the search fails -- callers must treat "" as "no verified data
     available" and must not fabricate specifics in its place."""
-    if not config.TAVILY_API_KEY or not _under_monthly_cap():
+    if not config.TAVILY_API_KEY:
         return ""
 
+    # Tavily's own balance is authoritative whenever it's reachable; the local
+    # call counter only gates when that check fails (it can drift well below or
+    # above the real figure, and used to block all searches for the rest of the
+    # month while the account still had credits).
     remaining = _fetch_remaining_credits()
-    if remaining is not None and remaining < config.TAVILY_SAFETY_BUFFER_CREDITS:
+    if remaining is None:
+        if not _under_monthly_cap():
+            return ""
+    elif remaining < config.TAVILY_SAFETY_BUFFER_CREDITS:
         return ""
 
     _record_call()  # count the attempt before the request -- Tavily bills on
@@ -345,13 +354,59 @@ def search_web(topic: str) -> str:
     if tavily:
         return tavily
     ddg = _fetch_duckduckgo_facts(topic)
-    if not ddg:
+    if ddg:
+        return ddg
+    news = _fetch_google_news_facts(topic)
+    if not news:
         print(
             f"[search] no results for {topic!r}: tavily key set={bool(config.TAVILY_API_KEY)}, "
             f"under monthly cap={_under_monthly_cap() if config.TAVILY_API_KEY else 'n/a'}; "
-            "DuckDuckGo fallback also returned nothing (likely blocked from this IP)"
+            "DuckDuckGo and Google News fallbacks also returned nothing"
         )
-    return ddg
+    return news
+
+
+_RSS_ITEM_RE = re.compile(r"<item>(.*?)</item>", re.DOTALL)
+_RSS_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.DOTALL)
+_RSS_SOURCE_RE = re.compile(r"<source[^>]*>(.*?)</source>", re.DOTALL)
+_RSS_DATE_RE = re.compile(r"<pubDate>(.*?)</pubDate>", re.DOTALL)
+
+
+def _rss_text(fragment: str) -> str:
+    fragment = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", fragment, flags=re.DOTALL)
+    return re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", html_lib.unescape(fragment)))).strip()
+
+
+def _fetch_google_news_facts(topic: str) -> str:
+    """Free, keyless last-resort source: Google News' RSS search feed, which
+    (unlike DuckDuckGo's HTML page) isn't blocked from GitHub Actions' IPs.
+    Gives dated headlines with their publisher rather than full snippets --
+    enough for trending-company discovery and news context. Best-effort: ""
+    on any failure."""
+    try:
+        resp = requests.get(
+            GOOGLE_NEWS_RSS_URL,
+            params={"q": topic, "hl": "en-IN", "gl": "IN", "ceid": "IN:en"},
+            headers={"User-Agent": DUCKDUCKGO_USER_AGENT},
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException:
+        return ""
+
+    lines = []
+    for item in _RSS_ITEM_RE.findall(resp.text)[:8]:
+        title = _RSS_TITLE_RE.search(item)
+        title = _rss_text(title.group(1)) if title else ""
+        if not title:
+            continue
+        source = _RSS_SOURCE_RE.search(item)
+        date = _RSS_DATE_RE.search(item)
+        meta = ", ".join(x for x in (
+            _rss_text(source.group(1)) if source else "", _rss_text(date.group(1))[:16] if date else "",
+        ) if x)
+        lines.append(f"- {title} (source: {meta or 'Google News'})")
+    return "\n".join(lines)
 
 
 def resolve_symbol_for_theme(topic: str):

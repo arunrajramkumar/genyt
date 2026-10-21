@@ -8,6 +8,63 @@ from pipeline import config, research
 # Captured before the autouse fixture below monkeypatches research._fetch_duckduckgo_facts
 # away by name, so tests that exercise the real implementation can still call it directly.
 _real_fetch_duckduckgo_facts = research._fetch_duckduckgo_facts
+_real_fetch_google_news_facts = research._fetch_google_news_facts
+
+RSS_XML = """<?xml version="1.0"?><rss><channel>
+<item><title>Karur Vysya Bank Q2 profit jumps 37% &amp; beats estimates - Business Standard</title>
+<pubDate>Tue, 21 Oct 2026 08:00:00 GMT</pubDate><source url="https://x">Business Standard</source></item>
+<item><title><![CDATA[CDSL shares rally on record demat additions - Mint]]></title>
+<pubDate>Mon, 20 Oct 2026 08:00:00 GMT</pubDate><source url="https://y">Mint</source></item>
+<item><title></title></item>
+</channel></rss>"""
+
+
+class _FakeResp:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        pass
+
+
+def test_google_news_facts_parses_titles_sources_and_dates(monkeypatch):
+    captured = {}
+
+    def fake_get(url, **kw):
+        captured["url"], captured["params"] = url, kw["params"]
+        return _FakeResp(RSS_XML)
+    monkeypatch.setattr(research.requests, "get", fake_get)
+    out = _real_fetch_google_news_facts("NSE stocks in the news")
+    lines = out.splitlines()
+    assert len(lines) == 2
+    assert "profit jumps 37% & beats estimates" in lines[0] and "Business Standard" in lines[0]
+    assert "Tue, 21 Oct 2026" in lines[0]
+    assert "CDSL shares rally" in lines[1] and "<" not in lines[1]
+    assert captured["params"]["q"] == "NSE stocks in the news" and captured["params"]["gl"] == "IN"
+
+
+def test_google_news_facts_empty_on_failure_or_no_items(monkeypatch):
+    assert _real_fetch_google_news_facts("x") == ""
+    monkeypatch.setattr(research.requests, "get", lambda *a, **k: _FakeResp("<rss></rss>"))
+    assert _real_fetch_google_news_facts("x") == ""
+
+
+def test_search_web_falls_back_to_google_news_last(monkeypatch):
+    monkeypatch.setattr(research, "_fetch_tavily_facts", lambda t: "")
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda t: "")
+    monkeypatch.setattr(research, "_fetch_google_news_facts", lambda t: "- headline")
+    assert research.search_web("x") == "- headline"
+
+
+def test_search_web_does_not_call_google_news_when_earlier_source_works(monkeypatch):
+    def boom(t):
+        raise AssertionError("must not be called")
+    monkeypatch.setattr(research, "_fetch_tavily_facts", lambda t: "- tavily")
+    monkeypatch.setattr(research, "_fetch_google_news_facts", boom)
+    assert research.search_web("x") == "- tavily"
+    monkeypatch.setattr(research, "_fetch_tavily_facts", lambda t: "")
+    monkeypatch.setattr(research, "_fetch_duckduckgo_facts", lambda t: "- ddg")
+    assert research.search_web("x") == "- ddg"
 
 
 @pytest.fixture(autouse=True)
@@ -228,6 +285,33 @@ def test_fetch_grounding_facts_skips_the_search_when_live_credits_below_safety_b
     monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
     monkeypatch.setattr(config, "TAVILY_SAFETY_BUFFER_CREDITS", 50)
     monkeypatch.setattr(research, "_fetch_remaining_credits", lambda: 10)
+    calls = []
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: (calls.append(1), _FakeResponse(_SEARCH_RESULTS_PAYLOAD))[1])
+
+    assert research.fetch_grounding_facts("Tata Motors stock") == ""
+    assert calls == []
+
+
+def test_live_credits_override_an_exhausted_local_counter(monkeypatch):
+    # Regression: the local counter (426 >= cap 400) used to block every search
+    # before the authoritative live check ran, while the dashboard showed
+    # 899/1500 credits used.
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "TAVILY_MONTHLY_CALL_CAP", 400)
+    config.TAVILY_USAGE_FILE.write_text(json.dumps({"month": research._current_month(), "calls": 426}))
+    monkeypatch.setattr(research, "_fetch_remaining_credits", lambda: 601)
+    calls = []
+    monkeypatch.setattr(research.requests, "post", lambda *a, **k: (calls.append(1), _FakeResponse(_SEARCH_RESULTS_PAYLOAD))[1])
+
+    assert research.fetch_grounding_facts("Tata Motors stock") != ""
+    assert len(calls) == 1
+
+
+def test_local_cap_still_blocks_when_live_check_is_unreachable(monkeypatch):
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "fake-key")
+    monkeypatch.setattr(config, "TAVILY_MONTHLY_CALL_CAP", 400)
+    config.TAVILY_USAGE_FILE.write_text(json.dumps({"month": research._current_month(), "calls": 426}))
+    monkeypatch.setattr(research, "_fetch_remaining_credits", lambda: None)
     calls = []
     monkeypatch.setattr(research.requests, "post", lambda *a, **k: (calls.append(1), _FakeResponse(_SEARCH_RESULTS_PAYLOAD))[1])
 

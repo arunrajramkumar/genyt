@@ -17,6 +17,10 @@ on:
         description: "One-off theme to run instead of the next themes.yaml entry (optional)"
         required: false
         default: ""
+      prompt_file:
+        description: "Repo-relative path to a committed multi-line scene-by-scene prompt (e.g. prompts/adhoc.txt); takes priority over theme"
+        required: false
+        default: ""
       duration:
         description: "Target seconds for the one-off --theme run (ignored for the scheduled/--trending path)"
         required: false
@@ -80,9 +84,21 @@ jobs:
           # generation falls back straight from Gemini to Pollinations.ai.
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Passed via env (not interpolated into the script) so quotes, $ or
+          # backticks in a pasted theme can't break or inject into the shell.
+          INPUT_THEME: ${{ github.event.inputs.theme }}
+          INPUT_PROMPT_FILE: ${{ github.event.inputs.prompt_file }}
+          INPUT_DURATION: ${{ github.event.inputs.duration }}
         run: |
-          if [ -n "${{ github.event.inputs.theme }}" ]; then
-            python3 run.py --theme "${{ github.event.inputs.theme }}" --duration "${{ github.event.inputs.duration || '60' }}" --shorts
+          DURATION="${INPUT_DURATION:-60}"
+          if [ -n "$INPUT_PROMPT_FILE" ]; then
+            case "$INPUT_PROMPT_FILE" in
+              /*|*..*) echo "prompt_file must be a relative path inside the repo"; exit 1 ;;
+            esac
+            [ -f "$INPUT_PROMPT_FILE" ] || { echo "prompt_file not found: $INPUT_PROMPT_FILE (commit and push it first)"; exit 1; }
+            python3 run.py --theme "$(cat "$INPUT_PROMPT_FILE")" --duration "$DURATION" --shorts
+          elif [ -n "$INPUT_THEME" ]; then
+            python3 run.py --theme "$INPUT_THEME" --duration "$DURATION" --shorts
           else
             python3 run.py --trending
           fi

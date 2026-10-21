@@ -41,12 +41,15 @@ permissions:
 
 jobs:
   generate:
-    # Issues are public: only the repo owner's labelled issues may spend the
-    # API quotas and publish to the channel.
+    # Issues are public: only the repo owner's issues may spend the API quotas
+    # and publish to the channel. An issue counts as a video prompt if it has
+    # the "video-prompt" label OR its body has timed scene headers (the label
+    # is only applied by the template if it already exists in the repo).
     if: >-
       github.event_name != 'issues' ||
       (github.actor == github.repository_owner &&
-       contains(github.event.issue.labels.*.name, 'video-prompt'))
+       (contains(github.event.issue.labels.*.name, 'video-prompt') ||
+        contains(github.event.issue.body, ' seconds')))
     runs-on: ubuntu-latest
     environment: common # secrets (PEXELS_API_KEY/GROQ_API_KEY/TAVILY_API_KEY/YOUTUBE_TOKEN_JSON) live in this GitHub Environment, not repo-level secrets
     timeout-minutes: 60

@@ -78,7 +78,7 @@ def test_issue_trigger_is_owner_and_label_gated():
     assert wf[True]["issues"]["types"] == ["opened"]
     cond = wf["jobs"]["generate"]["if"]
     assert "github.actor == github.repository_owner" in cond
-    assert "'video-prompt'" in cond
+    assert "'video-prompt'" in cond and "github.event.issue.body" in cond
     assert wf["permissions"]["issues"] == "write"
 
 

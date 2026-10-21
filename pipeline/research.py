@@ -341,7 +341,17 @@ def search_web(topic: str) -> str:
     no-grounding-available. Returns "" if both come back empty; callers must
     treat that as "no verified data available" and not fabricate in its
     place."""
-    return _fetch_tavily_facts(topic) or _fetch_duckduckgo_facts(topic)
+    tavily = _fetch_tavily_facts(topic)
+    if tavily:
+        return tavily
+    ddg = _fetch_duckduckgo_facts(topic)
+    if not ddg:
+        print(
+            f"[search] no results for {topic!r}: tavily key set={bool(config.TAVILY_API_KEY)}, "
+            f"under monthly cap={_under_monthly_cap() if config.TAVILY_API_KEY else 'n/a'}; "
+            "DuckDuckGo fallback also returned nothing (likely blocked from this IP)"
+        )
+    return ddg
 
 
 def resolve_symbol_for_theme(topic: str):

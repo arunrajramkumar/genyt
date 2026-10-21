@@ -88,10 +88,7 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
         growth_lines.append(f"Latest quarterly net profit: Rs {quarterly['net_profit_cr'][-1]} crore")
     growth_text = "\n".join(growth_lines) or "No recent quarterly trend data is available."
 
-    did_you_know = [f for f in (
-        company_insights.find_story_fact(company_name),
-        company_insights.peer_comparison_fact(fundamentals.fetch_peers(data)),
-    ) if f]
+    did_you_know = company_insights.did_you_know_facts(company_name, data)
     dyk_dur = 0 if not did_you_know else 7 if len(did_you_know) == 1 else 10
     body_sec = duration_sec - dyk_dur
     min_seg = 15 if not dyk_dur else 12

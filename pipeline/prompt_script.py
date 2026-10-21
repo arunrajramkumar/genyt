@@ -9,7 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-from . import diagrams, llm, research, segmented_script, youtube_insights
+from . import company_insights, diagrams, fundamentals, llm, research, segmented_script, youtube_insights
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -36,7 +36,8 @@ Rules:
 - For stock/company videos the title is a search query: company name first, then
   the concrete event or number from the prompt (e.g. "Apollo Micro Q1 FY27:
   Revenue Up 88%"). Never use a ticker symbol, emoji, or filler like "Long-Term
-  Wealth", "Wealth Play", "Growth Outlook" or "Deep Dive". specific facts, figures, names, or claims, use ONLY
+  Wealth", "Wealth Play", "Growth Outlook" or "Deep Dive".
+- If the prompt contains specific facts, figures, names, or claims, use ONLY
   those — never invent, estimate, or add extra numbers, dates, or claims that were
   not given to you. If the prompt is an analysis of something (e.g. a stock, a
   product, a place), stay neutral and do not add a recommendation/verdict unless
@@ -201,16 +202,25 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 "only generically (e.g. \"this stock\"), and never speak the ticker aloud.\n\n"
             )
 
+    dyk_facts = _find_did_you_know_facts(resolved_company, symbol) if is_finance_theme else []
+    dyk_words = len(_did_you_know_narration(dyk_facts).split()) if dyk_facts else 0
+
     user_prompt += (
-        f"Target narration length: about {target_words} words "
+        f"Target narration length: about {max(20, target_words - dyk_words)} words "
         f"(~{duration_sec} seconds spoken).\n\n"
     )
+    if dyk_facts:
+        user_prompt += (
+            "A separate \"Did you know?\" scene is inserted automatically right after scene 1 -- "
+            "do not write a \"did you know\" fact or company-history trivia scene yourself.\n\n"
+        )
     style_guidance = youtube_insights.get_combined_guidance()
     if style_guidance:
         user_prompt += (
             "Below is guidance on what's currently drawing viewers — based on this "
             "channel's own data and/or the wider niche — apply it to the title and the "
-            "first scene's hook, without contradicting the facts above:\n"
+            "first scene's hook, without contradicting the facts above. The title rules "
+            "in your instructions always take priority over this guidance:\n"
             f"{style_guidance}\n\n"
         )
     user_prompt += "Produce the JSON script now."
@@ -235,6 +245,8 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 # response case. Raise ValueError here so it retries too.
                 raise ValueError("Script scenes must all be JSON objects")
             script["title"] = segmented_script.clean_title(script["title"])
+            if is_finance_theme:
+                script["title"] = segmented_script.strip_title_emoji(script["title"])
             script["description"] = segmented_script.normalize_indian_currency_units(script["description"])
             script["tags"] = segmented_script.merge_tags(extra_tags or [], script["tags"] or ["short video"])
             for scene in script["scenes"]:
@@ -247,6 +259,8 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             segmented_script.append_subscribe_cta(script["scenes"])
             for i, scene in enumerate(script["scenes"]):
                 _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
+            if dyk_facts:
+                script["scenes"].insert(1, _did_you_know_scene(dyk_facts))
             script["company_name"] = resolved_company.get("name") or _extract_freeform_company_name(script, is_finance_theme)
             if resolved_company.get("name"):
                 # The theme never named a company for the model to echo into
@@ -278,6 +292,40 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
     raise RuntimeError(
         f"Model returned an invalid script 3 times in a row ({last_error}). Try again."
     )
+
+
+def _find_did_you_know_facts(resolved_company: dict, symbol) -> list:
+    """Verified "did you know" facts for the video's company (see
+    company_insights), or [] -- best-effort, never raises. The company name
+    comes from the Screener resolution, or from a symbol-to-name lookup when
+    the theme carried an explicit "NSE: SYMBOL" marker instead."""
+    try:
+        name = resolved_company.get("name")
+        if not name and symbol:
+            match = fundamentals.search_company(symbol)
+            if (match.get("symbol") or "").upper() == symbol.upper():
+                name = match.get("name")
+        if not (name and symbol):
+            return []
+        return company_insights.did_you_know_facts(name, fundamentals.fetch_fundamentals(symbol))
+    except Exception as e:
+        print(f"[insights] did-you-know lookup failed: {type(e).__name__}: {e}")
+        return []
+
+
+def _did_you_know_narration(facts: list) -> str:
+    return segmented_script.normalize_indian_currency_units("Did you know? " + " ".join(facts))
+
+
+def _did_you_know_scene(facts: list) -> dict:
+    """A scene built directly from already-verified fact text -- no model call,
+    so nothing in it can be invented."""
+    return {
+        "narration": _did_you_know_narration(facts),
+        "visual_query": segmented_script._fallback_visual("did you know"),
+        "on_screen_text": "DID YOU KNOW?",
+        "diagram": None,
+    }
 
 
 def _extract_freeform_company_name(script: dict, is_finance_theme: bool):

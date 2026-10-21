@@ -49,11 +49,15 @@ def _company_symbol_search_no_match_by_default(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _no_company_insights_network_by_default(monkeypatch):
-    """build_theme_entry looks up a web-sourced story fact and Screener's peer
-    table; default both to "nothing found" so tests never hit the network.
-    Tests exercising the did-you-know segment override these explicitly."""
-    from pipeline import company_insights
-    monkeypatch.setattr(company_insights, "find_story_fact", lambda name: "")
+    """build_theme_entry and prompt_script's freeform path look up a sourced
+    story fact (Wikipedia/web search) and Screener's peer table via
+    company_insights.did_you_know_facts; default every entry point to "nothing
+    found" so tests never hit the network. Tests exercising the did-you-know
+    behaviour re-point these at the real functions (captured at import time in
+    their own module) or at their own fakes."""
+    from pipeline import company_insights, prompt_script
+    monkeypatch.setattr(company_insights, "did_you_know_facts", lambda name, data: [])
+    monkeypatch.setattr(prompt_script, "_find_did_you_know_facts", lambda resolved, symbol: [])
     monkeypatch.setattr(fundamentals, "fetch_peers", lambda data: [])
 
 

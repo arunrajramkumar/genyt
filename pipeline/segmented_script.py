@@ -12,7 +12,7 @@ the section the user asked for.
 import json
 import random
 import re
-
+import unicodedata
 from . import diagrams, llm, youtube_insights
 
 HEADER_RE = re.compile(
@@ -147,6 +147,14 @@ def clean_title(title: str) -> str:
     collapses any double-spacing the model leaves behind after removing them."""
     title = HASHTAG_RE.sub("", title)
     return re.sub(r"\s+", " ", title).strip()
+
+
+def strip_title_emoji(title: str) -> str:
+    """Removes emoji/pictographs from a stock-video title: the render font has
+    no glyph for them (they show as a missing-glyph box on the hook card and
+    thumbnail), and search-style titles don't use them anyway."""
+    cleaned = "".join(ch for ch in title if unicodedata.category(ch) not in ("So", "Cn", "Co", "Cs") and ch != "️")
+    return re.sub(r"\s+", " ", cleaned).strip() or title
 
 FACT_PATTERNS = [
     # "lakh crore" must be matched as a single unit before the plain
@@ -559,7 +567,8 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
         user_prompt += (
             "\n\nBelow is guidance on what's currently drawing viewers — based on this "
             "channel's own data and/or the wider niche — apply it to the title (and tags "
-            f"where relevant), without contradicting the narration above:\n{style_guidance}"
+            f"where relevant), without contradicting the narration above. The title rules "
+            f"in your instructions always take priority over this guidance:\n{style_guidance}"
         )
     user_prompt += "\n\nProduce the JSON metadata now."
 
@@ -572,7 +581,10 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
                 raise ValueError("Metadata response must be a JSON object")
             if not (data.get("title") or "").strip():
                 raise ValueError("empty title")
-            title = _truncate_title(_ensure_company_name_in_title(clean_title(data["title"]), company_name))
+            title = clean_title(data["title"])
+            if company_name:
+                title = strip_title_emoji(title)
+            title = _truncate_title(_ensure_company_name_in_title(title, company_name))
             return {
                 "title": title,
                 "description": (data.get("description") or "").strip(),

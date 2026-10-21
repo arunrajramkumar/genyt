@@ -88,27 +88,35 @@ def _yoy_growth(values: list):
 
 
 def _parse_warehouse_id(html: str):
-    m = re.search(r'data-warehouse-id="(\d+)"', html)
+    m = re.search(r'data-warehouse-id="(\d+)"', html) or re.search(r"/api/company/(\d+)/peers/", html)
     return m.group(1) if m else None
 
 
 def _parse_peers(html: str, own_symbol: str = "") -> list:
     """Parses Screener's peer-comparison table into [{name, symbol, pe,
-    market_cap_cr, roce, is_self}, ...]. Header cells are matched by name
-    (not position) so a column reorder doesn't silently misattribute values.
-    Returns [] when no recognizable table is present."""
-    headers = [_strip_tags(h).lower() for h in re.findall(r"<th[^>]*>(.*?)</th>", html, re.DOTALL)]
+    market_cap_cr, roce, is_self}, ...]. Finds the table whose header row has
+    Name plus P/E or ROCE, and matches columns by header text (not position)
+    so a column reorder doesn't silently misattribute values. Returns [] when
+    no recognizable table is present."""
+    for table in re.findall(r"<table[^>]*>.*?</table>", html, re.DOTALL):
+        headers = [_strip_tags(h).lower() for h in re.findall(r"<th[^>]*>(.*?)</th>", table, re.DOTALL)]
 
-    def col(*needles):
-        for i, h in enumerate(headers):
-            if any(n in h for n in needles):
-                return i
-        return None
+        def col(*needles):
+            for i, h in enumerate(headers):
+                if any(n in h for n in needles):
+                    return i
+            return None
 
-    name_i, pe_i, cap_i, roce_i = col("name"), col("p/e"), col("mar cap"), col("roce")
-    if name_i is None or (pe_i is None and roce_i is None):
-        return []
+        name_i, pe_i, cap_i, roce_i = col("name"), col("p/e"), col("mar cap"), col("roce")
+        if name_i is None or (pe_i is None and roce_i is None):
+            continue
+        peers = _parse_peer_rows(table, own_symbol, name_i, pe_i, cap_i, roce_i)
+        if peers:
+            return peers
+    return []
 
+
+def _parse_peer_rows(table: str, own_symbol: str, name_i, pe_i, cap_i, roce_i) -> list:
     def num(cells, i):
         if i is None or i >= len(cells):
             return None
@@ -116,7 +124,7 @@ def _parse_peers(html: str, own_symbol: str = "") -> list:
         return float(m.group(0).replace(",", "")) if m else None
 
     peers = []
-    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.DOTALL):
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.DOTALL):
         cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
         if len(cells) <= name_i:
             continue
@@ -135,15 +143,21 @@ def _parse_peers(html: str, own_symbol: str = "") -> list:
 
 def fetch_peers(data: dict) -> list:
     """Peer table for a company returned by fetch_fundamentals (best-effort:
-    [] on any failure). Screener loads this table via a separate endpoint
-    keyed by the page's warehouse id, so it costs one extra request."""
-    warehouse_id = (data or {}).get("warehouse_id")
+    [] on any failure). Uses peers already found inline on the company page,
+    else Screener's separate peers endpoint keyed by the page's warehouse id
+    (one extra request)."""
+    data = data or {}
+    if data.get("peers"):
+        return data["peers"]
+    warehouse_id = data.get("warehouse_id")
     if not warehouse_id:
         return []
     try:
         resp = requests.get(
             SCREENER_PEERS_URL.format(warehouse_id=warehouse_id),
-            headers={"User-Agent": USER_AGENT}, timeout=15,
+            headers={"User-Agent": USER_AGENT, "X-Requested-With": "XMLHttpRequest",
+                     "Referer": SCREENER_URL.format(symbol=data.get("symbol", ""))},
+            timeout=15,
         )
         resp.raise_for_status()
         return _parse_peers(resp.text, data.get("symbol", ""))
@@ -176,6 +190,9 @@ def fetch_fundamentals(symbol: str) -> dict:
     warehouse_id = _parse_warehouse_id(html)
     if warehouse_id:
         data["warehouse_id"] = warehouse_id
+    inline_peers = _parse_peers(html, symbol)
+    if inline_peers:
+        data["peers"] = inline_peers
     quarterly = _parse_quarterly(html)
     if quarterly:
         data["quarterly"] = quarterly

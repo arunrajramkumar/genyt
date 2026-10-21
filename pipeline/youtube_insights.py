@@ -299,6 +299,37 @@ def get_posting_time_guidance(max_videos: int = 20) -> str:
     )
 
 
+_BANNED_GUIDANCE_RE = re.compile(
+    r"emoji|long[- ]term wealth|wealth (?:play|builder)|growth (?:play|outlook)|deep dive|"
+    r"[\U0001F300-\U0001FAFF☀-➿]",
+    re.IGNORECASE,
+)
+
+
+def filter_title_guidance(text: str) -> str:
+    """Drops guidance bullets that contradict the title rules (emoji, filler
+    like "Long-Term Wealth") -- the model-written guidance kept recommending
+    exactly those, and a published title ended up with an emoji that the render
+    font draws as a missing-glyph box. Section headers (lines ending in ":")
+    are kept only if at least one bullet under them survives."""
+    kept, header = [], None
+    for line in text.splitlines():
+        if not line.strip():
+            if header is None:
+                kept.append(line)
+            continue
+        if line.rstrip().endswith(":") and not line.lstrip().startswith(("-", "*", "•")):
+            header = line
+            continue
+        if _BANNED_GUIDANCE_RE.search(line):
+            continue
+        if header is not None:
+            kept.append(header)
+            header = None
+        kept.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
 def get_combined_guidance() -> str:
     """Merges this channel's own performance guidance with broader
     finance/stock-analysis niche trend guidance (see market_trends.py) into
@@ -311,7 +342,7 @@ def get_combined_guidance() -> str:
     niche = market_trends.get_market_trend_guidance()
     if niche:
         sections.append(f"Broader finance/stock-analysis/wealth niche trends right now:\n{niche}")
-    combined = "\n\n".join(sections)
+    combined = filter_title_guidance("\n\n".join(sections))
     if not combined:
         print("[youtube_insights] no channel or niche guidance available -- this video's title/hook prompt gets none")
     else:

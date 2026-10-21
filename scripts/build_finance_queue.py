@@ -150,7 +150,11 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
     cursor += risk_dur
 
     lines.append(f"{cursor}-{cursor + recap_dur} seconds - Recap")
-    lines.append(f"Briefly restate the key numbers and the open question about {company_name} so viewers remember them.")
+    lines.append(
+        f"Briefly restate the key numbers and the open question about {company_name} so viewers remember them, "
+        "then end with one short yes-or-no question inviting viewers to answer in the comments "
+        "(a question only, never a recommendation)."
+    )
     cursor += recap_dur
 
     theme = "\n".join(lines)

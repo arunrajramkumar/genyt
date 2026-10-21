@@ -214,6 +214,12 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             "A separate \"Did you know?\" scene is inserted automatically right after scene 1 -- "
             "do not write a \"did you know\" fact or company-history trivia scene yourself.\n\n"
         )
+    if is_finance_theme:
+        user_prompt += (
+            "In the last content scene (just before any subscribe ask), end with one short yes-or-no "
+            "question inviting viewers to answer in the comments (e.g. whether the valuation already "
+            "prices in the growth) -- a question only, never a recommendation.\n\n"
+        )
     style_guidance = youtube_insights.get_combined_guidance()
     if style_guidance:
         user_prompt += (

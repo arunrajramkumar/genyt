@@ -218,11 +218,110 @@ def peer_comparison_fact(peers: list) -> str:
     return f"Its {name} of {value} is {comparison} than {beaten} of its {total} listed peers."
 
 
+MAX_FACTS = 2  # all that fits the 7-10 second "Did You Know" beat
+DAYS_PER_QUARTER = 91
+
+
+def _num(text):
+    m = _NUMBER_RE.search(str(text or ""))
+    try:
+        return float(m.group(0).rstrip(".,").replace(",", "")) if m else None
+    except ValueError:
+        return None
+
+
+def _latest(values, offset=1):
+    """float(values[-offset]) or None."""
+    try:
+        return float(str(values[-offset]).replace(",", ""))
+    except (IndexError, ValueError, TypeError):
+        return None
+
+
+def _crore(x: float) -> str:
+    return f"{x:,.0f}" if x >= 100 else f"{x:g}"
+
+
+def payback_fact(data: dict) -> str:
+    """For a rich valuation: how many years of today's profit the price equals
+    (that is just the P/E, restated)."""
+    pe = _num(((data or {}).get("ratios") or {}).get("Stock P/E"))
+    if pe is None or pe < 40 or pe > 2000:
+        return ""
+    years = round(pe)
+    return (f"At its P/E ratio of {years}, it would take about {years} years of its current profit "
+            "to repay today's share price, if profit stayed flat.")
+
+
+def profit_per_day_fact(data: dict) -> str:
+    profit = _latest(((data or {}).get("quarterly") or {}).get("net_profit_cr", []))
+    if not profit or profit <= 0:
+        return ""
+    per_day = profit / DAYS_PER_QUARTER
+    if per_day >= 1:
+        amount = f"Rs {per_day:.1f} crore" if per_day < 10 else f"Rs {per_day:.0f} crore"
+    elif per_day >= 0.1:
+        amount = f"Rs {per_day * 100:.0f} lakh"
+    else:
+        return ""
+    return (f"Its latest quarterly net profit of Rs {_crore(profit)} crore works out to roughly "
+            f"{amount} of profit every single day.")
+
+
+def margin_fact(data: dict) -> str:
+    q = (data or {}).get("quarterly") or {}
+    sales, profit = q.get("sales_cr", []), q.get("net_profit_cr", [])
+    s_now, p_now, s_ago, p_ago = _latest(sales), _latest(profit), _latest(sales, 5), _latest(profit, 5)
+    if None in (s_now, p_now, s_ago, p_ago) or s_now <= 0 or s_ago <= 0:
+        return ""
+    now, ago = p_now / s_now * 100, p_ago / s_ago * 100
+    if round(now) == round(ago) or abs(now - ago) < 1 or now <= 0 or ago <= 0:
+        return ""
+    return (f"Out of every Rs 100 it sold in the latest quarter, Rs {round(now)} became profit, "
+            f"{'up' if now > ago else 'down'} from Rs {round(ago)} a year earlier.")
+
+
+def _high_low_fact(data: dict) -> str:
+    ratios = (data or {}).get("ratios") or {}
+    price = _num(ratios.get("Current Price"))
+    parts = _NUMBER_RE.findall(str(ratios.get("High / Low") or ""))
+    if price is None or len(parts) != 2:
+        return ""
+    high, low = (float(p.rstrip(".,").replace(",", "")) for p in parts)
+    if not (0 < low <= price <= high):
+        return ""
+    below_high = (high - price) / high * 100
+    above_low = (price - low) / low * 100
+    if below_high <= 3:
+        return f"The stock is trading within 3% of its 52-week high of Rs {_crore(high)}."
+    if below_high >= 10:
+        return f"The stock is trading about {round(below_high)}% below its 52-week high of Rs {_crore(high)}."
+    if above_low >= 50:
+        return f"The stock is up about {round(above_low)}% from its 52-week low of Rs {_crore(low)}."
+    return ""
+
+
+def computed_facts(data: dict) -> list:
+    """Facts derived by plain arithmetic from the already-scraped fundamentals
+    (so they can't be hallucinated), most striking first. Never raises."""
+    facts = []
+    for fn in (payback_fact, profit_per_day_fact, margin_fact, _high_low_fact):
+        try:
+            fact = fn(data)
+        except Exception as e:
+            print(f"[insights] {fn.__name__} failed: {type(e).__name__}: {e}")
+            continue
+        if fact:
+            facts.append(fact)
+    return facts
+
+
 def did_you_know_facts(company_name: str, data: dict) -> list:
-    """The verified "did you know" facts available for this company right now:
-    a sourced story and/or a peer comparison (either may be missing). `data` is
-    the dict from fundamentals.fetch_fundamentals (carries what's needed to
-    fetch the peer table). Never raises."""
+    """The verified "did you know" facts available for this company right now
+    (at most MAX_FACTS): a sourced story, a peer comparison, then facts computed
+    from the company's own numbers -- any may be missing. `data` is the dict
+    from fetch_fundamentals (also carries what's needed to fetch the peer
+    table). Never raises."""
     story = find_story_fact(company_name)
     try:
         peer = peer_comparison_fact(fundamentals.fetch_peers(data))
@@ -230,4 +329,6 @@ def did_you_know_facts(company_name: str, data: dict) -> list:
         print(f"[insights] peer comparison failed for {company_name}: {type(e).__name__}: {e}")
         peer = ""
     print(f"[insights] peer comparison for {company_name}: {peer or 'unavailable'}")
-    return [f for f in (story, peer) if f]
+    facts = [f for f in (story, peer) if f] + computed_facts(data)
+    print(f"[insights] {len(facts)} did-you-know candidate(s) for {company_name}; using {min(len(facts), MAX_FACTS)}")
+    return facts[:MAX_FACTS]

@@ -202,8 +202,9 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 "only generically (e.g. \"this stock\"), and never speak the ticker aloud.\n\n"
             )
 
-    dyk_facts = _find_did_you_know_facts(resolved_company, symbol) if is_finance_theme else []
-    dyk_words = len(_did_you_know_narration(dyk_facts).split()) if dyk_facts else 0
+    dyk_beat = _find_did_you_know(resolved_company, symbol) if is_finance_theme else {"facts": [], "narration": ""}
+    dyk_facts = dyk_beat["facts"]
+    dyk_words = len(_did_you_know_narration(dyk_beat).split()) if dyk_facts else 0
 
     user_prompt += (
         f"Target narration length: about {max(20, target_words - dyk_words)} words "
@@ -266,7 +267,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             for i, scene in enumerate(script["scenes"]):
                 _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
             if dyk_facts:
-                script["scenes"].insert(1, _did_you_know_scene(dyk_facts))
+                script["scenes"].insert(1, _did_you_know_scene(dyk_beat))
             script["company_name"] = resolved_company.get("name") or _extract_freeform_company_name(script, is_finance_theme)
             if resolved_company.get("name"):
                 # The theme never named a company for the model to echo into
@@ -300,11 +301,13 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
     )
 
 
-def _find_did_you_know_facts(resolved_company: dict, symbol) -> list:
-    """Verified "did you know" facts for the video's company (see
-    company_insights), or [] -- best-effort, never raises. The company name
-    comes from the Screener resolution, or from a symbol-to-name lookup when
-    the theme carried an explicit "NSE: SYMBOL" marker instead."""
+def _find_did_you_know(resolved_company: dict, symbol) -> dict:
+    """The "did you know" beat for the video's company (see
+    company_insights.did_you_know_beat): {"facts": [...], "narration": "..."},
+    facts empty when nothing verified -- best-effort, never raises. The company
+    name comes from the Screener resolution, or from a symbol-to-name lookup
+    when the theme carried an explicit "NSE: SYMBOL" marker instead."""
+    empty = {"facts": [], "narration": ""}
     try:
         name = resolved_company.get("name")
         if not name and symbol:
@@ -312,22 +315,25 @@ def _find_did_you_know_facts(resolved_company: dict, symbol) -> list:
             if (match.get("symbol") or "").upper() == symbol.upper():
                 name = match.get("name")
         if not (name and symbol):
-            return []
-        return company_insights.did_you_know_facts(name, fundamentals.fetch_fundamentals(symbol))
+            return empty
+        return company_insights.did_you_know_beat(name, fundamentals.fetch_fundamentals(symbol))
     except Exception as e:
         print(f"[insights] did-you-know lookup failed: {type(e).__name__}: {e}")
-        return []
+        return empty
 
 
-def _did_you_know_narration(facts: list) -> str:
-    return segmented_script.normalize_indian_currency_units("Did you know? " + " ".join(facts))
+def _did_you_know_narration(beat: dict) -> str:
+    """The LLM-polished (and validated) narration when there is one, else the
+    raw verified facts joined."""
+    text = beat.get("narration") or " ".join(beat.get("facts") or [])
+    return segmented_script.normalize_indian_currency_units("Did you know? " + text)
 
 
-def _did_you_know_scene(facts: list) -> dict:
-    """A scene built directly from already-verified fact text -- no model call,
-    so nothing in it can be invented."""
+def _did_you_know_scene(beat: dict) -> dict:
+    """A scene built only from already-verified fact text (or its validated
+    rewording) -- no unchecked model output reaches it."""
     return {
-        "narration": _did_you_know_narration(facts),
+        "narration": _did_you_know_narration(beat),
         "visual_query": segmented_script._fallback_visual("did you know"),
         "on_screen_text": "DID YOU KNOW?",
         "diagram": None,

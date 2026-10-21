@@ -66,7 +66,8 @@ def _no_company_insights_network_by_default(monkeypatch):
     their own module) or at their own fakes."""
     from pipeline import company_insights, prompt_script
     monkeypatch.setattr(company_insights, "did_you_know_facts", lambda name, data: [])
-    monkeypatch.setattr(prompt_script, "_find_did_you_know_facts", lambda resolved, symbol: [])
+    monkeypatch.setattr(prompt_script, "_find_did_you_know", lambda resolved, symbol: {"facts": [], "narration": ""})
+    monkeypatch.setattr(company_insights, "articulate_facts", lambda name, facts: "")
     monkeypatch.setattr(fundamentals, "fetch_peers", lambda data: [])
 
 

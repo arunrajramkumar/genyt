@@ -96,18 +96,18 @@ def test_computed_facts_order_and_resilience(monkeypatch):
     assert len(ci.computed_facts(SOLAR)) == 3  # one failing fact doesn't drop the rest
 
 
-def test_did_you_know_facts_caps_at_two_with_story_and_peer_first(monkeypatch):
+def test_did_you_know_facts_lists_all_candidates_story_first(monkeypatch):
     monkeypatch.setattr(ci, "find_story_fact", lambda n: "A story.")
     monkeypatch.setattr(ci.fundamentals, "fetch_peers", lambda d: [])
     assert REAL_DID_YOU_KNOW_FACTS("Solar Industries India Ltd", SOLAR)[0] == "A story."
-    assert len(REAL_DID_YOU_KNOW_FACTS("Solar Industries India Ltd", SOLAR)) == 2
+    assert len(REAL_DID_YOU_KNOW_FACTS("Solar Industries India Ltd", SOLAR)) == 5
 
 
 def test_did_you_know_facts_falls_back_to_computed_when_story_and_peers_missing(monkeypatch):
     monkeypatch.setattr(ci, "find_story_fact", lambda n: "")
     monkeypatch.setattr(ci.fundamentals, "fetch_peers", lambda d: [])
     facts = REAL_DID_YOU_KNOW_FACTS("Solar Industries India Ltd", SOLAR)
-    assert len(facts) == 2 and "P/E ratio of 103" in facts[0] and "every single day" in facts[1]
+    assert len(facts) == 4 and "P/E ratio of 103" in facts[0] and "every single day" in facts[1]
 
 
 def test_recap_asks_a_comment_question(monkeypatch):

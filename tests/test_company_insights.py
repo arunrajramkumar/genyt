@@ -13,7 +13,9 @@ from scripts.build_finance_queue import build_theme_entry
 # at import time so did-you-know tests can re-point them.
 REAL_FETCH_PEERS = fundamentals.fetch_peers
 REAL_DID_YOU_KNOW_FACTS = ci.did_you_know_facts
-REAL_FIND_DYK = prompt_script._find_did_you_know_facts
+REAL_FIND_DYK = prompt_script._find_did_you_know
+REAL_ARTICULATE = ci.articulate_facts
+REAL_BEAT = ci.did_you_know_beat
 
 SNIPPETS = "Pidilite Industries was founded in 1959 and its first product was Fevicol, a white adhesive for carpenters."
 QUOTE = "its first product was Fevicol, a white adhesive for carpenters"
@@ -371,7 +373,7 @@ def test_build_theme_entry_without_facts_is_unchanged(monkeypatch):
 # ---- freeform path helpers ----
 
 def test_did_you_know_scene_is_built_from_facts_only():
-    scene = prompt_script._did_you_know_scene(["A story.", "A peer fact."])
+    scene = prompt_script._did_you_know_scene({"facts": ["A story.", "A peer fact."], "narration": ""})
     assert scene["narration"].startswith("Did you know?")
     assert "A story." in scene["narration"] and "A peer fact." in scene["narration"]
     assert scene["on_screen_text"] == "DID YOU KNOW?"
@@ -386,7 +388,7 @@ def test_find_dyk_uses_resolved_company_name(monkeypatch):
         seen["args"] = (name, data)
         return ["F"]
     monkeypatch.setattr(prompt_script.company_insights, "did_you_know_facts", facts)
-    assert REAL_FIND_DYK({"name": "Steelcast Ltd"}, "STEELCAST") == ["F"]
+    assert REAL_FIND_DYK({"name": "Steelcast Ltd"}, "STEELCAST")["facts"] == ["F"]
     assert seen["args"] == ("Steelcast Ltd", {"symbol": "STEELCAST"})
 
 
@@ -395,24 +397,24 @@ def test_find_dyk_resolves_name_from_symbol(monkeypatch):
                         lambda s: {"symbol": "CDSL", "name": "Central Depository Services (India) Ltd"})
     monkeypatch.setattr(prompt_script.fundamentals, "fetch_fundamentals", lambda s: {"symbol": s})
     monkeypatch.setattr(prompt_script.company_insights, "did_you_know_facts", lambda n, d: [n])
-    assert REAL_FIND_DYK({}, "CDSL") == ["Central Depository Services (India) Ltd"]
+    assert REAL_FIND_DYK({}, "CDSL")["facts"] == ["Central Depository Services (India) Ltd"]
 
 
 def test_find_dyk_rejects_mismatched_symbol_lookup(monkeypatch):
     monkeypatch.setattr(prompt_script.fundamentals, "search_company", lambda s: {"symbol": "OTHER", "name": "Other Ltd"})
-    assert REAL_FIND_DYK({}, "CDSL") == []
+    assert REAL_FIND_DYK({}, "CDSL")["facts"] == []
 
 
 def test_find_dyk_without_symbol_or_name_is_empty():
-    assert REAL_FIND_DYK({}, None) == []
-    assert REAL_FIND_DYK({"name": "X Ltd"}, "") == []
+    assert REAL_FIND_DYK({}, None)["facts"] == []
+    assert REAL_FIND_DYK({"name": "X Ltd"}, "")["facts"] == []
 
 
 def test_find_dyk_swallows_errors(monkeypatch):
     def boom(s):
         raise RuntimeError("down")
     monkeypatch.setattr(prompt_script.fundamentals, "fetch_fundamentals", boom)
-    assert REAL_FIND_DYK({"name": "X Ltd"}, "X") == []
+    assert REAL_FIND_DYK({"name": "X Ltd"}, "X")["facts"] == []
 
 
 # ---- title / guidance hygiene ----
@@ -427,3 +429,69 @@ def test_filter_title_guidance_drops_emoji_and_wealth_advice():
     out = filter_title_guidance(text)
     assert "emoji" not in out.lower() and "wealth" not in out.lower()
     assert "exact number" in out
+
+
+# ---- LLM articulation of the facts ----
+
+FACTS = ["Its P/E of 103 means 103 years of profit.", "Its latest quarterly profit of Rs 666 crore is Rs 7.3 crore a day."]
+
+
+def _narr(monkeypatch, narration):
+    monkeypatch.setattr(ci.llm, "chat_json", lambda *a, **k: json.dumps({"narration": narration}))
+
+
+def test_articulate_accepts_grounded_rewrite(monkeypatch):
+    text = "Solar Industries earns about Rs 7.3 crore every single day, yet its P/E of 103 asks you to wait 103 years."
+    _narr(monkeypatch, text)
+    assert REAL_ARTICULATE("Solar Industries India Ltd", FACTS) == text
+
+
+@pytest.mark.parametrize("bad", [
+    "Solar Industries earns Rs 8 crore every single day, which is a lot to think about today.",
+    "Solar Industries doubled its profit to Rs 666 crore, which is a lot to think about today.",
+    "Solar Industries is a stock you should buy at a P/E of 103 given Rs 666 crore profit.",
+    "Solar Industries makes Rs 666 crore, and Reliance makes more than that every quarter easily.",
+    "Rs 666 crore.",
+    "Did you know Solar Industries made Rs 666 crore in profit during the latest quarter here?",
+])
+def test_articulate_rejects_ungrounded_rewrites(monkeypatch, bad):
+    _narr(monkeypatch, bad)
+    assert REAL_ARTICULATE("Solar Industries India Ltd", FACTS) == ""
+
+
+def test_articulate_survives_llm_errors_and_garbage(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr(ci.llm, "chat_json", boom)
+    assert REAL_ARTICULATE("X Ltd", FACTS) == ""
+    monkeypatch.setattr(ci.llm, "chat_json", lambda *a, **k: "not json")
+    assert REAL_ARTICULATE("X Ltd", FACTS) == ""
+    assert REAL_ARTICULATE("X Ltd", []) == ""
+
+
+def test_beat_uses_all_candidates_but_caps_raw_facts(monkeypatch):
+    seen = {}
+
+    def articulate(n, f):
+        seen["f"] = f
+        return "hooky line"
+    monkeypatch.setattr(ci, "did_you_know_facts", lambda n, d: ["a", "b", "c"])
+    monkeypatch.setattr(ci, "articulate_facts", articulate)
+    beat = REAL_BEAT("X Ltd", {})
+    assert seen["f"] == ["a", "b", "c"] and beat == {"facts": ["a", "b"], "narration": "hooky line"}
+    monkeypatch.setattr(ci, "did_you_know_facts", lambda n, d: [])
+    assert REAL_BEAT("X Ltd", {}) == {"facts": [], "narration": ""}
+
+
+def test_scene_prefers_validated_narration():
+    scene = prompt_script._did_you_know_scene({"facts": ["Raw."], "narration": "Polished hook line."})
+    assert scene["narration"] == "Did you know? Polished hook line."
+
+
+def test_build_theme_entry_speaks_articulated_narration_verbatim(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda s: _DATA)
+    monkeypatch.setattr("scripts.build_finance_queue.company_insights.did_you_know_beat",
+                        lambda n, d: {"facts": ["F1."], "narration": "A hooky grounded line."})
+    dyk = parse_segments(build_theme_entry("CDSL", "CDSL", 55)["theme"])[1]
+    assert dyk["label"] == "Did You Know" and dyk["duration"] == 7
+    assert segmented_script._extract_verbatim(dyk["content"]) == "Did you know? A hooky grounded line."

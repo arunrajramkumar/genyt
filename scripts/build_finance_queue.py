@@ -88,8 +88,14 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
         growth_lines.append(f"Latest quarterly net profit: Rs {quarterly['net_profit_cr'][-1]} crore")
     growth_text = "\n".join(growth_lines) or "No recent quarterly trend data is available."
 
-    did_you_know = company_insights.did_you_know_facts(company_name, data)
-    dyk_dur = 0 if not did_you_know else 7 if len(did_you_know) == 1 else 10
+    beat = company_insights.did_you_know_beat(company_name, data)
+    did_you_know, dyk_narration = beat["facts"], beat["narration"]
+    if not did_you_know:
+        dyk_dur = 0
+    elif dyk_narration:
+        dyk_dur = 7 if len(dyk_narration.split()) <= 18 else 10
+    else:
+        dyk_dur = 7 if len(did_you_know) == 1 else 10
     body_sec = duration_sec - dyk_dur
     min_seg = 15 if not dyk_dur else 12
 
@@ -113,13 +119,16 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
     cursor += hook_dur
 
     if did_you_know:
-        facts = "\n".join(f"- {f}" for f in did_you_know)
         lines.append(f"{cursor}-{cursor + dyk_dur} seconds - Did You Know")
-        lines.append(
-            f"State this as one surprising, specific 'did you know' fact about {company_name} in 1-2 "
-            "punchy sentences, using ONLY the fact(s) below and no new numbers or claims. Never state it "
-            f"as a recommendation. Facts:\n{facts}"
-        )
+        if dyk_narration:
+            lines.append(f'"Did you know? {dyk_narration}"')
+        else:
+            facts = "\n".join(f"- {f}" for f in did_you_know)
+            lines.append(
+                f"State this as one surprising, specific 'did you know' fact about {company_name} in 1-2 "
+                "punchy sentences, using ONLY the fact(s) below and no new numbers or claims. Never state it "
+                f"as a recommendation. Facts:\n{facts}"
+            )
         lines.append("")
         cursor += dyk_dur
 

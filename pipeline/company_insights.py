@@ -316,12 +316,108 @@ def computed_facts(data: dict) -> list:
     return facts
 
 
+MIN_NARRATION_WORDS = 8
+MAX_NARRATION_WORDS = 32
+
+SYSTEM_PROMPT_ARTICULATE = """You write the "Did you know?" beat of a short Indian stock-market video.
+You get a numbered list of VERIFIED facts about one company. Choose the one or two that
+will most surprise and hook a retail viewer FOR THIS COMPANY (the angle that is most
+specific to it), and write them as 1-2 punchy spoken sentences in a conversational,
+curiosity-sparking voice: lead with the surprise, use contrast or a "so what", and make
+the viewer want to keep watching.
+
+Output ONLY valid JSON (no markdown fences, no commentary):
+
+{"narration": "the spoken text"}
+
+Hard rules:
+- Between 8 and 32 words in total. Do not start with "Did you know" (the scene is already labelled).
+- Use ONLY information in the numbered facts. Copy every number EXACTLY as written (never
+  round, convert, or compute a new one) and never add a number, name, date, event or claim
+  that is not in the facts. No words like doubled, tripled or half unless a fact says so.
+- Name the company once, by its plain name.
+- Never recommend, predict or advise: no buy/sell, "should", "will rise", "undervalued", "best".
+- A closing question is fine only if it is neutral and about the facts (e.g. whether the
+  valuation already reflects this).
+- If a fact is only a dry restatement, prefer one that is more surprising.
+"""
+
+_EXTRA_ADVICE_RE = re.compile(
+    r"\b(should|guarantee\w*|certain to|going to (?:rise|fall|soar|crash)|will (?:rise|fall|grow|soar|crash|double)|best|top pick)\b",
+    re.IGNORECASE,
+)
+_CHANGE_WORDS_RE = re.compile(r"\b(doubled?|tripled?|triple|twice|half|quadrupled?|tenfold|fold)\b")
+_ALLOWED_CAPS = {"rs", "india", "indian", "nse", "bse", "crore", "lakh"}
+
+
+def _validate_narration(narration: str, facts: list, company_name: str) -> str:
+    """The cleaned narration if it stays inside the verified facts, else "".
+    Numbers, number/change words and mid-sentence proper nouns must all come
+    from the facts (or the company name), and there must be no advice."""
+    text = re.sub(r"\s+", " ", str(narration or "").replace('"', "'").replace("“", "'").replace("”", "'")).strip()
+    words = text.split()
+    if not (MIN_NARRATION_WORDS <= len(words) <= MAX_NARRATION_WORDS):
+        return ""
+    if re.match(r"(?i)did you know", text) or _ADVICE_RE.search(text) or _EXTRA_ADVICE_RE.search(text):
+        return ""
+    source = " ".join(facts)
+    if not _numbers(text) <= _numbers(source):
+        return ""
+    low_text, low_source = text.lower(), _norm(source)
+    for pattern in (_NUMBER_WORDS_RE, _CHANGE_WORDS_RE):
+        if not set(pattern.findall(low_text)) <= set(pattern.findall(low_source)):
+            return ""
+    known = set(re.findall(r"[a-z0-9&]+", low_source)) | set(re.findall(r"[a-z0-9&]+", company_name.lower())) | _ALLOWED_CAPS
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        for word in sentence.split()[1:]:
+            token = word.strip(".,;:!?()'-")
+            if re.fullmatch(r"[A-Z][a-z]+", token) and token.lower() not in known:
+                return ""
+    return text
+
+
+def articulate_facts(company_name: str, facts: list) -> str:
+    """LLM-written hook-style narration built only from the verified `facts`, or
+    "" if it can't be produced or fails validation -- callers then use the raw
+    facts. Never raises."""
+    if not facts:
+        return ""
+    numbered = "\n".join(f"{i}. {f}" for i, f in enumerate(facts, 1))
+    user_prompt = f"Company: {company_name}\n\nVerified facts:\n{numbered}\n\nWrite the JSON now."
+    for _attempt in range(2):
+        try:
+            raw = llm.chat_json(SYSTEM_PROMPT_ARTICULATE, user_prompt, max_tokens=300, timeout=60)
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            data = json.loads(match.group(0)) if match else None
+            if not isinstance(data, dict):
+                continue
+            narration = _validate_narration(data.get("narration"), facts, company_name)
+            if narration:
+                print(f"[insights] articulated did-you-know for {company_name}: {narration}")
+                return narration
+        except Exception as e:
+            print(f"[insights] articulation attempt failed for {company_name}: {type(e).__name__}: {e}")
+    print(f"[insights] articulation rejected/unavailable for {company_name}; using raw facts")
+    return ""
+
+
+def did_you_know_beat(company_name: str, data: dict) -> dict:
+    """{"facts": [raw verified facts, at most MAX_FACTS], "narration": LLM-polished
+    hook text built from ALL verified candidates ("" when unavailable)}. An empty
+    "facts" list means there is no beat. Never raises."""
+    facts = did_you_know_facts(company_name, data)
+    if not facts:
+        return {"facts": [], "narration": ""}
+    narration = articulate_facts(company_name, facts)
+    return {"facts": facts[:MAX_FACTS], "narration": narration}
+
+
 def did_you_know_facts(company_name: str, data: dict) -> list:
-    """The verified "did you know" facts available for this company right now
-    (at most MAX_FACTS): a sourced story, a peer comparison, then facts computed
-    from the company's own numbers -- any may be missing. `data` is the dict
-    from fetch_fundamentals (also carries what's needed to fetch the peer
-    table). Never raises."""
+    """Every verified "did you know" candidate available for this company right
+    now: a sourced story, a peer comparison, then facts computed from the
+    company's own numbers -- any may be missing. `data` is the dict from
+    fetch_fundamentals (also carries what's needed to fetch the peer table).
+    Never raises."""
     story = find_story_fact(company_name)
     try:
         peer = peer_comparison_fact(fundamentals.fetch_peers(data))
@@ -330,5 +426,5 @@ def did_you_know_facts(company_name: str, data: dict) -> list:
         peer = ""
     print(f"[insights] peer comparison for {company_name}: {peer or 'unavailable'}")
     facts = [f for f in (story, peer) if f] + computed_facts(data)
-    print(f"[insights] {len(facts)} did-you-know candidate(s) for {company_name}; using {min(len(facts), MAX_FACTS)}")
-    return facts[:MAX_FACTS]
+    print(f"[insights] {len(facts)} did-you-know candidate(s) for {company_name}")
+    return facts

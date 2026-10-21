@@ -223,3 +223,18 @@ def test_render_hook_card_badge_does_not_overlap_title_bar(tmp_path):
     # title bar's top edge has crept up into the badge's row.
     pixel = img.getpixel((width - 10, badge_y0 + 5))
     assert pixel != (255, 255, 255), "title bar overlaps the badge's vertical band"
+
+
+def test_sanitize_display_text_drops_emoji_and_collapses_spaces():
+    assert textcard.sanitize_display_text("Wealth \U0001F4C8 builder ⚠️") == "Wealth builder"
+    assert textcard.sanitize_display_text("Rs ₹39") == "Rs ₹39"
+
+
+def test_calm_hook_card_title_lines_fit_inside_the_frame(tmp_path):
+    from PIL import ImageDraw, Image
+    draw = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    title = "32.3% ROCE: Steelcast Ltd - Long-Term Wealth Builder?".upper()
+    font, lines = textcard._fit_title(draw, title, 83, 45, 900, max_lines=3)
+    assert all(draw.textbbox((0, 0), ln, font=font)[2] <= 900 for ln in lines)
+    out = textcard.render_hook_card(title, "0.5% | Rs 39", 1080, 1920, tmp_path / "c.png", style="calm")
+    assert out.exists()

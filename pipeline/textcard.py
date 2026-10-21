@@ -3,6 +3,7 @@ using Pillow, since this ffmpeg build has no libass/freetype for drawtext.
 """
 import re
 import textwrap
+import unicodedata
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, features
@@ -109,10 +110,14 @@ def sanitize_display_text(text: str) -> str:
     they have no visual meaning to begin with."""
     out = []
     for ch in text:
-        if ch in _ZERO_WIDTH_CHARS:
+        if ch in _ZERO_WIDTH_CHARS or ch == "️":
+            continue
+        # Emoji/pictographs (category So) and unassigned/private-use codepoints
+        # aren't in the render fonts either and draw as a tofu box.
+        if unicodedata.category(ch) in ("So", "Cn", "Co", "Cs"):
             continue
         out.append(" " if (ch != " " and ch.isspace()) else ch)
-    return "".join(out)
+    return re.sub(r" {2,}", " ", "".join(out)).strip()
 
 
 def _load_font(size: int, text: str = "") -> ImageFont.FreeTypeFont:
@@ -181,8 +186,32 @@ def render_text_card(text: str, width: int, height: int, out_path: Path) -> Path
 
 
 def _wrapped_lines(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
-    max_chars = max(5, int(len(text) * max_width / max(1, draw.textbbox((0, 0), text, font=font)[2])))
-    return textwrap.wrap(text, width=max_chars) or [text]
+    """Greedy word wrap measured in real pixels, so no line exceeds max_width
+    (unless a single word alone is wider)."""
+    lines, current = [], ""
+    for word in text.split():
+        candidate = f"{current} {word}".strip()
+        if current and draw.textbbox((0, 0), candidate, font=font)[2] > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
+def _fit_title(draw, title: str, start_size: int, min_size: int, max_width: int, max_lines: int):
+    """Largest font (shrinking from start_size) whose wrapped title fits
+    max_width on every line within max_lines. Returns (font, lines)."""
+    size = start_size
+    while True:
+        font = _load_font(size, title)
+        lines = _wrapped_lines(draw, title, font, max_width)
+        fits = all(draw.textbbox((0, 0), ln, font=font)[2] <= max_width for ln in lines)
+        if (fits and len(lines) <= max_lines) or size <= min_size:
+            return font, lines
+        size = max(min_size, size - 4)
 
 
 def _draw_centered_lines(draw, lines, font, fill, top_y, width, line_gap) -> int:
@@ -319,20 +348,23 @@ def _render_hook_card_calm(
     img = Image.alpha_composite(img, tint)
     draw = ImageDraw.Draw(img)
 
-    title_font = _load_font(max(40, width // 11), title)
-    title_lines = _wrapped_lines(draw, title.upper(), title_font, int(width * 0.86))
+    pad_x, pad_y = int(width * 0.04), int(width * 0.02)
+    title_font, title_lines = _fit_title(
+        draw, title.upper(), max(40, width // 13), max(28, width // 24),
+        int(width * 0.92) - pad_x * 2, max_lines=3,
+    )
+    line_h = draw.textbbox((0, 0), "HgÅ", font=title_font)[3]
     y = int(height * 0.08)
     for line in title_lines:
         bbox = draw.textbbox((0, 0), line, font=title_font)
-        text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        pad_x, pad_y = int(width * 0.05), int(width * 0.025)
+        text_w = bbox[2] - bbox[0]
         bar_x0 = (width - (text_w + pad_x * 2)) // 2
-        bar_h = text_h + pad_y * 2
+        bar_h = line_h + pad_y * 2
         draw.rounded_rectangle(
             [bar_x0, y, bar_x0 + text_w + pad_x * 2, y + bar_h],
             radius=16, fill=_CALM_PANEL_COLOR, outline=_CALM_ACCENT_COLOR, width=4,
         )
-        draw.text(((width - text_w) // 2, y + pad_y), line, font=title_font, fill=_CALM_ACCENT_COLOR)
+        draw.text(((width - text_w) // 2 - bbox[0], y + pad_y), line, font=title_font, fill=_CALM_ACCENT_COLOR)
         y += bar_h + 14
 
     if badge_text:

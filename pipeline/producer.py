@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import ai_thumbnail, config, diagrams, performance_log, tts, visuals, assemble, captions, textcard, youtube_upload
+from . import ai_thumbnail, config, diagrams, performance_log, tts, visuals, assemble, captions, textcard, youtube_upload, segmented_script
 
 
 def slugify(title: str) -> str:
@@ -109,6 +109,35 @@ def _pick_hook_style(title: str) -> str:
     if any(keyword in title_lower for keyword in _CALM_HOOK_STYLE_KEYWORDS):
         return "calm"
     return "alert"
+
+
+# Words that would make the engagement question read as investment advice.
+# Whole-word, case-insensitive; a question containing any of them is not posted.
+_ENGAGEMENT_ADVICE_RE = re.compile(
+    r"\b(buy|sell|target price|recommend\w*|undervalued|overvalued|multibagger|stock tips?)\b",
+    re.IGNORECASE,
+)
+_ENGAGEMENT_QUESTION_MAX_CHARS = 200
+_ENGAGEMENT_SCENE_WINDOW = 2  # only the last couple of content scenes are searched
+
+
+def _extract_engagement_question(scenes: list) -> str:
+    """Returns the closing yes-or-no question the script asks viewers, to post
+    as a comment. Searches backwards through the final content scenes for the
+    last sentence ending in "?". The subscribe CTA is appended onto the final
+    scene's narration (segmented_script.append_subscribe_cta), so it is stripped
+    before searching. Returns "" if there is no question, or if the question
+    fails the advice/length guards."""
+    for scene in reversed(scenes[-_ENGAGEMENT_SCENE_WINDOW:]):
+        narration = (scene.get("narration") or "").replace(segmented_script.SUBSCRIBE_CTA_NARRATION, "")
+        questions = [s.strip() for s in re.split(r"(?<=[.!?])\s+", narration) if s.strip().endswith("?")]
+        if not questions:
+            continue
+        question = questions[-1]
+        if _ENGAGEMENT_ADVICE_RE.search(question) or len(question) > _ENGAGEMENT_QUESTION_MAX_CHARS:
+            return ""
+        return question
+    return ""
 
 
 def _pick_hook_background(visual_paths: list, work_dir, on_progress=print):
@@ -287,6 +316,16 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
                     youtube_upload.add_to_playlist(upload["video_id"], config.YOUTUBE_PLAYLIST_ID)
                 except Exception as e:
                     on_progress(f"Playlist add failed (video still published): {e}")
+            if config.YOUTUBE_ENGAGEMENT_COMMENT:
+                question = _extract_engagement_question(script["scenes"])
+                if question:
+                    try:
+                        youtube_upload.post_engagement_comment(
+                            upload["video_id"], f"{question} Reply YES or NO below 👇",
+                        )
+                        on_progress(f"Engagement comment posted on {upload['video_id']}")
+                    except Exception as e:
+                        on_progress(f"Engagement comment failed (video still published): {e}")
         except youtube_upload.NotConfiguredError:
             on_progress("YouTube upload skipped (not configured — see README)")
         except Exception as e:

@@ -124,6 +124,20 @@ def set_thumbnail(video_id: str, thumbnail_path) -> None:
     youtube.thumbnails().set(videoId=video_id, media_body=media).execute()
 
 
+def post_engagement_comment(video_id: str, text: str) -> None:
+    """Posts a top-level comment from the channel on an already-uploaded video,
+    giving viewers a question to reply to (see producer's engagement question).
+    NOTE: the YouTube Data API cannot pin comments, so this comment is never
+    pinned automatically -- the channel owner has to pin it by hand in Studio.
+    Callers should treat a failure here as non-fatal, same as set_thumbnail
+    (e.g. commentsDisabled or a forbidden response on a private video)."""
+    youtube = _client()
+    youtube.commentThreads().insert(
+        part="snippet",
+        body={"snippet": {"videoId": video_id, "topLevelComment": {"snippet": {"textOriginal": text}}}},
+    ).execute()
+
+
 def add_to_playlist(video_id: str, playlist_id: str) -> None:
     """Adds an already-uploaded video to a playlist. A populated playlist gives
     YouTube's autoplay/"up next" another video from this channel to chain into,

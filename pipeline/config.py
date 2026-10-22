@@ -166,6 +166,11 @@ YOUTUBE_TOKEN_SEED_FILE = (
 # want to guess/fabricate a playlist ID; set this to a real playlist ID
 # (visible in its YouTube Studio URL) to turn it on.
 YOUTUBE_PLAYLIST_ID = os.environ.get("YOUTUBE_PLAYLIST_ID", "")
+# After a successful upload, post the script's closing yes-or-no question as a
+# top-level comment from the channel so viewers have something to reply to
+# (see pipeline/producer.py and youtube_upload.post_engagement_comment). On by
+# default; set to 0/false/no to skip it.
+YOUTUBE_ENGAGEMENT_COMMENT = os.environ.get("YOUTUBE_ENGAGEMENT_COMMENT", "true").strip().lower() not in ("0", "false", "no")
 
 # Optional background-music bed mixed in quietly under the narration -- off by
 # default (no-op) since this requires the user to supply their own

@@ -635,3 +635,120 @@ def test_produce_from_script_falls_back_to_stock_visual_when_diagram_render_fail
 
     assert len(fetch_calls) == 2  # both scenes fell through to Pexels
     assert any("diagram render failed" in msg for msg in logs)
+
+
+# -- engagement question (closing yes/no question posted as a comment) --------
+
+def _scene(narration):
+    return {"narration": narration, "visual_query": "q", "on_screen_text": ""}
+
+
+def test_extract_engagement_question_returns_last_question_in_final_scene():
+    scenes = [_scene("Revenue grew 20%."), _scene("Margins held. Does the valuation already price in the growth?")]
+    assert producer._extract_engagement_question(scenes) == "Does the valuation already price in the growth?"
+
+
+def test_extract_engagement_question_skips_subscribe_cta_appended_to_last_scene():
+    # append_subscribe_cta glues the CTA sentence onto the final scene's narration,
+    # so the question sits before the CTA and must still be found.
+    from pipeline import segmented_script
+    scenes = [_scene("Profit rose sharply."), _scene("Is the rally already priced in?")]
+    segmented_script.append_subscribe_cta(scenes)
+    assert producer._extract_engagement_question(scenes) == "Is the rally already priced in?"
+
+
+def test_extract_engagement_question_returns_empty_when_no_question():
+    scenes = [_scene("Revenue grew 20%."), _scene("Margins held steady.")]
+    assert producer._extract_engagement_question(scenes) == ""
+
+
+@pytest.mark.parametrize("question", [
+    "Should you buy this stock?",
+    "Is this a multibagger in the making?",
+    "Is the target price realistic?",
+    "Would you sell into this rally?",
+    "Is it undervalued right now?",
+])
+def test_extract_engagement_question_skips_advice_wording(question):
+    scenes = [_scene(f"Earnings were strong. {question}")]
+    assert producer._extract_engagement_question(scenes) == ""
+
+
+def test_extract_engagement_question_ignores_questions_older_than_the_final_scenes():
+    scenes = [_scene("Old question, is it fine?"), _scene("Plain fact one."), _scene("Plain fact two.")]
+    assert producer._extract_engagement_question(scenes) == ""
+
+
+def test_extract_engagement_question_falls_back_to_second_to_last_scene():
+    scenes = [_scene("Overview."), _scene("Is the debt manageable?"), _scene("Plain closing fact.")]
+    assert producer._extract_engagement_question(scenes) == "Is the debt manageable?"
+
+
+def test_extract_engagement_question_does_not_split_on_decimal_points():
+    scenes = [_scene("Net profit hit Rs 1,112.50 crore. Is that enough to justify the premium?")]
+    assert producer._extract_engagement_question(scenes) == "Is that enough to justify the premium?"
+
+
+def test_extract_engagement_question_rejects_overlong_question():
+    long_q = "Is " + "very " * 60 + "good?"
+    assert len(long_q) > producer._ENGAGEMENT_QUESTION_MAX_CHARS
+    assert producer._extract_engagement_question([_scene(long_q)]) == ""
+
+
+def _upload_script_with_question():
+    script = _stub_script()
+    script["scenes"][-1]["narration"] = "They can change color. Do you think the rally is priced in?"
+    return script
+
+
+def test_produce_from_script_posts_engagement_comment_after_upload(mocked_pipeline, monkeypatch):
+    posted = []
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    monkeypatch.setattr(
+        producer.youtube_upload, "post_engagement_comment",
+        lambda video_id, text: posted.append((video_id, text)),
+    )
+    logs = []
+    producer.produce_from_script(_upload_script_with_question(), on_progress=logs.append)
+    assert posted == [("abc", "Do you think the rally is priced in? Reply YES or NO below 👇")]
+    assert any("Engagement comment posted" in msg for msg in logs)
+
+
+def test_produce_from_script_skips_engagement_comment_when_no_question(mocked_pipeline, monkeypatch):
+    posted = []
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    monkeypatch.setattr(producer.youtube_upload, "post_engagement_comment", lambda *a: posted.append(a))
+    producer.produce_from_script(_stub_script(), on_progress=lambda m: None)
+    assert posted == []
+
+
+def test_produce_from_script_respects_engagement_comment_flag(mocked_pipeline, monkeypatch):
+    posted = []
+    monkeypatch.setattr(producer.config, "YOUTUBE_ENGAGEMENT_COMMENT", False)
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    monkeypatch.setattr(producer.youtube_upload, "post_engagement_comment", lambda *a: posted.append(a))
+    producer.produce_from_script(_upload_script_with_question(), on_progress=lambda m: None)
+    assert posted == []
+
+
+def test_produce_from_script_comment_failure_does_not_fail_the_job(mocked_pipeline, monkeypatch):
+    from googleapiclient.errors import HttpError
+    monkeypatch.setattr(
+        producer.youtube_upload, "upload_video",
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+    )
+    forbidden = HttpError(mock.Mock(status=403, reason="Forbidden"), b'{"error": "commentsDisabled"}')
+    monkeypatch.setattr(producer.youtube_upload, "post_engagement_comment", mock.Mock(side_effect=forbidden))
+    logs = []
+    result = producer.produce_from_script(_upload_script_with_question(), on_progress=logs.append)
+    assert result["youtube_url"] == "https://youtu.be/abc"
+    assert any("Engagement comment failed" in msg and "video still published" in msg for msg in logs)

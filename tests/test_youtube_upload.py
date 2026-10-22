@@ -233,3 +233,38 @@ def test_add_to_playlist_inserts_a_playlist_item_for_the_video(monkeypatch):
     assert captured["body"]["snippet"]["playlistId"] == "PL_mock_playlist"
     assert captured["body"]["snippet"]["resourceId"] == {"kind": "youtube#video", "videoId": "abc123"}
     execute.assert_called_once()
+
+
+def test_post_engagement_comment_inserts_top_level_comment_on_video(monkeypatch):
+    captured = {}
+
+    def fake_insert(part, body):
+        captured["part"] = part
+        captured["body"] = body
+        return mock.Mock(execute=mock.Mock(return_value={}))
+
+    fake_youtube = mock.Mock()
+    fake_youtube.commentThreads.return_value.insert.side_effect = fake_insert
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    youtube_upload.post_engagement_comment("abc123", "Is it priced in? Reply YES or NO below 👇")
+
+    assert captured["part"] == "snippet"
+    assert captured["body"] == {
+        "snippet": {
+            "videoId": "abc123",
+            "topLevelComment": {"snippet": {"textOriginal": "Is it priced in? Reply YES or NO below 👇"}},
+        }
+    }
+
+
+def test_post_engagement_comment_propagates_http_error_for_caller_to_handle(monkeypatch):
+    from googleapiclient.errors import HttpError
+    fake_youtube = mock.Mock()
+    fake_youtube.commentThreads.return_value.insert.return_value.execute.side_effect = HttpError(
+        mock.Mock(status=403, reason="Forbidden"), b'{"error": "commentsDisabled"}',
+    )
+    monkeypatch.setattr(youtube_upload, "_client", lambda: fake_youtube)
+
+    with pytest.raises(HttpError):
+        youtube_upload.post_engagement_comment("abc123", "Q?")

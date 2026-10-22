@@ -87,6 +87,83 @@ def _yoy_growth(values: list):
     return round((latest - year_ago) / abs(year_ago) * 100, 1)
 
 
+# A year-on-year % beyond this almost always comes off a tiny or one-off base
+# (seen live: "Net profit grew 56800.0%" for a Rs 1 crore -> Rs 567 crore
+# quarter) -- technically true but misleading as a headline, so it's stated
+# as "from Rs X crore to Rs Y crore" instead.
+MAX_PLAIN_GROWTH_PCT = 300
+
+
+def yoy_pair(values: list):
+    """(year_ago, latest) floats for the latest quarter vs. the same quarter a
+    year earlier, or None."""
+    if len(values or []) < 5:
+        return None
+    try:
+        return float(str(values[-5]).replace(",", "")), float(str(values[-1]).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def plain_growth_pct(values: list):
+    """The YoY % only when it's a meaningful headline number: both quarters
+    positive (a loss on either side makes a % misleading) and no bigger than
+    MAX_PLAIN_GROWTH_PCT. Otherwise None."""
+    pair = yoy_pair(values)
+    if not pair or pair[0] <= 0 or pair[1] <= 0:
+        return None
+    pct = round((pair[1] - pair[0]) / pair[0] * 100, 1)
+    return pct if abs(pct) <= MAX_PLAIN_GROWTH_PCT else None
+
+
+def _cr(x: float) -> str:
+    return f"{x:,.0f}" if abs(x) >= 100 else f"{x:g}"
+
+
+def growth_sentence(values: list, noun: str) -> str:
+    """One plain, sign-correct sentence about the YoY change, e.g. "Net profit
+    grew 37.3% year-on-year", "Revenue fell 8.2% year-on-year", "Net profit
+    rose from Rs 1 crore to Rs 567 crore year-on-year", "Net profit went from
+    a loss of Rs 12 crore to a profit of Rs 40 crore year-on-year". "" when
+    there isn't a year-ago quarter to compare with."""
+    pair = yoy_pair(values)
+    if not pair:
+        return ""
+    ago, now = pair
+    pct = plain_growth_pct(values)
+    if pct is not None:
+        return f"{noun} {'grew' if pct >= 0 else 'fell'} {abs(pct):g}% year-on-year"
+    if ago > 0 and now > 0:
+        return f"{noun} {'rose' if now > ago else 'fell'} from Rs {_cr(ago)} crore to Rs {_cr(now)} crore year-on-year"
+
+    def amount(x):
+        if x > 0:
+            return f"a profit of Rs {_cr(x)} crore" if noun.lower().endswith("profit") else f"Rs {_cr(x)} crore"
+        if x < 0:
+            return f"a loss of Rs {_cr(-x)} crore"
+        return "zero"
+    return f"{noun} went from {amount(ago)} to {amount(now)} year-on-year"
+
+
+def profit_exceeds_revenue(data: dict) -> bool:
+    """Latest quarterly net profit bigger than that quarter's revenue -- only
+    possible with other income or one-off items, so profit-based "facts"
+    (margin, profit per day, profit growth headline) would mislead."""
+    q = (data or {}).get("quarterly") or {}
+    try:
+        sales = float(str(q.get("sales_cr", [])[-1]).replace(",", ""))
+        profit = float(str(q.get("net_profit_cr", [])[-1]).replace(",", ""))
+    except (IndexError, ValueError):
+        return False
+    return profit > 0 and profit > sales
+
+
+ONE_OFF_PROFIT_NOTE = (
+    "Note: the latest quarterly net profit is larger than the quarter's revenue, so it must include "
+    "other income or one-off items -- say so plainly rather than treating it as profit from operations."
+)
+
+
 def _parse_warehouse_id(html: str):
     m = re.search(r'data-warehouse-id="(\d+)"', html) or re.search(r"/api/company/(\d+)/peers/", html)
     return m.group(1) if m else None
@@ -276,9 +353,11 @@ def format_fundamentals_facts(data: dict) -> str:
         lines.append(f"- Latest quarterly revenue: Rs {quarterly['sales_cr'][-1]} crore{suffix}")
     if quarterly.get("net_profit_cr"):
         lines.append(f"- Latest quarterly net profit: Rs {quarterly['net_profit_cr'][-1]} crore")
-    if "revenue_growth_yoy_pct" in data:
-        lines.append(f"- Revenue grew {data['revenue_growth_yoy_pct']}% year-on-year")
-    if "profit_growth_yoy_pct" in data:
-        lines.append(f"- Net profit grew {data['profit_growth_yoy_pct']}% year-on-year")
+    for key, noun in (("sales_cr", "Revenue"), ("net_profit_cr", "Net profit")):
+        sentence = growth_sentence(quarterly.get(key, []), noun)
+        if sentence:
+            lines.append(f"- {sentence}")
+    if profit_exceeds_revenue(data):
+        lines.append(f"- {ONE_OFF_PROFIT_NOTE}")
 
     return "\n".join(lines)

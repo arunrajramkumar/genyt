@@ -68,6 +68,9 @@ def _no_company_insights_network_by_default(monkeypatch):
     monkeypatch.setattr(company_insights, "did_you_know_facts", lambda name, data: [])
     monkeypatch.setattr(prompt_script, "_find_did_you_know", lambda resolved, symbol: {"facts": [], "narration": ""})
     monkeypatch.setattr(company_insights, "articulate_facts", lambda name, facts: "")
+    # The faithfulness second opinion is its own LLM call; tests mocking a
+    # single chat_json reply would otherwise feed it the wrong payload.
+    monkeypatch.setattr(company_insights, "_is_faithful", lambda claim, source: True)
     monkeypatch.setattr(fundamentals, "fetch_peers", lambda data: [])
 
 

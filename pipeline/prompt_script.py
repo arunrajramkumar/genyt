@@ -241,8 +241,8 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
 
     last_error = None
     for attempt in range(3):
-        raw = llm.chat_json(SYSTEM_PROMPT, user_prompt, max_tokens=4096, timeout=120)
         try:
+            raw = llm.chat_json(SYSTEM_PROMPT, user_prompt, max_tokens=4096, timeout=120)
             script = _extract_json(raw)
             for key in ("title", "description", "tags", "scenes"):
                 if key not in script:

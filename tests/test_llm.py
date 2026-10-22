@@ -100,10 +100,10 @@ def test_chat_json_gives_up_after_hitting_token_cap(monkeypatch):
         return truncated
 
     monkeypatch.setattr(llm.requests, "post", fake_post)
-    with pytest.raises(RuntimeError, match="json_validate_failed"):
+    with pytest.raises(llm.LLMResponseError, match="json_validate_failed"):
         llm.chat_json("system", "user", max_tokens=1500, timeout=10)
 
-    assert calls == [1500, llm.MAX_TOKENS_CAP, llm.MAX_TOKENS_CAP]
+    assert calls == [1500, 3000, llm.MAX_TOKENS_CAP, llm.MAX_TOKENS_CAP]
 
 
 def test_chat_json_resamples_on_malformed_json_already_at_cap(monkeypatch):

@@ -11,9 +11,10 @@ from scripts.build_finance_queue import build_theme_entry, MIN_DURATION, MAX_DUR
 _FAKE_DATA = {
     "symbol": "CDSL",
     "ratios": {"Market Cap": "₹ 26,334 Cr.", "Stock P/E": "57.2", "ROE": "31.3 %"},
-    "quarterly": {"quarter_dates": ["2026-06-30"], "sales_cr": ["222"], "net_profit_cr": ["152"]},
-    "revenue_growth_yoy_pct": 12.1,
-    "profit_growth_yoy_pct": 44.8,
+    "quarterly": {"quarter_dates": ["2026-06-30"], "sales_cr": ["200", "205", "210", "215", "222"],
+                  "net_profit_cr": ["100", "110", "120", "130", "152"]},
+    "revenue_growth_yoy_pct": 11.0,
+    "profit_growth_yoy_pct": 52.0,
 }
 
 
@@ -37,8 +38,8 @@ def test_build_theme_entry_segments_carry_real_fetched_numbers(monkeypatch):
 
     assert "57.2" in segments["Key Metrics"]
     assert "31.3 %" in segments["Key Metrics"]
-    assert "12.1% year-on-year" in segments["Revenue & Profit Growth"]
-    assert "44.8% year-on-year" in segments["Revenue & Profit Growth"]
+    assert "11% year-on-year" in segments["Revenue & Profit Growth"]
+    assert "52% year-on-year" in segments["Revenue & Profit Growth"]
 
 
 def test_build_theme_entry_risk_segment_forbids_new_numbers_and_recommendations(monkeypatch):
@@ -86,14 +87,14 @@ def test_build_theme_entry_hook_leads_with_headline_number_not_company_name(monk
     entry = build_theme_entry("CDSL", "CDSL")
     segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
     hook = segments["Hook"]
-    assert hook.index("44.8% year-on-year") < hook.index("CDSL (NSE: CDSL)")
+    assert hook.index("52% year-on-year") < hook.index("CDSL (NSE: CDSL)")
 
 
 def test_build_theme_entry_hook_prefers_growth_pct_over_a_scraped_ratio(monkeypatch):
     monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
     entry = build_theme_entry("CDSL", "CDSL")
     segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
-    assert "Profit growth: 44.8% year-on-year" in segments["Hook"]
+    assert "Profit growth: 52% year-on-year" in segments["Hook"]
 
 
 def test_build_theme_entry_key_metrics_caps_to_three_most_striking_ratios(monkeypatch):

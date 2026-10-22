@@ -125,9 +125,10 @@ def test_format_fundamentals_facts_includes_ratios_and_growth():
     data = {
         "symbol": "CDSL",
         "ratios": {"Stock P/E": "57.2", "ROE": "31.3 %"},
-        "quarterly": {"quarter_dates": ["2026-06-30"], "sales_cr": ["222"], "net_profit_cr": ["152"]},
-        "revenue_growth_yoy_pct": 12.1,
-        "profit_growth_yoy_pct": 44.8,
+        "quarterly": {"quarter_dates": ["2026-06-30"], "sales_cr": ["200", "205", "210", "215", "222"],
+                      "net_profit_cr": ["100", "110", "120", "130", "152"]},
+        "revenue_growth_yoy_pct": 11.0,
+        "profit_growth_yoy_pct": 52.0,
     }
     text = fundamentals.format_fundamentals_facts(data)
 
@@ -135,8 +136,8 @@ def test_format_fundamentals_facts_includes_ratios_and_growth():
     assert "- ROE: 31.3 %" in text
     assert "- Latest quarterly revenue: Rs 222 crore (quarter ending 2026-06-30)" in text
     assert "- Latest quarterly net profit: Rs 152 crore" in text
-    assert "- Revenue grew 12.1% year-on-year" in text
-    assert "- Net profit grew 44.8% year-on-year" in text
+    assert "- Revenue grew 11% year-on-year" in text
+    assert "- Net profit grew 52% year-on-year" in text
 
 
 # -- search_company_symbol: resolves a plain company name to a real ticker ---

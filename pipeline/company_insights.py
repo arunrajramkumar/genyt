@@ -151,6 +151,8 @@ def _extract_story_fact(company_name: str, snippets: str) -> str:
     core = _core_name(company_name)
     if len(core) < 3 or core not in haystack:
         return ""
+    if not _is_faithful(fact, quote):
+        return ""
     return fact
 
 
@@ -255,7 +257,7 @@ def payback_fact(data: dict) -> str:
 
 def profit_per_day_fact(data: dict) -> str:
     profit = _latest(((data or {}).get("quarterly") or {}).get("net_profit_cr", []))
-    if not profit or profit <= 0:
+    if not profit or profit <= 0 or fundamentals.profit_exceeds_revenue(data):
         return ""
     per_day = profit / DAYS_PER_QUARTER
     if per_day >= 1:
@@ -275,7 +277,8 @@ def margin_fact(data: dict) -> str:
     if None in (s_now, p_now, s_ago, p_ago) or s_now <= 0 or s_ago <= 0:
         return ""
     now, ago = p_now / s_now * 100, p_ago / s_ago * 100
-    if round(now) == round(ago) or abs(now - ago) < 1 or now <= 0 or ago <= 0:
+    # A margin over 100% means other income/one-offs, not "out of every Rs 100 sold".
+    if round(now) == round(ago) or abs(now - ago) < 1 or now <= 0 or ago <= 0 or now > 100 or ago > 100:
         return ""
     return (f"Out of every Rs 100 it sold in the latest quarter, Rs {round(now)} became profit, "
             f"{'up' if now > ago else 'down'} from Rs {round(ago)} a year earlier.")
@@ -340,6 +343,8 @@ Hard rules:
 - A closing question is fine only if it is neutral and about the facts (e.g. whether the
   valuation already reflects this).
 - If a fact is only a dry restatement, prefer one that is more surprising.
+- Keep each claim exactly as strong as the fact: never upgrade it (e.g. "first to get a licence
+  to build warships" must NOT become "built the first warships"; "about" stays "about").
 """
 
 _EXTRA_ADVICE_RE = re.compile(
@@ -376,6 +381,36 @@ def _validate_narration(narration: str, facts: list, company_name: str) -> str:
     return text
 
 
+SYSTEM_PROMPT_FAITHFUL = """You check a short claim against its source for a fact-checked video.
+Answer whether EVERY statement in the CLAIM is directly supported by the SOURCE with the same
+meaning and strength -- nothing added, upgraded, generalised or changed in time, actor or
+scope (e.g. "obtained a licence to build warships" does NOT support "built warships").
+Wording, ordering and a neutral question may differ.
+
+Output ONLY valid JSON: {"faithful": true or false, "reason": "short reason"}
+"""
+
+
+def _is_faithful(claim: str, source: str) -> bool:
+    """Second-opinion LLM check that `claim` says no more than `source` -- the
+    deterministic checks catch new numbers/names but not a reworded claim
+    that quietly overstates (seen live: "first private company to get a
+    licence to build warships" became "built India's first private-sector
+    warships"). Fails closed: any error or unparseable answer is False."""
+    user_prompt = f"SOURCE:\n{source}\n\nCLAIM:\n{claim}\n\nAnswer with the JSON now."
+    try:
+        raw = llm.chat_json(SYSTEM_PROMPT_FAITHFUL, user_prompt, max_tokens=200, timeout=60)
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = json.loads(match.group(0)) if match else None
+    except Exception as e:
+        print(f"[insights] faithfulness check failed: {type(e).__name__}: {e}")
+        return False
+    verdict = isinstance(data, dict) and data.get("faithful") is True
+    if not verdict:
+        print(f"[insights] rejected as unfaithful: {claim!r} ({(data or {}).get('reason') if isinstance(data, dict) else 'no verdict'})")
+    return verdict
+
+
 def articulate_facts(company_name: str, facts: list) -> str:
     """LLM-written hook-style narration built only from the verified `facts`, or
     "" if it can't be produced or fails validation -- callers then use the raw
@@ -392,7 +427,7 @@ def articulate_facts(company_name: str, facts: list) -> str:
             if not isinstance(data, dict):
                 continue
             narration = _validate_narration(data.get("narration"), facts, company_name)
-            if narration:
+            if narration and _is_faithful(narration, "\n".join(facts)):
                 print(f"[insights] articulated did-you-know for {company_name}: {narration}")
                 return narration
         except Exception as e:

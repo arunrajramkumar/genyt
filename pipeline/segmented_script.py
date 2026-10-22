@@ -494,8 +494,8 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
 
     last_error = None
     for attempt in range(3):
-        raw = llm.chat_json(system_prompt, user_prompt, max_tokens=512, timeout=60)
         try:
+            raw = llm.chat_json(system_prompt, user_prompt, max_tokens=512, timeout=60)
             scene = _extract_json(raw)
             if not isinstance(scene, dict):
                 # Same failure mode as prompt_script.py's freeform path: the
@@ -676,8 +676,8 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
 
     last_error = None
     for attempt in range(3):
-        raw = llm.chat_json(SYSTEM_PROMPT_METADATA, user_prompt, max_tokens=512, timeout=60)
         try:
+            raw = llm.chat_json(SYSTEM_PROMPT_METADATA, user_prompt, max_tokens=512, timeout=60)
             data = _extract_json(raw)
             if not isinstance(data, dict):
                 raise ValueError("Metadata response must be a JSON object")

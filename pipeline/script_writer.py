@@ -53,8 +53,8 @@ def write_script(theme: str, style: str = "", duration_sec: int = 180) -> dict:
 
     last_error = None
     for attempt in range(3):
-        raw = llm.chat_json(SYSTEM_PROMPT, user_prompt, max_tokens=4096, timeout=120)
         try:
+            raw = llm.chat_json(SYSTEM_PROMPT, user_prompt, max_tokens=4096, timeout=120)
             script = _extract_json(raw)
             for key in ("title", "description", "tags", "scenes"):
                 if key not in script:

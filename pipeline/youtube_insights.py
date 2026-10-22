@@ -205,8 +205,8 @@ def summarize_insights(videos: list) -> str:
 
     last_error = None
     for attempt in range(2):
-        raw = llm.chat_json(SYSTEM_PROMPT_INSIGHTS, user_prompt, max_tokens=400, timeout=60)
         try:
+            raw = llm.chat_json(SYSTEM_PROMPT_INSIGHTS, user_prompt, max_tokens=400, timeout=60)
             data = _extract_json(raw)
             guidance = _coerce_guidance(data.get("guidance"))
             if guidance:

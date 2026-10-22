@@ -61,10 +61,15 @@ def _pick_headline_fact(data: dict, ratios: dict) -> tuple:
     """A profit/revenue growth % (e.g. "89% Profit CAGR") is a far stronger
     hook than whatever ratio happens to be scraped first -- prefer it, then
     fall back to the most striking available ratio."""
-    if "profit_growth_yoy_pct" in data:
-        return "Profit growth", f"{data['profit_growth_yoy_pct']}% year-on-year"
-    if "revenue_growth_yoy_pct" in data:
-        return "Revenue growth", f"{data['revenue_growth_yoy_pct']}% year-on-year"
+    quarterly = data.get("quarterly", {})
+    # Only a meaningful % leads (fundamentals.plain_growth_pct): a "56800%"
+    # profit jump off a one-off quarter makes a misleading hook.
+    profit_pct = fundamentals.plain_growth_pct(quarterly.get("net_profit_cr", []))
+    if profit_pct is not None and profit_pct > 0 and not fundamentals.profit_exceeds_revenue(data):
+        return "Profit growth", f"{profit_pct:g}% year-on-year"
+    revenue_pct = fundamentals.plain_growth_pct(quarterly.get("sales_cr", []))
+    if revenue_pct is not None and revenue_pct > 0:
+        return "Revenue growth", f"{revenue_pct:g}% year-on-year"
     striking = _select_striking_ratios(ratios, limit=1)
     if striking:
         return next(iter(striking.items()))
@@ -78,6 +83,9 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = DEFAUL
     data = fundamentals.fetch_fundamentals(symbol)
     if not data:
         return None
+    # Screener names end in "Ltd." -- the prompts below follow the name with
+    # their own punctuation ("...Industries Ltd.." otherwise).
+    company_name = company_name.strip().rstrip(".")
 
     duration_sec = max(MIN_DURATION, min(MAX_DURATION, duration_sec))
     ratios = data["ratios"]
@@ -88,14 +96,16 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = DEFAUL
     headline_label, headline_fact = _pick_headline_fact(data, ratios)
 
     growth_lines = []
-    if "revenue_growth_yoy_pct" in data:
-        growth_lines.append(f"Revenue grew {data['revenue_growth_yoy_pct']}% year-on-year")
-    if "profit_growth_yoy_pct" in data:
-        growth_lines.append(f"Net profit grew {data['profit_growth_yoy_pct']}% year-on-year")
+    for key, noun in (("sales_cr", "Revenue"), ("net_profit_cr", "Net profit")):
+        sentence = fundamentals.growth_sentence(quarterly.get(key, []), noun)
+        if sentence:
+            growth_lines.append(sentence)
     if quarterly.get("sales_cr"):
         growth_lines.append(f"Latest quarterly revenue: Rs {quarterly['sales_cr'][-1]} crore")
     if quarterly.get("net_profit_cr"):
         growth_lines.append(f"Latest quarterly net profit: Rs {quarterly['net_profit_cr'][-1]} crore")
+    if fundamentals.profit_exceeds_revenue(data):
+        growth_lines.append(fundamentals.ONE_OFF_PROFIT_NOTE)
     growth_text = "\n".join(growth_lines) or "No recent quarterly trend data is available."
 
     beat = company_insights.did_you_know_beat(company_name, data)

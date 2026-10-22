@@ -172,12 +172,20 @@ def _extract_candidates(facts_text: str) -> list:
     for chunk in _chunk_text(facts_text, MAX_EXTRACT_CHARS):
         user_prompt = "Search snippets:\n" + chunk + "\n\nProduce the JSON now."
         for _attempt in range(2):
-            raw = llm.chat_json(SYSTEM_PROMPT_TRENDING, user_prompt, max_tokens=600, timeout=60)
             try:
-                candidates += _extract_json(raw).get("candidates") or []
+                raw = llm.chat_json(SYSTEM_PROMPT_TRENDING, user_prompt, max_tokens=600, timeout=60)
+                data = _extract_json(raw)
+                if not isinstance(data, dict):
+                    raise ValueError("candidates response must be a JSON object")
+                candidates += [c for c in data.get("candidates") or [] if isinstance(c, dict)]
                 break
             except (ValueError, json.JSONDecodeError):
                 continue
+            except RuntimeError as e:
+                # A hard API error on one chunk shouldn't throw away the
+                # candidates already found in the others.
+                print(f"[trending] extraction failed for one chunk: {e}")
+                break
 
     lowered_text = facts_text.lower()
     best = {}  # keyed by (symbol, name); a verified event beats "other" for the same company

@@ -137,8 +137,8 @@ def summarize_market_trends(videos: list) -> str:
     user_prompt = "Currently popular niche videos:\n" + "\n".join(lines) + "\n\nProduce the JSON guidance now."
 
     for attempt in range(2):
-        raw = llm.chat_json(SYSTEM_PROMPT_MARKET_TRENDS, user_prompt, max_tokens=400, timeout=60)
         try:
+            raw = llm.chat_json(SYSTEM_PROMPT_MARKET_TRENDS, user_prompt, max_tokens=400, timeout=60)
             data = _extract_json(raw)
             guidance = _coerce_guidance(data.get("guidance"))
             if guidance:

@@ -771,3 +771,72 @@ themes:
   category_id: '25'
   _label: 'Hindustan Zinc (NSE: HINDZINC)'
   trending_event: results
+- theme: 'JNK India (NSE: JNKINDIA)
+
+
+    0-6 seconds - Hook
+
+    Write an exciting, curiosity-sparking opening question for stock-market viewers
+    that leads immediately with this headline number -- Revenue growth: 65.7% year-on-year
+    -- in the first 6-8 words, before anything else; never open with the company name,
+    a date, or other background framing first. Mention JNK India (NSE: JNKINDIA) only
+    after that number has hooked the viewer.
+
+
+    6-16 seconds - Did You Know
+
+    "Did you know? JNK India turns about Rs 15 lakh profit each day, and its profit
+    margin jumped from 1% to 9% in a year."
+
+
+    16-26 seconds - Key Metrics
+
+    For JNK India (NSE: JNKINDIA), pick ONLY the 2 or 3 most striking of these valuation
+    metrics -- do not list all of them. For each one you use, state the number and
+    then immediately translate it into one short plain-English clause a retail investor
+    would understand (e.g. "ROCE of 117% -- meaning it generates huge profit from
+    the capital it employs"), not just the bare ratio name and figure. Facts:
+
+    ROCE: 17.5 %
+
+    ROE: 12.1 %
+
+    Stock P/E: 27.8
+
+
+    26-35 seconds - Revenue & Profit Growth
+
+    Explain what this quarterly growth trend means for JNK India. Facts:
+
+    Revenue grew 65.7% year-on-year
+
+    Net profit rose from Rs 1 crore to Rs 14 crore year-on-year
+
+    Latest quarterly revenue: Rs 164 crore
+
+    Latest quarterly net profit: Rs 14 crore
+
+
+    35-45 seconds - Recap
+
+    Based ONLY on the valuation and growth facts already given above, raise one balanced,
+    neutral question a long-term investor should still answer for themselves about
+    JNK India (e.g. whether the current valuation already prices in the growth). Do
+    not give a buy/sell recommendation, and do not add any new numbers beyond what''s
+    already been given. Then briefly restate the key numbers about JNK India so viewers
+    remember them, and end with one short yes-or-no question inviting viewers to answer
+    in the comments (a question only, never a recommendation).'
+  style: confident, data-driven stock-analysis explainer, strictly neutral -- no investment
+    advice
+  duration_sec: 45
+  shorts: true
+  done: true
+  extra_tags:
+  - stock analysis
+  - JNK India
+  - JNKINDIA
+  - NSE
+  - investing
+  category_id: '25'
+  _label: 'JNK India (NSE: JNKINDIA)'
+  trending_event: order_win

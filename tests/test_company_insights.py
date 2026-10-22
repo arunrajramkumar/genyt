@@ -339,13 +339,13 @@ _DATA = {
 }
 
 
-def _entry(monkeypatch, facts, duration=55):
+def _entry(monkeypatch, facts, duration=45):
     monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda s: _DATA)
     monkeypatch.setattr("scripts.build_finance_queue.company_insights.did_you_know_facts", lambda n, d: facts)
     return build_theme_entry("CDSL", "CDSL", duration)
 
 
-@pytest.mark.parametrize("duration", [50, 55, 65])
+@pytest.mark.parametrize("duration", [40, 45, 50])
 def test_build_theme_entry_adds_did_you_know_after_hook(monkeypatch, duration):
     entry = _entry(monkeypatch, ["A story.", "A peer fact."], duration)
     segments = parse_segments(entry["theme"])
@@ -353,7 +353,7 @@ def test_build_theme_entry_adds_did_you_know_after_hook(monkeypatch, duration):
     assert "A story." in segments[1]["content"] and "A peer fact." in segments[1]["content"]
     assert segments[1]["duration"] == 10
     assert sum(s["duration"] for s in segments) == entry["duration_sec"]
-    assert 50 <= entry["duration_sec"] <= 65
+    assert 35 <= entry["duration_sec"] <= 50
 
 
 def test_build_theme_entry_single_fact_beat_is_shorter(monkeypatch):
@@ -367,7 +367,7 @@ def test_build_theme_entry_without_facts_is_unchanged(monkeypatch):
     entry = _entry(monkeypatch, [])
     labels = [s["label"] for s in parse_segments(entry["theme"])]
     assert labels == ["Hook", "Key Metrics", "Revenue & Profit Growth", "Risk & Verdict", "Recap"]
-    assert 50 <= entry["duration_sec"] <= 65
+    assert 35 <= entry["duration_sec"] <= 50
 
 
 # ---- freeform path helpers ----
@@ -492,6 +492,6 @@ def test_build_theme_entry_speaks_articulated_narration_verbatim(monkeypatch):
     monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda s: _DATA)
     monkeypatch.setattr("scripts.build_finance_queue.company_insights.did_you_know_beat",
                         lambda n, d: {"facts": ["F1."], "narration": "A hooky grounded line."})
-    dyk = parse_segments(build_theme_entry("CDSL", "CDSL", 55)["theme"])[1]
+    dyk = parse_segments(build_theme_entry("CDSL", "CDSL", 45)["theme"])[1]
     assert dyk["label"] == "Did You Know" and dyk["duration"] == 7
     assert segmented_script._extract_verbatim(dyk["content"]) == "Did you know? A hooky grounded line."

@@ -29,7 +29,7 @@ on:
       duration:
         description: "Target seconds for the one-off --theme run (ignored for the scheduled/--trending path)"
         required: false
-        default: "60"
+        default: "45"
 
 concurrency:
   group: auto-video
@@ -106,7 +106,7 @@ jobs:
           INPUT_DURATION: ${{ github.event.inputs.duration }}
           INPUT_ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          DURATION="${INPUT_DURATION:-60}"
+          DURATION="${INPUT_DURATION:-45}"
           if [ -n "$INPUT_ISSUE_BODY" ]; then
             python3 run.py --theme "$(printf '%s' "$INPUT_ISSUE_BODY" | tr -d '\r')" --duration "$DURATION" --shorts
           elif [ -n "$INPUT_PROMPT_FILE" ]; then

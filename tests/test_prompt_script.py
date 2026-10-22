@@ -453,3 +453,36 @@ def test_system_prompt_steers_visual_query_away_from_generic_finance_imagery():
 def test_system_prompt_prefers_diagram_over_stock_footage_for_numeric_scenes():
     assert "prefer setting this" in prompt_script.SYSTEM_PROMPT
     assert "ONLY set this" not in prompt_script.SYSTEM_PROMPT
+
+
+def test_freeform_prompt_requires_hook_to_lead_with_number_within_first_words(monkeypatch):
+    sent = {}
+
+    def capture(system, user, **k):
+        sent["user"] = user
+        return _json_response(VALID_SCRIPT)
+
+    monkeypatch.setattr(prompt_script.llm, "chat_json", capture)
+    prompt_script._write_freeform_script("octopuses")
+    assert "first 6-8 words" in sent["user"]
+    assert "company name" in sent["user"]
+
+
+def test_freeform_script_uses_ipo_cta_for_ipo_theme(monkeypatch):
+    two_scene_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "Fact one.", "visual_query": "q1", "on_screen_text": ""},
+        {"narration": "Fact two.", "visual_query": "q2", "on_screen_text": ""},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(two_scene_script))
+    result = prompt_script._write_freeform_script("Acme Ltd IPO opens Monday")
+    assert result["scenes"][-1]["narration"] == "Fact two." + prompt_script.segmented_script.SUBSCRIBE_CTA_IPO_NARRATION
+    assert result["scenes"][-1]["on_screen_text"] == prompt_script.segmented_script.SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT
+
+
+def test_freeform_script_ipo_cta_is_not_mistaken_for_company_name(monkeypatch):
+    one_scene_script = dict(VALID_SCRIPT, scenes=[
+        {"narration": "Acme IPO at a glance.", "visual_query": "cars", "on_screen_text": "Acme"},
+    ])
+    monkeypatch.setattr(prompt_script.llm, "chat_json", lambda *a, **k: _json_response(one_scene_script))
+    result = prompt_script._write_freeform_script("Acme Ltd IPO opens Monday")
+    assert result["company_name"] != prompt_script.segmented_script.SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT

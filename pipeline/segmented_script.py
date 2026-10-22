@@ -470,6 +470,17 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
 
 SUBSCRIBE_CTA_NARRATION = " I cover one Indian stock result or IPO every day, so subscribe to catch tomorrow's."
 SUBSCRIBE_CTA_ON_SCREEN_TEXT = "NEW STOCK EVERY DAY - SUBSCRIBE"
+# IPO videos get a follow ask tied to what the channel keeps delivering for that
+# topic, and a shorter line -- every second of CTA is a second of lost completion.
+SUBSCRIBE_CTA_IPO_NARRATION = " Follow for a quick breakdown of every new IPO."
+SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT = "IPO BREAKDOWNS - FOLLOW"
+SUBSCRIBE_CTA_ON_SCREEN_TEXTS = (SUBSCRIBE_CTA_ON_SCREEN_TEXT, SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT)
+_IPO_RE = re.compile(r"\bIPO\b", re.IGNORECASE)
+
+
+def is_ipo_theme(text: str) -> bool:
+    """True when a theme/prompt is about an IPO (picks the IPO subscribe CTA)."""
+    return bool(_IPO_RE.search(text or ""))
 
 
 def merge_tags(required: list, generated: list, char_budget: int = 460) -> list:
@@ -492,18 +503,20 @@ def merge_tags(required: list, generated: list, char_budget: int = 460) -> list:
     return merged
 
 
-def append_subscribe_cta(scenes: list) -> None:
+def append_subscribe_cta(scenes: list, ipo: bool = False) -> None:
     """Appends a spoken + on-screen subscribe ask to the final scene. Most Shorts
     viewers watch muted at first, so the ask needs to be both heard and seen —
     real channel analytics showed near-zero subscriber conversion despite solid
     retention on some videos, and no video ever actually asked viewers to
-    subscribe."""
+    subscribe. `ipo` swaps in the IPO-specific follow line."""
     if not scenes:
         return
+    narration = SUBSCRIBE_CTA_IPO_NARRATION if ipo else SUBSCRIBE_CTA_NARRATION
+    on_screen = SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT if ipo else SUBSCRIBE_CTA_ON_SCREEN_TEXT
     last = scenes[-1]
-    last["narration"] = last["narration"].rstrip() + SUBSCRIBE_CTA_NARRATION
+    last["narration"] = last["narration"].rstrip() + narration
     if not (last.get("on_screen_text") or "").strip():
-        last["on_screen_text"] = SUBSCRIBE_CTA_ON_SCREEN_TEXT
+        last["on_screen_text"] = on_screen
 
 
 SYSTEM_PROMPT_METADATA = """You write YouTube metadata for a short video, based only on its
@@ -612,7 +625,7 @@ def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, 
     style_guidance = youtube_insights.get_combined_guidance()
     meta = _write_metadata(scenes, style_guidance, company_name=company_name)
     tags = merge_tags(extra_tags or [], meta["tags"] or ["short video"])
-    append_subscribe_cta(scenes)
+    append_subscribe_cta(scenes, ipo=is_ipo_theme(prompt))
 
     return {
         "title": meta["title"],

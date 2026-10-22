@@ -1,5 +1,6 @@
 from unittest import mock
 
+import pytest
 import yaml
 
 from pipeline.segmented_script import parse_segments
@@ -185,3 +186,48 @@ def test_main_trending_skips_fundamentals_query_when_nothing_discovered(monkeypa
 
     written = yaml.safe_load(output.read_text())
     assert written["themes"] == []
+
+
+# -- short-form timing: 35-50s, headline first, Risk folds into Recap when short -
+
+def test_default_duration_is_45_and_range_is_35_to_50():
+    assert (MIN_DURATION, MAX_DURATION) == (35, 50)
+    assert build_finance_queue.DEFAULT_DURATION == 45
+
+
+def test_build_theme_entry_short_video_merges_risk_into_recap(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    entry = build_theme_entry("CDSL", "CDSL", duration_sec=40)
+    segments = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}
+    assert list(segments) == ["Hook", "Key Metrics", "Revenue & Profit Growth", "Recap"]
+    assert "do not" in segments["Recap"].lower() and "recommendation" in segments["Recap"].lower()
+
+
+@pytest.mark.parametrize("duration", range(35, 51))
+@pytest.mark.parametrize("facts", [[], ["A peer fact."], ["A peer fact.", "Another fact."]])
+def test_build_theme_entry_segments_sum_to_duration_with_sane_minimums(monkeypatch, duration, facts):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    monkeypatch.setattr("scripts.build_finance_queue.company_insights.did_you_know_beat",
+                        lambda n, d: {"facts": facts, "narration": ""})
+    entry = build_theme_entry("CDSL", "CDSL", duration_sec=duration)
+    segments = parse_segments(entry["theme"])
+    assert entry["duration_sec"] == duration
+    assert sum(s["duration"] for s in segments) == duration
+    assert min(s["duration"] for s in segments) >= 6
+    assert segments[-1]["label"] == "Recap"
+
+
+def test_build_theme_entry_long_did_you_know_is_shrunk_to_fit_a_35s_video(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    monkeypatch.setattr("scripts.build_finance_queue.company_insights.did_you_know_beat",
+                        lambda n, d: {"facts": ["A", "B"], "narration": ""})
+    entry = build_theme_entry("CDSL", "CDSL", duration_sec=35)
+    dyk = {s["label"]: s for s in parse_segments(entry["theme"])}["Did You Know"]
+    assert dyk["duration"] == 7
+
+
+def test_build_theme_entry_hook_demands_headline_in_first_6_to_8_words(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda symbol: _FAKE_DATA)
+    entry = build_theme_entry("CDSL", "CDSL")
+    hook = {s["label"]: s["content"] for s in parse_segments(entry["theme"])}["Hook"]
+    assert "first 6-8 words" in hook

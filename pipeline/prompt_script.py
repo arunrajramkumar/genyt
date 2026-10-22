@@ -215,6 +215,11 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
             "A separate \"Did you know?\" scene is inserted automatically right after scene 1 -- "
             "do not write a \"did you know\" fact or company-history trivia scene yourself.\n\n"
         )
+    user_prompt += (
+        "Scene 1 (the hook) must open its first sentence with the single most striking verified "
+        "number from the content above, within its first 6-8 words -- never with the company name, a "
+        "date, or \"In this video\" / other background framing before that number.\n\n"
+    )
     if is_finance_theme:
         user_prompt += (
             "In the last content scene (just before any subscribe ask), end with one short yes-or-no "
@@ -263,7 +268,7 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                     ok, _reason = diagrams.validate_diagram_spec(diagram, source_text=scene.get("narration", ""))
                     if not ok:
                         scene["diagram"] = None
-            segmented_script.append_subscribe_cta(script["scenes"])
+            segmented_script.append_subscribe_cta(script["scenes"], ipo=segmented_script.is_ipo_theme(grounding_text))
             for i, scene in enumerate(script["scenes"]):
                 _ground_scene_on_screen_text(scene, is_first_scene=(i == 0))
             if dyk_facts:
@@ -359,7 +364,7 @@ def _extract_freeform_company_name(script: dict, is_finance_theme: bool):
     if not is_finance_theme:
         return None
     first_text = (script["scenes"][0].get("on_screen_text") or "").strip()
-    if not first_text or first_text == segmented_script.SUBSCRIBE_CTA_ON_SCREEN_TEXT:
+    if not first_text or first_text in segmented_script.SUBSCRIBE_CTA_ON_SCREEN_TEXTS:
         return None
     return first_text
 

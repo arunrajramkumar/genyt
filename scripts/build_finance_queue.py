@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Turns a list of NSE-listed companies into a themes.yaml-style finance queue:
 one segmented Short per company (Hook -> Key Metrics -> Revenue & Profit
-Growth -> Risk & Verdict -> Recap), grounded in real scraped fundamentals
+Growth -> Risk & Verdict -> Recap; Risk & Verdict folds into Recap when short),
+grounded in real scraped fundamentals
 (pipeline/fundamentals.py) instead of a human hand-researching and
 hand-writing the numbers into themes.yaml, the way CDSL/Kalyan Jewellers were.
 
@@ -28,8 +29,17 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from pipeline import company_insights, config, fundamentals, market_trends, research, trending_stocks  # noqa: E402
 
-MIN_DURATION = 50
-MAX_DURATION = 65
+# Shorts viewers swipe away after ~25-35s of a 90-120s video (real YouTube
+# Analytics), so these run short: the hook lands in the first few seconds and
+# the whole thing finishes before attention drops off.
+MIN_DURATION = 35
+MAX_DURATION = 50
+DEFAULT_DURATION = 45
+# Floor for Recap; below this the Risk & Verdict question is folded into it.
+RECAP_MIN_SEC = 6
+# Hook + Key Metrics + Revenue & Profit Growth + Recap minimums: the body must
+# fit these even at MIN_DURATION, so a long Did You Know beat can't squeeze it.
+MIN_BODY_SEC = 6 + 8 + 8 + RECAP_MIN_SEC
 
 # Ratios worth leading with/keeping -- a retail viewer finds growth and
 # capital-efficiency numbers far more striking than, say, Face Value or Book
@@ -61,7 +71,7 @@ def _pick_headline_fact(data: dict, ratios: dict) -> tuple:
     return "", ""
 
 
-def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, competitor_tags: list = None) -> dict:
+def build_theme_entry(symbol: str, company_name: str, duration_sec: int = DEFAULT_DURATION, competitor_tags: list = None) -> dict:
     """Returns None if fundamentals couldn't be fetched for this symbol --
     callers must skip the company rather than queue a theme with no real
     facts to ground it in."""
@@ -96,23 +106,28 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
         dyk_dur = 7 if len(dyk_narration.split()) <= 18 else 10
     else:
         dyk_dur = 7 if len(did_you_know) == 1 else 10
+    if dyk_dur > 7 and duration_sec - dyk_dur < MIN_BODY_SEC:
+        dyk_dur = 7
     body_sec = duration_sec - dyk_dur
-    min_seg = 15 if not dyk_dur else 12
 
-    hook_dur = max(6, round(body_sec * 0.12))
-    metrics_dur = max(min_seg, round(body_sec * 0.28))
-    growth_dur = max(min_seg, round(body_sec * 0.25))
-    risk_dur = max(min_seg, round(body_sec * 0.22))
-    remaining = body_sec - hook_dur - metrics_dur - growth_dur - risk_dur
-    recap_dur = max(6, remaining)
+    hook_dur = max(6, round(body_sec * 0.15))
+    metrics_dur = max(8, round(body_sec * 0.30))
+    growth_dur = max(8, round(body_sec * 0.25))
+    risk_dur = max(7, round(body_sec * 0.15))
+    remaining = body_sec - hook_dur - metrics_dur - growth_dur
+    # Risk & Verdict only gets its own scene when there's room for it plus a
+    # real Recap; in a short video its open question moves into the Recap.
+    merge_risk = remaining - risk_dur < RECAP_MIN_SEC
+    recap_dur = remaining if merge_risk else remaining - risk_dur
 
     lines, cursor = [], 0
 
     lines.append(f"{cursor}-{cursor + hook_dur} seconds - Hook")
     lines.append(
         f"Write an exciting, curiosity-sparking opening question for stock-market viewers that leads "
-        f"immediately with this headline number -- {headline_label}: {headline_fact} -- before anything "
-        f"else; never open with the company name, a date, or other background framing first. "
+        f"immediately with this headline number -- {headline_label}: {headline_fact} -- in the first 6-8 "
+        f"words, before anything else; never open with the company name, a date, or other background "
+        f"framing first. "
         f"Mention {company_name} (NSE: {symbol}) only after that number has hooked the viewer."
     )
     lines.append("")
@@ -148,22 +163,31 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = 55, co
     lines.append("")
     cursor += growth_dur
 
-    lines.append(f"{cursor}-{cursor + risk_dur} seconds - Risk & Verdict")
-    lines.append(
+    risk_question = (
         f"Based ONLY on the valuation and growth facts already given above, raise one balanced, "
         f"neutral question a long-term investor should still answer for themselves about {company_name} "
         "(e.g. whether the current valuation already prices in the growth). Do not give a buy/sell "
         "recommendation, and do not add any new numbers beyond what's already been given."
     )
-    lines.append("")
-    cursor += risk_dur
+    if not merge_risk:
+        lines.append(f"{cursor}-{cursor + risk_dur} seconds - Risk & Verdict")
+        lines.append(risk_question)
+        lines.append("")
+        cursor += risk_dur
 
     lines.append(f"{cursor}-{cursor + recap_dur} seconds - Recap")
-    lines.append(
-        f"Briefly restate the key numbers and the open question about {company_name} so viewers remember them, "
-        "then end with one short yes-or-no question inviting viewers to answer in the comments "
-        "(a question only, never a recommendation)."
-    )
+    if merge_risk:
+        lines.append(
+            f"{risk_question} Then briefly restate the key numbers about {company_name} so viewers remember them, "
+            "and end with one short yes-or-no question inviting viewers to answer in the comments "
+            "(a question only, never a recommendation)."
+        )
+    else:
+        lines.append(
+            f"Briefly restate the key numbers and the open question about {company_name} so viewers remember them, "
+            "then end with one short yes-or-no question inviting viewers to answer in the comments "
+            "(a question only, never a recommendation)."
+        )
     cursor += recap_dur
 
     theme = "\n".join(lines)
@@ -221,7 +245,7 @@ def main():
         help="Theme queue YAML to skip already-covered NSE symbols from when using --trending (default: themes.yaml)",
     )
     parser.add_argument("--output", required=True)
-    parser.add_argument("--duration", type=int, default=55, help=f"Target seconds, clamped to [{MIN_DURATION}, {MAX_DURATION}]")
+    parser.add_argument("--duration", type=int, default=DEFAULT_DURATION, help=f"Target seconds, clamped to [{MIN_DURATION}, {MAX_DURATION}]")
     args = parser.parse_args()
 
     if not args.symbols and not args.trending:

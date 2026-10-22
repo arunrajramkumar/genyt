@@ -36,7 +36,7 @@ def save_themes(themes_file: Path, themes: list[dict]) -> None:
     )
 
 
-def produce_video(theme: str, style: str = "", duration_sec: int = 180, shorts: bool = False, extra_tags: list = None,
+def produce_video(theme: str, style: str = "", duration_sec: int = 45, shorts: bool = False, extra_tags: list = None,
                    thumbnail_badge: str = None, category_id: str = None) -> Path:
     print(f"[1/2] Writing script for: {theme!r}")
     # prompt_script (not the older script_writer) pulls in this channel's own
@@ -84,7 +84,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--theme", help="Run a single one-off theme, ignoring themes.yaml")
     parser.add_argument("--style", default="", help="Style/tone hint for --theme")
-    parser.add_argument("--duration", type=int, default=180, help="Target seconds for --theme")
+    parser.add_argument("--duration", type=int, default=45, help="Target seconds for --theme")
     parser.add_argument("--shorts", action="store_true", help="Produce vertical 9:16 output for YouTube Shorts")
     parser.add_argument("--all", action="store_true", help="Process every un-done theme in themes.yaml")
     parser.add_argument(
@@ -125,7 +125,7 @@ def main():
                 produce_video(
                     trending_entry["theme"],
                     trending_entry.get("style", ""),
-                    trending_entry.get("duration_sec", 180),
+                    trending_entry.get("duration_sec", 45),
                     trending_entry.get("shorts", False),
                     trending_entry.get("extra_tags"),
                     trending_entry.get("thumbnail_badge"),
@@ -155,7 +155,7 @@ def main():
             produce_video(
                 entry["theme"],
                 entry.get("style", ""),
-                entry.get("duration_sec", 180),
+                entry.get("duration_sec", 45),
                 entry.get("shorts", False),
                 entry.get("extra_tags"),
                 entry.get("thumbnail_badge"),

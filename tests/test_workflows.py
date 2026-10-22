@@ -90,6 +90,6 @@ def test_issue_template_has_label_and_valid_segments():
     assert [s["label"] for s in parse_segments(body)][:2] == ["Hook", "Did You Know"]
 
 
-def test_default_duration_is_60(tmp_path):
-    assert "60" in _run_script(tmp_path, INPUT_THEME="x").stdout
+def test_default_duration_is_45(tmp_path):
+    assert "45" in _run_script(tmp_path, INPUT_THEME="x").stdout
     assert "90" in _run_script(tmp_path, INPUT_THEME="x", INPUT_DURATION="90").stdout

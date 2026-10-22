@@ -923,3 +923,46 @@ def test_segment_prompt_prefers_diagram_over_stock_footage_for_numeric_scenes():
     # not reserve it only for when stock footage has no equivalent at all.
     assert "prefer setting this" in ss.SYSTEM_PROMPT_SEGMENT
     assert "ONLY set this" not in ss.SYSTEM_PROMPT_SEGMENT
+
+
+# -- IPO-specific subscribe CTA ---------------------------------------------
+
+def test_is_ipo_theme_matches_ipo_word_only():
+    assert ss.is_ipo_theme("Tata Capital IPO opens on Monday (NSE: TATACAP).")
+    assert ss.is_ipo_theme("the ipo subscription window")
+    assert not ss.is_ipo_theme("Pidilite Industries Ltd (NSE: PIDILITIND).")
+    assert not ss.is_ipo_theme("Ipozzz Industries")
+
+
+def test_append_subscribe_cta_uses_ipo_variant_when_flagged():
+    scenes = [{"narration": "Scene one.", "on_screen_text": ""}]
+    ss.append_subscribe_cta(scenes, ipo=True)
+    assert scenes[0]["narration"] == "Scene one." + ss.SUBSCRIBE_CTA_IPO_NARRATION
+    assert scenes[0]["on_screen_text"] == ss.SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT
+
+
+def test_append_subscribe_cta_default_keeps_generic_wording():
+    scenes = [{"narration": "Scene one.", "on_screen_text": ""}]
+    ss.append_subscribe_cta(scenes)
+    assert scenes[0]["narration"] == "Scene one." + ss.SUBSCRIBE_CTA_NARRATION
+    assert scenes[0]["on_screen_text"] == ss.SUBSCRIBE_CTA_ON_SCREEN_TEXT
+
+
+def test_ipo_cta_is_shorter_than_generic_cta():
+    assert len(ss.SUBSCRIBE_CTA_IPO_NARRATION.split()) < len(ss.SUBSCRIBE_CTA_NARRATION.split())
+
+
+def test_write_segmented_script_uses_ipo_cta_for_ipo_theme(monkeypatch):
+    monkeypatch.setattr(ss.youtube_insights, "get_combined_guidance", lambda: "")
+    monkeypatch.setattr(
+        ss, "_write_segment_scene",
+        lambda label, content, duration, global_instructions=None: {"narration": f"{label} narration.", "visual_query": "q", "on_screen_text": ""},
+    )
+    monkeypatch.setattr(
+        ss, "_write_metadata",
+        lambda scenes, style_guidance="", company_name=None: {"title": "T", "description": "d", "tags": ["a"]},
+    )
+    segments = [{"label": "Hook", "content": "c1", "duration": 5}, {"label": "Recap", "content": "c2", "duration": 5}]
+    result = ss.write_segmented_script("Acme Ltd IPO (NSE: ACME). Write an opening question.", segments)
+    assert result["scenes"][-1]["narration"].endswith(ss.SUBSCRIBE_CTA_IPO_NARRATION)
+    assert result["scenes"][-1]["on_screen_text"] == ss.SUBSCRIBE_CTA_IPO_ON_SCREEN_TEXT

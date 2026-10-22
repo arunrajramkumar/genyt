@@ -7,6 +7,8 @@ youtube_client_secret.json in the repo root, then run
 token in cache/youtube_token.json. Until that's done, uploads are skipped
 (NotConfiguredError) rather than failing the whole video-generation job.
 """
+import re
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -111,7 +113,8 @@ def upload_video(
             media_body=caption_media,
         ).execute()
 
-    return {"video_id": video_id, "url": f"https://youtu.be/{video_id}"}
+    return {"video_id": video_id, "url": f"https://youtu.be/{video_id}",
+            "privacy_status": privacy_status or config.YOUTUBE_DEFAULT_PRIVACY}
 
 
 def set_thumbnail(video_id: str, thumbnail_path) -> None:
@@ -136,6 +139,64 @@ def post_engagement_comment(video_id: str, text: str) -> None:
         part="snippet",
         body={"snippet": {"videoId": video_id, "topLevelComment": {"snippet": {"textOriginal": text}}}},
     ).execute()
+
+
+ENGAGEMENT_PREFIX = "💬 "
+ENGAGEMENT_SUFFIX = " Reply YES or NO in the comments."
+_ENGAGEMENT_LINE_RE = re.compile(rf"^{re.escape(ENGAGEMENT_PREFIX)}(.+?\?){re.escape(ENGAGEMENT_SUFFIX)}\s*$", re.MULTILINE)
+
+
+def engagement_line(question: str) -> str:
+    """The description line carrying the video's closing question."""
+    return f"{ENGAGEMENT_PREFIX}{question}{ENGAGEMENT_SUFFIX}"
+
+
+def engagement_comment(question: str) -> str:
+    return f"{question} Reply YES or NO below 👇"
+
+
+def question_from_description(description: str) -> str:
+    m = _ENGAGEMENT_LINE_RE.search(description or "")
+    return m.group(1).strip() if m else ""
+
+
+def post_pending_engagement_comments(max_videos: int = 30, on_progress=print) -> int:
+    """Posts the engagement comment on recent uploads that have since been made
+    public and don't have one from the channel yet. Uploads start private (the
+    owner reviews and flips them public by hand) and YouTube rejects comments
+    on private videos with a 403 "forbidden" -- so the comment can't be posted
+    at upload time; this catches up on every later run instead. The question
+    comes from the description line written at upload (engagement_line), so
+    no extra state is kept. Returns how many comments were posted; each
+    video's failure is logged and skipped."""
+    youtube = _client()
+    channel = youtube.channels().list(part="id,contentDetails", mine=True).execute()["items"][0]
+    channel_id = channel["id"]
+    uploads = channel["contentDetails"]["relatedPlaylists"]["uploads"]
+    items = youtube.playlistItems().list(part="contentDetails", playlistId=uploads, maxResults=min(max_videos, 50)).execute()
+    ids = [i["contentDetails"]["videoId"] for i in items.get("items", [])]
+    if not ids:
+        return 0
+    videos = youtube.videos().list(part="snippet,status", id=",".join(ids)).execute().get("items", [])
+
+    posted = 0
+    for video in videos:
+        if video.get("status", {}).get("privacyStatus") != "public":
+            continue
+        question = question_from_description(video.get("snippet", {}).get("description", ""))
+        if not question:
+            continue
+        try:
+            threads = youtube.commentThreads().list(part="snippet", videoId=video["id"], maxResults=100).execute()
+            if any(t["snippet"]["topLevelComment"]["snippet"].get("authorChannelId", {}).get("value") == channel_id
+                   for t in threads.get("items", [])):
+                continue
+            post_engagement_comment(video["id"], engagement_comment(question))
+            posted += 1
+            on_progress(f"Engagement comment posted on {video['id']}")
+        except Exception as e:
+            on_progress(f"Engagement comment skipped for {video['id']}: {e}")
+    return posted
 
 
 def add_to_playlist(video_id: str, playlist_id: str) -> None:

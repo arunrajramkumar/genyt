@@ -108,7 +108,8 @@ def test_upload_video_returns_url_and_uploads_captions(tmp_path, monkeypatch):
         captions_path=srt_path, captions_language="ta",
     )
 
-    assert result == {"video_id": "abc123", "url": "https://youtu.be/abc123"}
+    assert result == {"video_id": "abc123", "url": "https://youtu.be/abc123",
+                      "privacy_status": config.YOUTUBE_DEFAULT_PRIVACY}
     assert captured["video_body"]["status"]["privacyStatus"] == config.YOUTUBE_DEFAULT_PRIVACY
     assert captured["video_body"]["snippet"]["title"] == "Title"
     assert captured["captions_body"]["snippet"]["language"] == "ta"

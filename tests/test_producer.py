@@ -701,11 +701,11 @@ def _upload_script_with_question():
     return script
 
 
-def test_produce_from_script_posts_engagement_comment_after_upload(mocked_pipeline, monkeypatch):
+def test_produce_from_script_posts_engagement_comment_after_public_upload(mocked_pipeline, monkeypatch):
     posted = []
     monkeypatch.setattr(
         producer.youtube_upload, "upload_video",
-        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc", "privacy_status": "public"},
     )
     monkeypatch.setattr(
         producer.youtube_upload, "post_engagement_comment",
@@ -744,7 +744,7 @@ def test_produce_from_script_comment_failure_does_not_fail_the_job(mocked_pipeli
     from googleapiclient.errors import HttpError
     monkeypatch.setattr(
         producer.youtube_upload, "upload_video",
-        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc"},
+        lambda *a, **k: {"video_id": "abc", "url": "https://youtu.be/abc", "privacy_status": "public"},
     )
     forbidden = HttpError(mock.Mock(status=403, reason="Forbidden"), b'{"error": "commentsDisabled"}')
     monkeypatch.setattr(producer.youtube_upload, "post_engagement_comment", mock.Mock(side_effect=forbidden))
@@ -752,3 +752,21 @@ def test_produce_from_script_comment_failure_does_not_fail_the_job(mocked_pipeli
     result = producer.produce_from_script(_upload_script_with_question(), on_progress=logs.append)
     assert result["youtube_url"] == "https://youtu.be/abc"
     assert any("Engagement comment failed" in msg and "video still published" in msg for msg in logs)
+
+
+def test_private_upload_defers_comment_and_puts_question_in_description(mocked_pipeline, monkeypatch):
+    """YouTube 403s comments on private videos (seen live), so a private upload
+    only records the question in the description for the later catch-up run."""
+    posted, uploaded = [], {}
+
+    def upload(path, title, description, tags, **k):
+        uploaded["description"] = description
+        return {"video_id": "abc", "url": "https://youtu.be/abc", "privacy_status": "private"}
+    monkeypatch.setattr(producer.youtube_upload, "upload_video", upload)
+    monkeypatch.setattr(producer.youtube_upload, "post_engagement_comment", lambda *a: posted.append(a))
+    logs = []
+    producer.produce_from_script(_upload_script_with_question(), on_progress=logs.append)
+    assert posted == []
+    assert any("deferred until the video is public" in m for m in logs)
+    assert producer.youtube_upload.question_from_description(uploaded["description"]) == \
+        "Do you think the rally is priced in?"

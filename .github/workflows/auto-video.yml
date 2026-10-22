@@ -73,6 +73,15 @@ jobs:
           mkdir -p /tmp/youtube_seed
           echo "$YOUTUBE_TOKEN_JSON" > /tmp/youtube_seed/youtube_token.json
 
+      # Uploads start private and YouTube refuses comments on private videos,
+      # so each run first comments on any recent upload the owner has since
+      # made public (scripts/post_engagement_comments.py). Never blocks the run.
+      - name: Post engagement comments on newly public videos
+        continue-on-error: true
+        env:
+          YOUTUBE_TOKEN_SEED_FILE: /tmp/youtube_seed/youtube_token.json
+        run: python3 scripts/post_engagement_comments.py
+
       - name: Run pipeline
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}

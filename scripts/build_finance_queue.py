@@ -130,7 +130,10 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = DEFAUL
     merge_risk = remaining - risk_dur < RECAP_MIN_SEC
     recap_dur = remaining if merge_risk else remaining - risk_dur
 
-    lines, cursor = [], 0
+    # Text before the first timed header isn't a scene (parse_segments skips
+    # it); this line is the clean "Name (NSE: SYMBOL)" anchor the title,
+    # thumbnail and ticker handling read the company from.
+    lines, cursor = [f"{company_name} (NSE: {symbol})", ""], 0
 
     lines.append(f"{cursor}-{cursor + hook_dur} seconds - Hook")
     lines.append(

@@ -228,3 +228,98 @@ def test_story_fact_rejected_when_judged_unfaithful_to_its_quote(monkeypatch):
         "quote": "its first product was Fevicol, a white adhesive for carpenters"}))
     monkeypatch.setattr(ci, "_is_faithful", lambda claim, source: False)
     assert ci._extract_story_fact("Pidilite Industries Ltd", source) == ""
+
+
+# ---- company name extraction (2026-10-23 Hindustan Zinc title bug) ----
+
+HOOK = ("Write an exciting opening question that leads with this headline number -- Profit growth: 140.0% "
+        "year-on-year -- in the first 6-8 words, before anything else; never open with the company name, a date, "
+        "or other background framing first. Mention Hindustan Zinc (NSE: HINDZINC) only after that.")
+
+
+def test_mid_sentence_mention_is_trimmed_to_the_name():
+    assert segmented_script._extract_company_name(HOOK) == "Hindustan Zinc"
+    assert segmented_script._extract_company_name("For Hindustan Zinc (NSE: HINDZINC), pick 3 metrics.") == "Hindustan Zinc"
+
+
+@pytest.mark.parametrize("prompt, expected", [
+    ("Karur Vysya Bank Ltd (NSE: KARURVYSYA) — Q2 profit growth\n0-6 seconds - Hook", "Karur Vysya Bank Ltd"),
+    ("Dr. Reddy's Laboratories Ltd. (NSE: DRREDDY)\n...", "Dr. Reddy's Laboratories Ltd."),
+    ("## Larsen & Toubro (NSE: LT)\n", "Larsen & Toubro"),
+    ("This video covers Dr. Reddy's Laboratories (NSE: DRREDDY) results.", "Dr. Reddy's Laboratories"),
+    ("no company here", None),
+])
+def test_company_name_extraction(prompt, expected):
+    assert segmented_script._extract_company_name(prompt) == expected
+
+
+def test_line_start_mention_wins_over_an_earlier_mid_sentence_one():
+    assert segmented_script._extract_company_name(HOOK + "\nHindustan Zinc (NSE: HINDZINC)") == "Hindustan Zinc"
+
+
+def test_generated_theme_opens_with_clean_company_anchor(monkeypatch):
+    monkeypatch.setattr("scripts.build_finance_queue.fundamentals.fetch_fundamentals", lambda s: SWAN)
+    theme = build_theme_entry("HINDZINC", "Hindustan Zinc")["theme"]
+    assert theme.splitlines()[0] == "Hindustan Zinc (NSE: HINDZINC)"
+    assert segmented_script._extract_company_name(theme) == "Hindustan Zinc"
+    assert parse_segments(theme)[0]["label"] == "Hook"
+
+
+# ---- deferred engagement comment ----
+
+from pipeline import youtube_upload  # noqa: E402
+
+
+def test_engagement_line_round_trips_through_the_description():
+    q = "Does the valuation already price in the growth?"
+    desc = f"Some summary.\n\n{youtube_upload.engagement_line(q)}\n\n#Shorts"
+    assert youtube_upload.question_from_description(desc) == q
+    assert youtube_upload.question_from_description("no question line") == ""
+
+
+def _fake_youtube(videos, threads_by_video, posted):
+    yt = mock.Mock()
+    yt.channels().list().execute.return_value = {
+        "items": [{"id": "UC_me", "contentDetails": {"relatedPlaylists": {"uploads": "UU_me"}}}]}
+    yt.playlistItems().list().execute.return_value = {
+        "items": [{"contentDetails": {"videoId": v["id"]}} for v in videos]}
+    yt.videos().list().execute.return_value = {"items": videos}
+
+    def threads_list(part, videoId, maxResults):
+        m = mock.Mock()
+        m.execute.return_value = {"items": threads_by_video.get(videoId, [])}
+        return m
+    yt.commentThreads().list.side_effect = threads_list
+    return yt
+
+
+def _video(vid, privacy, question):
+    desc = f"Summary.\n\n{youtube_upload.engagement_line(question)}" if question else "Summary."
+    return {"id": vid, "status": {"privacyStatus": privacy}, "snippet": {"description": desc}}
+
+
+def test_pending_comments_only_for_public_videos_without_our_comment(monkeypatch):
+    mine = [{"snippet": {"topLevelComment": {"snippet": {"authorChannelId": {"value": "UC_me"}}}}}]
+    other = [{"snippet": {"topLevelComment": {"snippet": {"authorChannelId": {"value": "UC_viewer"}}}}}]
+    videos = [_video("pub_new", "public", "Is growth priced in?"),
+              _video("pub_done", "public", "Is growth priced in?"),
+              _video("priv", "private", "Is growth priced in?"),
+              _video("pub_noq", "public", "")]
+    posted = []
+    monkeypatch.setattr(youtube_upload, "_client", lambda: _fake_youtube(videos, {"pub_new": other, "pub_done": mine}, posted))
+    monkeypatch.setattr(youtube_upload, "post_engagement_comment", lambda vid, text: posted.append((vid, text)))
+    assert youtube_upload.post_pending_engagement_comments(on_progress=lambda m: None) == 1
+    assert posted == [("pub_new", "Is growth priced in? Reply YES or NO below 👇")]
+
+
+def test_one_failing_video_does_not_stop_the_rest(monkeypatch):
+    videos = [_video("a", "public", "Q one?"), _video("b", "public", "Q two?")]
+    posted = []
+
+    def post(vid, text):
+        if vid == "a":
+            raise RuntimeError("commentsDisabled")
+        posted.append(vid)
+    monkeypatch.setattr(youtube_upload, "_client", lambda: _fake_youtube(videos, {}, posted))
+    monkeypatch.setattr(youtube_upload, "post_engagement_comment", post)
+    assert youtube_upload.post_pending_engagement_comments(on_progress=lambda m: None) == 1 and posted == ["b"]

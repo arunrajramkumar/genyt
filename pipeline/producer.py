@@ -282,6 +282,14 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         # considered for the dedicated Shorts feed/shelf.
         description = f"{description}\n#Shorts"
 
+    # The closing question also goes into the description: it invites replies
+    # there, and it's where youtube_upload.post_pending_engagement_comments
+    # reads it back from to post the comment once the video is public
+    # (YouTube refuses comments on private videos, which is how uploads start).
+    question = _extract_engagement_question(script["scenes"]) if config.YOUTUBE_ENGAGEMENT_COMMENT else ""
+    if question:
+        description = f"{description}\n\n{youtube_upload.engagement_line(question)}"
+
     meta_path = config.OUTPUT_DIR / f"{slug}.metadata.txt"
     meta_path.write_text(
         f"TITLE:\n{script['title']}\n\n"
@@ -316,13 +324,13 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
                     youtube_upload.add_to_playlist(upload["video_id"], config.YOUTUBE_PLAYLIST_ID)
                 except Exception as e:
                     on_progress(f"Playlist add failed (video still published): {e}")
-            if config.YOUTUBE_ENGAGEMENT_COMMENT:
-                question = _extract_engagement_question(script["scenes"])
-                if question:
+            if question:
+                if upload.get("privacy_status", config.YOUTUBE_DEFAULT_PRIVACY) == "private":
+                    on_progress("Engagement comment deferred until the video is public "
+                                "(posted by scripts/post_engagement_comments.py)")
+                else:
                     try:
-                        youtube_upload.post_engagement_comment(
-                            upload["video_id"], f"{question} Reply YES or NO below 👇",
-                        )
+                        youtube_upload.post_engagement_comment(upload["video_id"], youtube_upload.engagement_comment(question))
                         on_progress(f"Engagement comment posted on {upload['video_id']}")
                     except Exception as e:
                         on_progress(f"Engagement comment failed (video still published): {e}")

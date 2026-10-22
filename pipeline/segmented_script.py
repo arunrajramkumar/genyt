@@ -31,9 +31,52 @@ HASHTAG_RE = re.compile(r"#\w+")
 NSE_COMPANY_RE = re.compile(r"([A-Za-z0-9&.'\-, ]+?)\s*\(NSE:\s*([A-Z0-9&\-]+)\)")
 
 
+# NSE_COMPANY_RE's name class allows "." "," and spaces, so mid-sentence it
+# swallows the instruction before the name (seen live: the title became "never
+# open with the company name, a date, or other background framing first.
+# Mention Hindustan Zinc"). Cut at the last clause boundary -- but not after an
+# abbreviation like "Dr." -- and drop a leading instruction verb.
+_NAME_CLAUSE_BREAK_RE = re.compile(r"(?:[;!?]|(?<!\bDr)(?<!\bSt)(?<!\bMr)(?<!\bNo)\.|,|\s-{1,2})\s+")
+_NAME_LEAD_WORDS_RE = re.compile(r"^(?:(?:mention|for|about|on|of|cover|covering|analy[sz]e|explain|then|and)\s+)+", re.IGNORECASE)
+_MAX_NAME_WORDS = 8
+
+
+_NAME_CONNECTORS = {"and", "of", "&", "the", "for"}
+
+
+def _clean_company_name(raw: str):
+    """Mid-sentence mention -> just the name: last clause, then the trailing run
+    of name-like words (any capital letter or digit -- so "eClerx" counts --
+    with "and"/"of"/"&" allowed inside, e.g. "Bank of Baroda"), minus a
+    leading instruction verb ("Mention", "For")."""
+    words = _NAME_CLAUSE_BREAK_RE.split(raw.strip())[-1].split()
+    start = len(words)
+    while start > 0 and (re.search(r"[A-Z0-9]", words[start - 1]) or
+                         (words[start - 1].lower() in _NAME_CONNECTORS and start < len(words))):
+        start -= 1
+    while start < len(words) and words[start].lower() in _NAME_CONNECTORS:
+        start += 1
+    name = _NAME_LEAD_WORDS_RE.sub("", " ".join(words[start:])).strip(" -,")
+    if not name or len(name.split()) > _MAX_NAME_WORDS:
+        return None
+    return name
+
+
 def _extract_company_name(prompt: str):
-    m = NSE_COMPANY_RE.search(prompt)
-    return m.group(1).strip() if m else None
+    """The company in "Company Name (NSE: SYMBOL)", trimmed back to just the
+    name. A mention that starts its own line wins (build_finance_queue writes
+    one as the theme's first line; hand-written prompts usually open with
+    one); otherwise the first mid-sentence mention is used."""
+    fallback = None
+    for m in NSE_COMPANY_RE.finditer(prompt):
+        line_start = prompt.rfind("\n", 0, m.start()) + 1
+        if not prompt[line_start:m.start()].strip(" #*>-") and m.group(1).strip():
+            name = _clean_company_name(m.group(1).strip().strip("#*> "))
+            if name:
+                return name
+        if fallback is None:
+            fallback = _clean_company_name(m.group(1))
+    return fallback
 
 
 def _extract_company_symbol(prompt: str):

@@ -33,10 +33,12 @@ Rules:
 - The title must use correct English grammar and punctuation, including
   apostrophes in contractions and possessives (e.g. "What's", "India's").
   Never put hashtags in the title — put them in tags instead.
-- For stock/company videos the title is a search query: company name first, then
-  the concrete event or number from the prompt (e.g. "Apollo Micro Q1 FY27:
-  Revenue Up 88%"). Never use a ticker symbol, emoji, or filler like "Long-Term
-  Wealth", "Wealth Play", "Growth Outlook" or "Deep Dive".
+- For stock/company videos the title is a search query: the company's short name
+  first, once (e.g. "Karur Vysya Bank", not "Karur Vysya Bank Ltd"), then the
+  concrete event or number from the prompt (e.g. "Karur Vysya Bank Q2 Results:
+  Profit +37% | Share Price"). Aim for 60 characters or fewer. Never use a ticker
+  symbol, emoji, hashtags, or filler like "Long-Term Wealth", "Wealth Play",
+  "Growth Outlook" or "Deep Dive".
 - If the prompt contains specific facts, figures, names, or claims, use ONLY
   those — never invent, estimate, or add extra numbers, dates, or claims that were
   not given to you. If the prompt is an analysis of something (e.g. a stock, a
@@ -283,16 +285,17 @@ def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list
                 script["scenes"][0]["on_screen_text"] = resolved_company["name"]
             if script["company_name"]:
                 # Deterministic backstop -- same reasoning as
-                # segmented_script._ensure_company_name_in_title: the prompt
+                # segmented_script.polish_stock_title: the prompt
                 # instruction above isn't always enough on its own, so force
                 # the resolved company's real name into the title rather than
-                # trust the model to have included it. Insert it BEFORE the
+                # trust the model to have included it, and strip the filler
+                # phrases the title rules forbid. Insert it BEFORE the
                 # one-and-only truncation below -- truncating first and then
                 # prepending a name afterwards (the prior bug) silently pushed
                 # the title back over the limit and cut it a second time with
                 # no indication it was shortened (observed in production: a
                 # title truncated mid-clause with no ellipsis).
-                script["title"] = segmented_script._ensure_company_name_in_title(script["title"], script["company_name"])
+                script["title"] = segmented_script.polish_stock_title(script["title"], script["company_name"])
             script["title"] = segmented_script._truncate_title(script["title"])
             if script["company_name"] and symbol:
                 for scene in script["scenes"]:

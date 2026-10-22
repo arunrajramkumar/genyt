@@ -300,7 +300,7 @@ def get_posting_time_guidance(max_videos: int = 20) -> str:
 
 
 _BANNED_GUIDANCE_RE = re.compile(
-    r"emoji|long[- ]term wealth|wealth (?:play|builder)|growth (?:play|outlook)|deep dive|"
+    r"emoji|long[\s\u2010-\u2015-]*term (?:wealth|growth)|wealth (?:play|builder)|growth (?:play|outlook)|deep dive|"
     r"[\U0001F300-\U0001FAFF☀-➿]",
     re.IGNORECASE,
 )

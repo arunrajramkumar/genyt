@@ -156,6 +156,76 @@ def strip_title_emoji(title: str) -> str:
     cleaned = "".join(ch for ch in title if unicodedata.category(ch) not in ("So", "Cn", "Co", "Cs") and ch != "️")
     return re.sub(r"\s+", " ", cleaned).strip() or title
 
+
+# Legal suffixes dropped to get the short name people actually search for
+# ("Karur Vysya Bank Ltd" -> "Karur Vysya Bank"). Mirrors
+# company_insights._GENERIC_NAME_WORDS -- not imported, because company_insights
+# -> research -> segmented_script would make an import cycle.
+_LEGAL_SUFFIX_WORDS = {"ltd", "limited", "pvt", "private", "inc", "corp", "corporation", "co", "company"}
+# "Long-Term" with any hyphen/dash variant (incl. the non-breaking U+2011 the
+# model often writes) or a plain space.
+_LONG_TERM_RE = r"long[\s\u2010-\u2015-]*term"
+_BOILERPLATE_TITLE_RE = re.compile(
+    rf"{_LONG_TERM_RE}\s+wealth\b(?:\s+(?:play|builder|potential|creator|story))?"
+    rf"|(?:^|[:|–—-])\s*{_LONG_TERM_RE}\s+growth\b(?:\s+(?:story|play|outlook|potential))?(?=\s*(?:[?!.,]|$))",
+    re.IGNORECASE,
+)
+
+
+def _short_company_name(company_name: str) -> str:
+    """"Karur Vysya Bank Ltd" -> "Karur Vysya Bank". Parentheticals and trailing
+    legal suffixes are dropped; original casing is kept (unlike _core_name)."""
+    words = re.sub(r"\(.*?\)", " ", company_name).split()
+    while words and re.sub(r"[^a-z]", "", words[-1].lower()) in _LEGAL_SUFFIX_WORDS:
+        words.pop()
+    return " ".join(words) or company_name.strip()
+
+
+def _company_name_pattern(company_name: str) -> str:
+    """Regex matching either the registered name or its short form."""
+    alternatives = sorted({company_name.strip(), _short_company_name(company_name)}, key=len, reverse=True)
+    return "(?:" + "|".join(re.escape(a) for a in alternatives) + ")"
+
+
+def _tidy_title(title: str) -> str:
+    """Cleans up after phrase removal: no space before punctuation, no runs of
+    separators, no dangling ":" or "–" before a "?" or at the end, no empty
+    brackets. A hyphen is deliberately left alone so "-12%" never loses its sign."""
+    title = re.sub(r"\(\s*\)", "", title)
+    title = re.sub(r"\s+([?!.,:])", r"\1", title)
+    title = re.sub(r"([:|–—])(?:\s*[:|–—])+", r"\1", title)
+    title = re.sub(r"(?:\s*[:|–—])+\s*(?=[?!.,]|$)", "", title)
+    title = re.sub(r"^[\s:|–—]+", "", title)
+    return re.sub(r"\s+", " ", title).strip()
+
+
+def strip_title_boilerplate(title: str) -> str:
+    """Removes the filler phrases the title rules forbid ("Long-Term Wealth",
+    "Long-Term Wealth Play", a trailing "Long-Term Growth" tag) and tidies the
+    separators they leave behind."""
+    return _tidy_title(_BOILERPLATE_TITLE_RE.sub("", title))
+
+
+def _collapse_company_name_mentions(title: str, company_name: str) -> str:
+    """Fixes a doubled name: "X Ltd: X: Profit Up 37%" and "X: X Q3 Profit" both
+    become a single leading name. A name repeated as a trailing tag after an
+    earlier mention ("... Boost – X?") is dropped too."""
+    name = _company_name_pattern(company_name)
+    title = re.sub(rf"^\s*{name}(?!\w)\s*[:|–—-]+\s*(?={name}(?!\w))", "", title, flags=re.IGNORECASE)
+    trailing = re.search(rf"\s*[:|–—-]\s*{name}(?!\w)(?=\s*[?!.]?\s*$)", title, flags=re.IGNORECASE)
+    if trailing and re.search(rf"(?<!\w){name}(?!\w)", title[:trailing.start()], flags=re.IGNORECASE):
+        title = title[:trailing.start()] + title[trailing.end():]
+    return title
+
+
+def polish_stock_title(title: str, company_name: str) -> str:
+    """Deterministic title pass for a company video, applied after the LLM writes
+    the title and before truncation. Non-company titles are returned untouched."""
+    if not company_name:
+        return title
+    return _ensure_company_name_in_title(strip_title_boilerplate(title), company_name)
+
+
 FACT_PATTERNS = [
     # "lakh crore" must be matched as a single unit before the plain
     # "lakh"/"crore" pattern below -- otherwise large-cap market caps (e.g.
@@ -531,11 +601,14 @@ Rules:
   English grammar and punctuation, including apostrophes in contractions and
   possessives (e.g. "What's", "India's"). Never put hashtags in the title —
   put them in tags instead.
-- Titles are what people type into YouTube search. Put the company name FIRST,
-  then the concrete event or number the narration reports (e.g. "Q1 results",
-  "IPO", "revenue up 88%"), e.g. "Apollo Micro Q1 FY27: Revenue Up 88%". Never
-  use a stock ticker symbol, emoji, or filler like "Long-Term Wealth", "Wealth
-  Play", "Growth Outlook" or "Deep Dive" in the title.
+- Titles are what people type into YouTube search. Put the company's short name
+  FIRST, once (e.g. "Karur Vysya Bank", not "Karur Vysya Bank Ltd"), then the
+  concrete event or number the narration reports (e.g. "Q2 results", "IPO",
+  "profit up 37%", "share price"), e.g. "Karur Vysya Bank Q2 Results: Profit +37%
+  | Share Price" or "Tonbo Imaging IPO: GMP 71%, 4x Subscribed". Aim for 60
+  characters or fewer. Never use a stock ticker symbol, emoji, hashtags, or
+  filler like "Long-Term Wealth", "Wealth Play", "Growth Outlook" or "Deep Dive"
+  in the title.
 - If the subject is a company/stock, never phrase the title as a verdict or
   recommendation (e.g. avoid "Buy or Sell", "Apply or Avoid", "Cheap or
   Overvalued") -- this channel stays neutral, per the narration's own stance.
@@ -553,10 +626,18 @@ def _ensure_company_name_in_title(title: str, company_name: str) -> str:
     "This Multibagger Stock Nobody's Talking About") that reads well but loses
     the one thing a stock-analysis title/thumbnail must have for someone
     scanning a feed: which company it's actually about. Force it in
-    deterministically rather than trusting the sample to always include it."""
-    if not company_name or company_name.lower() in title.lower():
+    deterministically rather than trusting the sample to always include it.
+
+    Presence is checked by the short name, so "Karur Vysya Bank" in the title
+    satisfies "Karur Vysya Bank Ltd" and nothing gets prepended twice. When it
+    does prepend, it uses the short name, not the legal one."""
+    if not company_name:
         return title
-    return f"{company_name}: {title}"
+    title = _collapse_company_name_mentions(title, company_name)
+    short = _short_company_name(company_name)
+    if re.search(rf"(?<!\w){re.escape(short)}(?!\w)", title, flags=re.IGNORECASE):
+        return title
+    return f"{short}: {title}" if title.strip() else short
 
 
 def _truncate_title(title: str, limit: int = 70) -> str:
@@ -597,7 +678,7 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
             title = clean_title(data["title"])
             if company_name:
                 title = strip_title_emoji(title)
-            title = _truncate_title(_ensure_company_name_in_title(title, company_name))
+            title = _truncate_title(polish_stock_title(title, company_name))
             return {
                 "title": title,
                 "description": (data.get("description") or "").strip(),

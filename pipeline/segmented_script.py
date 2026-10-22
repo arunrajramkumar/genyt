@@ -223,7 +223,15 @@ def polish_stock_title(title: str, company_name: str) -> str:
     the title and before truncation. Non-company titles are returned untouched."""
     if not company_name:
         return title
-    return _ensure_company_name_in_title(strip_title_boilerplate(title), company_name)
+    title = _ensure_company_name_in_title(strip_title_boilerplate(title), company_name)
+    # Stripping filler can leave just the name (e.g. "Asian Paints: Long-Term
+    # Wealth Potential" -> "Asian Paints"); give search something to match.
+    if re.sub(r"[^a-z0-9]", "", title.lower()) in {
+        re.sub(r"[^a-z0-9]", "", company_name.lower()),
+        re.sub(r"[^a-z0-9]", "", _short_company_name(company_name).lower()),
+    }:
+        title = f"{title} Share Price Analysis"
+    return title
 
 
 FACT_PATTERNS = [

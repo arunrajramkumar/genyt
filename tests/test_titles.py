@@ -27,7 +27,7 @@ BAD_TITLES = [
     ("24% Revenue Surge: Titan Company Ltd Long‑Term Wealth Play",
      "Titan Company Ltd", "24% Revenue Surge: Titan Company Ltd"),
     ("Asian Paints: Long‑Term Wealth Potential 📈",
-     "Asian Paints", "Asian Paints"),
+     "Asian Paints", "Asian Paints Share Price Analysis"),
     ("Gabriel India Ltd: 26.5% ROCE Boost – Gabriel India Long‑Term Wealth?",
      "Gabriel India Ltd", "Gabriel India Ltd: 26.5% ROCE Boost?"),
 ]
@@ -90,7 +90,7 @@ def test_polish_is_a_no_op_for_clean_search_title():
 
 
 def test_polish_does_not_leave_a_dangling_separator_when_only_filler_remains():
-    assert ss.polish_stock_title("Long-Term Wealth Play", "Asian Paints Ltd") == "Asian Paints"
+    assert ss.polish_stock_title("Long-Term Wealth Play", "Asian Paints Ltd") == "Asian Paints Share Price Analysis"
 
 
 def test_polish_never_invents_numbers():
@@ -110,7 +110,7 @@ def test_write_metadata_applies_polish_to_llm_title(monkeypatch):
         lambda *a, **k: json.dumps({"title": "Asian Paints: Long‑Term Wealth Potential 📈", "description": "d", "tags": []}),
     )
     meta = ss._write_metadata([{"narration": "n"}], company_name="Asian Paints")
-    assert meta["title"] == "Asian Paints"
+    assert meta["title"] == "Asian Paints Share Price Analysis"
 
 
 def test_write_metadata_collapses_doubled_legal_name(monkeypatch):

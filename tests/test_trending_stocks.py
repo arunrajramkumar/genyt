@@ -40,6 +40,28 @@ def test_extract_candidates_drops_hallucinated_company_not_in_text(monkeypatch):
     assert ts._extract_candidates(text) == []
 
 
+def test_chunk_text_respects_limit_and_loses_nothing():
+    text = "\n".join(f"line {i} " + "x" * 40 for i in range(100)) + "\n" + "y" * 250
+    chunks = ts._chunk_text(text, 500)
+    assert all(len(c) <= 500 for c in chunks) and len(chunks) > 5
+    assert "".join(chunks).replace("\n", "") == text.replace("\n", "")
+
+
+def test_extract_candidates_splits_large_input_and_merges_results(monkeypatch):
+    monkeypatch.setattr(ts, "MAX_EXTRACT_CHARS", 200)
+    sizes = []
+
+    def fake(system, user, **k):
+        sizes.append(len(user))
+        name = "Tata Consultancy Services" if "Tata" in user else "Infosys"
+        return json.dumps({"candidates": [{"symbol": "X", "name": name}] if name in user else []})
+    monkeypatch.setattr(ts.llm, "chat_json", fake)
+    text = "Tata Consultancy Services posted results.\n" + "filler words here. " * 12 + "\nInfosys won an order.\n" + "filler words here. " * 12
+    out = ts._extract_candidates(text)
+    assert len(sizes) > 1 and max(sizes) < 400
+    assert {c["name"] for c in out} == {"Tata Consultancy Services", "Infosys"}
+
+
 def test_extract_candidates_returns_empty_after_bad_responses(monkeypatch):
     monkeypatch.setattr(ts.llm, "chat_json", lambda *a, **k: "not json at all")
     assert ts._extract_candidates("some real snippet text") == []

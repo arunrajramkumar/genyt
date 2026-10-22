@@ -83,6 +83,32 @@ def _search_trending_stock_news(queries: list = None) -> str:
     return "\n".join(p for p in parts if p)
 
 
+# Groq's free tier caps a request at 8000 tokens per minute (prompt + reply); six
+# queries' worth of snippets blew past it (13970 requested), so extraction runs
+# over chunks of at most this many characters (~3k tokens).
+MAX_EXTRACT_CHARS = 9000
+
+
+def _chunk_text(text: str, limit: int) -> list:
+    """Splits on line boundaries into pieces of at most `limit` characters (a
+    single longer line is hard-cut)."""
+    chunks, current = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        if current and len(current) + len(line) + 1 > limit:
+            chunks.append(current)
+            current = ""
+        current = f"{current}\n{line}" if current else line
+    if current.strip():
+        chunks.append(current)
+    return chunks
+
+
 def _extract_candidates(facts_text: str) -> list:
     """Returns [{symbol, name}, ...]. Grounded independently of what the LLM
     claims: a candidate only survives if its name literally appears in
@@ -91,24 +117,24 @@ def _extract_candidates(facts_text: str) -> list:
     if not facts_text.strip():
         return []
 
-    user_prompt = "Search snippets:\n" + facts_text + "\n\nProduce the JSON now."
     candidates = []
-    for _attempt in range(2):
-        raw = llm.chat_json(SYSTEM_PROMPT_TRENDING, user_prompt, max_tokens=400, timeout=60)
-        try:
-            candidates = _extract_json(raw).get("candidates") or []
-            break
-        except (ValueError, json.JSONDecodeError):
-            continue
-    else:
-        return []
+    for chunk in _chunk_text(facts_text, MAX_EXTRACT_CHARS):
+        user_prompt = "Search snippets:\n" + chunk + "\n\nProduce the JSON now."
+        for _attempt in range(2):
+            raw = llm.chat_json(SYSTEM_PROMPT_TRENDING, user_prompt, max_tokens=400, timeout=60)
+            try:
+                candidates += _extract_json(raw).get("candidates") or []
+                break
+            except (ValueError, json.JSONDecodeError):
+                continue
 
     lowered_text = facts_text.lower()
-    grounded = []
+    grounded, seen = [], set()
     for c in candidates:
         name = (c.get("name") or "").strip()
         symbol = (c.get("symbol") or "").strip().upper()
-        if name and symbol and name.lower() in lowered_text:
+        if name and symbol and name.lower() in lowered_text and (symbol, name.lower()) not in seen:
+            seen.add((symbol, name.lower()))
             grounded.append({"symbol": symbol, "name": name})
     return grounded
 

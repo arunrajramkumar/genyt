@@ -309,3 +309,23 @@ def test_main_trending_flag_exits_cleanly_when_tts_quota_exceeded(monkeypatch, t
     # Nothing should have been recorded as done/appended since production failed.
     themes = run.load_themes(themes_file)
     assert themes == [{"theme": "Static fallback theme", "done": False}]
+
+
+def test_next_trending_entry_carries_chosen_event_onto_entry(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        run.trending_stocks, "select_trending_symbols",
+        lambda exclude_symbols, limit, channel_texts: [{"symbol": "ACME", "name": "Acme India", "event": "ipo"}],
+    )
+    monkeypatch.setattr(run.build_finance_queue, "build_theme_entry", lambda symbol, name: {"theme": "..."})
+
+    assert run.next_trending_entry(tmp_path / "themes.yaml")["trending_event"] == "ipo"
+
+
+def test_next_trending_entry_defaults_event_to_other_when_absent(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        run.trending_stocks, "select_trending_symbols",
+        lambda exclude_symbols, limit, channel_texts: [{"symbol": "CDSL", "name": "CDSL Ltd"}],
+    )
+    monkeypatch.setattr(run.build_finance_queue, "build_theme_entry", lambda symbol, name: {"theme": "..."})
+
+    assert run.next_trending_entry(tmp_path / "themes.yaml")["trending_event"] == "other"

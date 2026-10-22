@@ -12,6 +12,7 @@ symbol that doesn't resolve to a real, scrapable company page is silently
 dropped rather than queued with made-up data.
 """
 import json
+import math
 import random
 import re
 
@@ -45,6 +46,30 @@ EXTRA_QUERY_BATCHES = [
 
 _NAME_SUFFIX_RE = re.compile(r"\b(ltd|limited|inc|corp|corporation)\b\.?", re.IGNORECASE)
 
+# Fresh news events that drive search demand (viewers search for a company when
+# its IPO opens, its results land, or it wins an order). "other" is a company
+# merely named in passing. Real YouTube data: timely IPOs and results-day
+# surprises were the best performers; evergreen mega-cap analyses the worst.
+EVENT_TYPES = ("ipo", "results", "guidance", "order_win")
+
+# An LLM-claimed event only counts if the snippet text itself backs it up: each
+# pattern list must match within EVENT_WINDOW_CHARS of a literal mention of the
+# company's name. Anything unverifiable is downgraded to "other".
+EVENT_WINDOW_CHARS = 200
+EVENT_PATTERNS = {
+    "ipo": [re.compile(r"\bipo\b|initial public offering", re.IGNORECASE)],
+    "results": [re.compile(r"\bresults?\b|\bquarter(ly)?\b|\bq[1-4]\b|\bprofit\b|\bearnings\b", re.IGNORECASE)],
+    "guidance": [re.compile(r"\bguidance\b|\boutlook\b|\bforecast\b", re.IGNORECASE)],
+    "order_win": [
+        re.compile(r"\b(orders?|contracts?)\b", re.IGNORECASE),
+        re.compile(r"\b(bags?|bagged|wins?|won|secures?|secured|receives?|received|grabs?|lands?|landed)\b", re.IGNORECASE),
+    ],
+}
+
+# Market caps at or above this (Rs 5 lakh crore) are mega-caps that every
+# finance channel already covers; without a fresh event they're a last resort.
+MEGA_CAP_CR = 500_000
+
 SYSTEM_PROMPT_TRENDING = """You are a financial news analyst. You will be given real
 search-result snippets about the Indian stock market. Identify NSE-listed companies that
 are EXPLICITLY named in the snippets below -- never a company you merely happen to know
@@ -52,17 +77,22 @@ about from elsewhere.
 
 Output ONLY valid JSON (no markdown fences, no commentary):
 
-{"candidates": [{"symbol": "NSE_TICKER", "name": "Company name exactly as it appears in the text"}]}
+{"candidates": [{"symbol": "NSE_TICKER", "name": "Company name exactly as it appears in the text", "event": "ipo|results|guidance|order_win|other", "event_quote": "short phrase copied word-for-word from the snippet, or empty"}]}
 
 Rules:
 - Only include a company whose name literally appears in the snippets below.
 - "symbol" is the company's standard NSE ticker (e.g. "TCS", "RELIANCE") -- a wrong guess
   here is fine, it gets independently verified afterwards, but never invent a company that
   isn't named in the text.
-- Prefer companies with a fresh event in the snippets (quarterly results, IPO opening or
-  listing, guidance, order win) over companies merely mentioned in passing, and list those
-  first. Include IPO companies too (use the best-guess NSE ticker; unlisted ones get dropped
-  by verification).
+- "event" is the fresh news event the snippets report for that company: "ipo" (IPO opening,
+  subscription or listing), "results" (quarterly/annual results or profit), "guidance"
+  (outlook or guidance), "order_win" (order or contract win), or "other" (merely mentioned).
+  Only use an event the snippets actually state; otherwise use "other".
+- "event_quote" must be copied exactly from the snippets and must mention that event. Leave
+  it empty when the event is "other".
+- Prefer companies with a fresh event in the snippets over companies merely mentioned in
+  passing, and list those first. Include IPO companies too (use the best-guess NSE ticker;
+  unlisted ones get dropped by verification).
 - If no real companies are named in the snippets, return {"candidates": []}.
 """
 
@@ -109,11 +139,32 @@ def _chunk_text(text: str, limit: int) -> list:
     return chunks
 
 
+def _event_is_verified(name: str, event: str, text: str) -> bool:
+    """True if `text` contains an event-pattern match (for `event`) within
+    EVENT_WINDOW_CHARS of some literal mention of `name`. "other" needs no
+    evidence; an unknown event never verifies."""
+    if event == "other":
+        return True
+    patterns = EVENT_PATTERNS.get(event)
+    if not patterns:
+        return False
+    lowered_text, needle = text.lower(), name.lower()
+    start = lowered_text.find(needle)
+    while start != -1:
+        window = lowered_text[max(0, start - EVENT_WINDOW_CHARS):start + len(needle) + EVENT_WINDOW_CHARS]
+        if all(p.search(window) for p in patterns):
+            return True
+        start = lowered_text.find(needle, start + 1)
+    return False
+
+
 def _extract_candidates(facts_text: str) -> list:
-    """Returns [{symbol, name}, ...]. Grounded independently of what the LLM
-    claims: a candidate only survives if its name literally appears in
-    facts_text, so a hallucinated company can't sneak through even if the
-    model ignores the system prompt."""
+    """Returns [{symbol, name, event, event_quote}, ...]. Grounded independently
+    of what the LLM claims: a candidate only survives if its name literally
+    appears in facts_text, so a hallucinated company can't sneak through even if
+    the model ignores the system prompt. The LLM's event is kept only if
+    _event_is_verified() finds it in the text (else "other"), and event_quote
+    only if it is a literal substring of the text."""
     if not facts_text.strip():
         return []
 
@@ -121,7 +172,7 @@ def _extract_candidates(facts_text: str) -> list:
     for chunk in _chunk_text(facts_text, MAX_EXTRACT_CHARS):
         user_prompt = "Search snippets:\n" + chunk + "\n\nProduce the JSON now."
         for _attempt in range(2):
-            raw = llm.chat_json(SYSTEM_PROMPT_TRENDING, user_prompt, max_tokens=400, timeout=60)
+            raw = llm.chat_json(SYSTEM_PROMPT_TRENDING, user_prompt, max_tokens=600, timeout=60)
             try:
                 candidates += _extract_json(raw).get("candidates") or []
                 break
@@ -129,30 +180,50 @@ def _extract_candidates(facts_text: str) -> list:
                 continue
 
     lowered_text = facts_text.lower()
-    grounded, seen = [], set()
+    best = {}  # keyed by (symbol, name); a verified event beats "other" for the same company
     for c in candidates:
         name = (c.get("name") or "").strip()
         symbol = (c.get("symbol") or "").strip().upper()
-        if name and symbol and name.lower() in lowered_text and (symbol, name.lower()) not in seen:
-            seen.add((symbol, name.lower()))
-            grounded.append({"symbol": symbol, "name": name})
-    return grounded
+        if not (name and symbol and name.lower() in lowered_text):
+            continue
+        event = (c.get("event") or "other").strip().lower()
+        if event not in EVENT_TYPES or not _event_is_verified(name, event, facts_text):
+            event = "other"
+        quote = (c.get("event_quote") or "").strip()[:200]
+        if event == "other" or not quote or quote.lower() not in lowered_text:
+            quote = ""
+        entry = {"symbol": symbol, "name": name, "event": event, "event_quote": quote}
+        key = (symbol, name.lower())
+        if key not in best or (best[key]["event"] == "other" and event != "other"):
+            best[key] = entry
+    return list(best.values())
+
+
+def _rank_tier(candidate: dict, cap_cr: float) -> int:
+    """0 = fresh news event (ipo/results/guidance/order_win), 1 = other, 2 = other
+    mega-cap (last resort). Lower tiers are always drawn from first."""
+    if candidate.get("event", "other") in EVENT_TYPES:
+        return 0
+    return 2 if cap_cr >= MEGA_CAP_CR else 1
 
 
 def _weighted_pick_without_replacement(pairs: list, k: int) -> list:
-    """Picks up to k items from pairs=[(candidate, market_cap_cr), ...] via
-    weighted random sampling (weight = market cap, so a bigger company is
-    still more likely to be picked) without replacement, instead of always
-    taking the strict top-k by market cap. Always taking the single largest
-    company converges this channel onto the same handful of mega-caps every
-    other finance channel already covers, day after day -- a real company a
-    retail audience still recognizes but hasn't seen covered everywhere else
-    is a better find than the n-th video about the same index heavyweight."""
+    """Picks up to k items from pairs=[(candidate, market_cap_cr), ...]:
+    strictly by _rank_tier (event-driven candidates first, mega-caps without
+    an event last), then by weighted random sampling without replacement
+    within the tier. Within a tier the weight is log-flattened
+    (1 + log10(1 + cap)), so a bigger company is still somewhat more likely to
+    be picked but a Rs 50,000 cr name is no longer ~10x a Rs 500 cr one. Always
+    taking the single largest company converges this channel onto the same
+    mega-caps every other finance channel already covers, day after day. The
+    randomness keeps the same name from always winning."""
     pool = list(pairs)
     chosen = []
-    for _ in range(min(k, len(pool))):
-        weights = [cap ** 0.5 + 1 for _, cap in pool]  # sqrt flattens mega-cap dominance; +1 keeps zero-cap pickable
-        pick = random.choices(pool, weights=weights, k=1)[0]
+    while pool and len(chosen) < k:
+        best_tier = min(_rank_tier(c, cap) for c, cap in pool)
+        tier_pool = [(c, cap) for c, cap in pool if _rank_tier(c, cap) == best_tier]
+        weights = [1 + math.log10(1 + max(cap, 0.0)) for _, cap in tier_pool]  # >= 1, so zero-cap stays pickable
+        pick = random.choices(tier_pool, weights=weights, k=1)[0]
         chosen.append(pick)
         pool.remove(pick)
     return chosen
@@ -194,14 +265,13 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
     treat [] as "no new trending candidate available right now" and never
     queue a theme with no real candidate behind it.
 
-    Picked via market-cap-weighted random sampling (without replacement) from
-    among all verified candidates, rather than strictly the top `limit` by
-    market cap -- a bigger, more widely-recognized company is a reasonable
-    free proxy for viewer search/click interest (the figure is already
-    scraped as part of the existing fundamentals verification step, no new
-    API call), but always picking the single largest name every run means
-    this channel never covers anything but the same mega-caps every other
-    finance channel already covers."""
+    Picked from among all verified candidates by _weighted_pick_without_replacement:
+    candidates with a verified fresh news event (IPO, results, guidance, order
+    win) first, then other names, with multi-lakh-crore mega-caps last. Within
+    a tier the pick is random, weighted by a log-flattened market cap, so the
+    same name doesn't always win while bigger companies still get a modest
+    edge. Returned dicts carry the verified "event" and "event_quote" when the
+    LLM supplied them."""
     exclude = {s.strip().upper() for s in exclude_symbols}
     channel_symbols = set()
     for text in channel_texts:
@@ -231,7 +301,8 @@ def select_trending_symbols(exclude_symbols=(), limit: int = 5, queries: list = 
                 verified.append((c, fundamentals.market_cap_cr(data)))
             else:
                 unverified += 1
-        print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified")
+        with_event = sum(1 for c, _cap in verified if c.get("event", "other") in EVENT_TYPES)
+        print(f"[trending] {excluded} already covered/duplicate, {unverified} failed Screener verification, {len(verified)} verified, {with_event} with a fresh news event")
         if verified:
             break
 

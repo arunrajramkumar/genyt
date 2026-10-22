@@ -1,4 +1,5 @@
 import json
+import random
 
 from pipeline import trending_stocks as ts
 
@@ -28,7 +29,9 @@ def test_extract_candidates_keeps_candidates_named_in_the_text(monkeypatch):
         lambda *a, **k: _mock_response({"candidates": [{"symbol": "TCS", "name": "Tata Consultancy Services"}]}),
     )
     text = "Tata Consultancy Services shares rallied today after strong earnings."
-    assert ts._extract_candidates(text) == [{"symbol": "TCS", "name": "Tata Consultancy Services"}]
+    assert ts._extract_candidates(text) == [
+        {"symbol": "TCS", "name": "Tata Consultancy Services", "event": "other", "event_quote": ""},
+    ]
 
 
 def test_extract_candidates_drops_hallucinated_company_not_in_text(monkeypatch):
@@ -227,3 +230,160 @@ def test_select_trending_symbols_logs_why_nothing_was_selected(monkeypatch, caps
     out = capsys.readouterr().out
     assert "2 grounded candidate(s)" in out
     assert "1 already covered/duplicate, 1 failed Screener verification, 0 verified" in out
+
+
+# -- _event_is_verified / event grounding: an LLM-claimed event must be in the text --
+
+def test_event_is_verified_accepts_ipo_word_near_the_name():
+    text = "Acme India IPO opens for subscription on Monday, price band Rs 300-320."
+    assert ts._event_is_verified("Acme India", "ipo", text)
+
+
+def test_event_is_verified_rejects_ipo_claim_when_ipo_word_is_far_from_the_name():
+    text = "Acme India reported strong Q1 results today. " + "filler words. " * 30 + "IPO market is slow."
+    assert not ts._event_is_verified("Acme India", "ipo", text)
+
+
+def test_event_is_verified_results_needs_results_words_near_the_name():
+    assert ts._event_is_verified("Apollo Micro", "results", "Apollo Micro Q1 revenue jumped 88%.")
+    assert not ts._event_is_verified("Apollo Micro", "results", "Apollo Micro was added to a midcap index.")
+
+
+def test_event_is_verified_order_win_needs_both_order_and_win_words():
+    assert ts._event_is_verified("Cupid", "order_win", "Cupid bags a Rs 40 crore export order.")
+    assert not ts._event_is_verified("Cupid", "order_win", "Cupid is an export order-heavy business.")
+
+
+def test_event_is_verified_other_always_passes_and_unknown_never_does():
+    assert ts._event_is_verified("Anything", "other", "")
+    assert not ts._event_is_verified("Anything", "merger", "Anything merger announced")
+
+
+def test_extract_candidates_keeps_verified_event_and_quote(monkeypatch):
+    monkeypatch.setattr(
+        ts.llm, "chat_json",
+        lambda *a, **k: _mock_response({"candidates": [{
+            "symbol": "ACME", "name": "Acme India", "event": "IPO",
+            "event_quote": "Acme India IPO opens Monday",
+        }]}),
+    )
+    text = "Acme India IPO opens Monday for subscription with a Rs 300 price band."
+    assert ts._extract_candidates(text) == [{
+        "symbol": "ACME", "name": "Acme India", "event": "ipo", "event_quote": "Acme India IPO opens Monday",
+    }]
+
+
+def test_extract_candidates_downgrades_unverifiable_event_to_other(monkeypatch):
+    monkeypatch.setattr(
+        ts.llm, "chat_json",
+        lambda *a, **k: _mock_response({"candidates": [{
+            "symbol": "TCS", "name": "Tata Consultancy Services", "event": "ipo",
+            "event_quote": "Tata Consultancy Services IPO",
+        }]}),
+    )
+    text = "Tata Consultancy Services shares rallied today after strong earnings."
+    assert ts._extract_candidates(text) == [{
+        "symbol": "TCS", "name": "Tata Consultancy Services", "event": "other", "event_quote": "",
+    }]
+
+
+def test_extract_candidates_drops_event_quote_that_is_not_in_the_text(monkeypatch):
+    monkeypatch.setattr(
+        ts.llm, "chat_json",
+        lambda *a, **k: _mock_response({"candidates": [{
+            "symbol": "CUPID", "name": "Cupid", "event": "order_win", "event_quote": "Cupid wins a huge order",
+        }]}),
+    )
+    text = "Cupid bags a Rs 40 crore export order from a European buyer."
+    out = ts._extract_candidates(text)
+    assert out[0]["event"] == "order_win" and out[0]["event_quote"] == ""
+
+
+def test_extract_candidates_prefers_verified_event_over_other_for_same_company(monkeypatch):
+    responses = [
+        {"candidates": [{"symbol": "CUPID", "name": "Cupid", "event": "other", "event_quote": ""}]},
+        {"candidates": [{"symbol": "CUPID", "name": "Cupid", "event": "results", "event_quote": "Cupid Q1 results"}]},
+    ]
+    monkeypatch.setattr(ts, "MAX_EXTRACT_CHARS", 60)
+    monkeypatch.setattr(ts.llm, "chat_json", lambda *a, **k: _mock_response(responses.pop(0)))
+    text = "Cupid is a soap maker known to many households.\nCupid Q1 results were out today, profit up."
+    out = ts._extract_candidates(text)
+    assert len(out) == 1 and out[0]["event"] == "results"
+
+
+# -- _weighted_pick_without_replacement: event tier, then others, mega-caps last --
+
+def _cand(symbol, event="other"):
+    return {"symbol": symbol, "name": symbol, "event": event, "event_quote": ""}
+
+
+def test_weighted_pick_takes_event_candidates_before_other_candidates():
+    pairs = [(_cand("OLDBIG"), 40_000.0), (_cand("NEWSMALL", "results"), 300.0), (_cand("IPOCO", "ipo"), 1_500.0)]
+    chosen = [c["symbol"] for c, _ in ts._weighted_pick_without_replacement(pairs, 2)]
+    assert set(chosen) == {"NEWSMALL", "IPOCO"}
+
+
+def test_weighted_pick_draws_from_other_tier_only_after_event_tier_is_exhausted():
+    pairs = [(_cand("PLAIN"), 800.0), (_cand("EVENT", "order_win"), 200.0)]
+    assert [c["symbol"] for c, _ in ts._weighted_pick_without_replacement(pairs, 1)] == ["EVENT"]
+
+
+def test_weighted_pick_puts_mega_cap_without_event_last_resort():
+    pairs = [(_cand("MEGA"), 900_000.0), (_cand("MIDCAP"), 3_000.0)]
+    assert [c["symbol"] for c, _ in ts._weighted_pick_without_replacement(pairs, 1)] == ["MIDCAP"]
+    assert [c["symbol"] for c, _ in ts._weighted_pick_without_replacement(pairs, 2)] == ["MIDCAP", "MEGA"]
+
+
+def test_weighted_pick_mega_cap_with_fresh_event_is_still_eligible_first():
+    pairs = [(_cand("MEGA", "results"), 900_000.0), (_cand("MIDCAP"), 3_000.0)]
+    assert [c["symbol"] for c, _ in ts._weighted_pick_without_replacement(pairs, 1)] == ["MEGA"]
+
+
+def test_weighted_pick_keeps_randomness_within_a_tier(monkeypatch):
+    monkeypatch.setattr(ts, "random", random.Random(7))
+    pairs = [(_cand("AAA"), 1_000.0), (_cand("BBB"), 1_000.0), (_cand("CCC"), 1_000.0)]
+    seen = {ts._weighted_pick_without_replacement(pairs, 1)[0][0]["symbol"] for _ in range(300)}
+    assert seen == {"AAA", "BBB", "CCC"}
+
+
+def test_weighted_pick_flattens_market_cap_lead_within_a_tier(monkeypatch):
+    # Log weighting: a Rs 50,000 cr name is ~1.5x a Rs 500 cr name, not ~10x.
+    monkeypatch.setattr(ts, "random", random.Random(11))
+    pairs = [(_cand("BIG"), 50_000.0), (_cand("SMALL"), 500.0)]
+    picks = [ts._weighted_pick_without_replacement(pairs, 1)[0][0]["symbol"] for _ in range(2000)]
+    assert 0.5 < picks.count("BIG") / len(picks) < 0.7
+
+
+def test_select_trending_symbols_prefers_event_candidate_over_bigger_plain_one(monkeypatch):
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(ts, "_extract_candidates", lambda text: [_cand("BIGCO"), _cand("ACME", "ipo")])
+    caps = {"BIGCO": 60_000.0, "ACME": 2_000.0}
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+    monkeypatch.setattr(ts.fundamentals, "market_cap_cr", lambda data: caps[data["symbol"]])
+
+    assert ts.select_trending_symbols(exclude_symbols=[], limit=1) == [_cand("ACME", "ipo")]
+
+
+def test_select_trending_symbols_passes_event_through_and_logs_event_count(monkeypatch, capsys):
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(ts, "_extract_candidates", lambda text: [_cand("ACME", "ipo")])
+    monkeypatch.setattr(ts.fundamentals, "fetch_fundamentals", lambda symbol: {"symbol": symbol})
+    monkeypatch.setattr(ts.fundamentals, "market_cap_cr", lambda data: 2_000.0)
+
+    result = ts.select_trending_symbols(exclude_symbols=[], limit=1)
+    assert result[0]["event"] == "ipo"
+    assert "1 with a fresh news event" in capsys.readouterr().out
+
+
+def test_select_trending_symbols_drops_unlisted_ipo_before_ranking(monkeypatch):
+    # An IPO that isn't listed yet has no Screener page, so verification drops it
+    # (same as any unverifiable name) and ranking never sees it.
+    monkeypatch.setattr(ts, "_search_trending_stock_news", lambda queries=None: "text")
+    monkeypatch.setattr(ts, "_extract_candidates", lambda text: [_cand("UNLISTED", "ipo"), _cand("PLAIN")])
+    monkeypatch.setattr(
+        ts.fundamentals, "fetch_fundamentals",
+        lambda symbol: {} if symbol == "UNLISTED" else {"symbol": symbol},
+    )
+    monkeypatch.setattr(ts.fundamentals, "market_cap_cr", lambda data: 1_000.0)
+
+    assert [c["symbol"] for c in ts.select_trending_symbols(exclude_symbols=[], limit=1)] == ["PLAIN"]

@@ -72,7 +72,12 @@ def next_trending_entry(themes_file: Path) -> dict | None:
     if not candidates:
         return None
     candidate = candidates[0]
-    return build_finance_queue.build_theme_entry(candidate["symbol"], candidate["name"])
+    entry = build_finance_queue.build_theme_entry(candidate["symbol"], candidate["name"])
+    if entry is not None:
+        # Verified news event behind the pick ("ipo", "results", ... or "other"), kept
+        # on the themes entry so later stages can use it.
+        entry["trending_event"] = candidate.get("event", "other")
+    return entry
 
 
 def main():

@@ -164,9 +164,9 @@ def build_theme_entry(symbol: str, company_name: str, duration_sec: int = DEFAUL
     lines.append(
         f"For {company_name} (NSE: {symbol}), pick ONLY the 2 or 3 most striking of these valuation "
         "metrics -- do not list all of them. For each one you use, state the number and then immediately "
-        "translate it into one short plain-English clause a retail investor would understand (e.g. "
-        '"ROCE of 117% -- meaning it generates huge profit from the capital it employs"), not just the '
-        f"bare ratio name and figure. Facts:\n{ratio_lines}"
+        "translate it into one short plain-English clause a retail investor would understand (e.g. a "
+        "high ROCE -- meaning it generates a lot of profit from the capital it employs), not just the "
+        f"bare ratio name and figure. Use only the numbers below. Facts:\n{ratio_lines}"
     )
     lines.append("")
     cursor += metrics_dur

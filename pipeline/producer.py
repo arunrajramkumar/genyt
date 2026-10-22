@@ -7,7 +7,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import ai_thumbnail, config, diagrams, performance_log, tts, visuals, assemble, captions, textcard, youtube_upload, segmented_script
+from . import ai_thumbnail, company_insights, config, diagrams, fundamentals, performance_log, thumbnail_spec, tts, visuals, assemble, captions, textcard, youtube_upload, segmented_script
 
 
 def slugify(title: str) -> str:
@@ -140,6 +140,20 @@ def _extract_engagement_question(scenes: list) -> str:
     return ""
 
 
+def _stock_thumbnail_spec(script: dict, on_progress=print) -> dict:
+    """Thumbnail spec built from the company's scraped fundamentals (see
+    thumbnail_spec) for a stock video, or {} for anything else / on failure,
+    in which case the generic hook card is used."""
+    symbol, company = script.get("symbol"), script.get("company_name")
+    if not (symbol and company):
+        return {}
+    try:
+        return thumbnail_spec.build(fundamentals.fetch_fundamentals(symbol), company, script.get("title", ""))
+    except Exception as e:
+        on_progress(f"  stock thumbnail spec failed ({e}), using the generic hook card")
+        return {}
+
+
 def _pick_hook_background(visual_paths: list, work_dir, on_progress=print):
     """Picks a still image to sit behind the hook card/thumbnail text.
 
@@ -210,9 +224,12 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     # stock footage can match, on the single most-watched/highest-leverage
     # scene of the video. Falls back to Pexels for that scene like any other
     # when generation fails, same as before this was reused this way.
+    business_hint = ""
+    if script.get("symbol") and script.get("company_name"):
+        business_hint = company_insights.business_summary(script["company_name"])
     ai_hook_bg_path = ai_thumbnail.generate_hook_background(
         script.get("company_name"), work_dir / "ai_hook_bg.png", on_progress,
-        width=orientation["width"], height=orientation["height"],
+        width=orientation["width"], height=orientation["height"], business_hint=business_hint,
     )
 
     on_progress("Fetching stock visuals")
@@ -252,11 +269,16 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     # small feed thumbnail -- the corner badge is a second, always-intact
     # placement for it, same slot a channel-specific badge would otherwise use.
     badge_text = thumbnail_badge or script.get("company_name")
-    textcard.render_hook_card(
-        script["title"], stat_text, orientation["width"], orientation["height"],
-        thumb_path, background_path=hook_bg_path, badge_text=badge_text,
-        style=_pick_hook_style(script["title"]),
-    )
+    spec = _stock_thumbnail_spec(script, on_progress)
+    if spec:
+        textcard.render_stock_thumbnail(spec, orientation["width"], orientation["height"], thumb_path,
+                                        background_path=hook_bg_path)
+    else:
+        textcard.render_hook_card(
+            script["title"], stat_text, orientation["width"], orientation["height"],
+            thumb_path, background_path=hook_bg_path, badge_text=badge_text,
+            style=_pick_hook_style(script["title"]),
+        )
 
     on_progress("Building captions")
     t = 0.0

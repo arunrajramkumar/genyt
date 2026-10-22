@@ -74,8 +74,8 @@ Rules:
   into the script just because it was given. Whenever narration states a ratio or
   technical term a retail viewer may not know (e.g. ROE, ROCE, P/E, CAGR,
   EV/EBITDA, offer-for-sale), immediately follow it with a short plain-English
-  clause explaining what it practically means (e.g. "ROE of 92% -- meaning it
-  generates huge profit from shareholder money"), not just the bare number.
+  clause explaining what it practically means (e.g. a high ROE -- meaning it
+  generates a lot of profit from shareholder money), not just the bare number.
 - Keep total narration length close to the requested duration at ~140 words/minute.
 - visual_query must describe concrete, filmable subjects (avoid abstract concepts). If
   the topic names a specific company/industry, prefer a term tied to that company's

@@ -461,6 +461,17 @@ def _extract_verbatim(content: str) -> str:
     return ""
 
 
+# Instruction examples like '(e.g. "ROCE of 117% -- meaning ...")' are not
+# facts: one was scraped as on-screen text and became a JNK India thumbnail
+# stat of "117%" (real ROCE 17.5%). Removed before facts are extracted or
+# on-screen numbers are grounded.
+_EXAMPLE_SPAN_RE = re.compile(r"\(\s*(?:e\.g\.|for example|such as)[^()]*\)|\b(?:e\.g\.|for example)\s*[\"“][^\"”]*[\"”]", re.IGNORECASE)
+
+
+def _strip_examples(content: str) -> str:
+    return _EXAMPLE_SPAN_RE.sub(" ", content)
+
+
 def _extract_facts(content: str, limit: int = 3) -> list:
     """Collects every distinct metric matching FACT_PATTERNS in this segment's
     source content, not just the first -- a scene whose narration covers
@@ -532,7 +543,8 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
         user_prompt += f"\n\nOverall tone/style for this video: {global_instructions}"
 
     verbatim = _extract_verbatim(content)
-    facts = _extract_facts(content)
+    fact_source = _strip_examples(content)
+    facts = _extract_facts(fact_source)
     visual_fallback = _fallback_visual(label)
 
     last_error = None
@@ -566,7 +578,7 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
         scene["visual_query"] = visual_fallback
 
     on_screen_text = normalize_indian_currency_units((scene.get("on_screen_text") or "").strip())
-    if on_screen_text and not _is_grounded(on_screen_text, content):
+    if on_screen_text and not _is_grounded(on_screen_text, fact_source):
         on_screen_text = ""
     if len(facts) > 1:
         # This segment's content names several metrics -- show all of them
@@ -577,7 +589,7 @@ def _write_segment_scene(label: str, content: str, duration_sec: float, global_i
 
     diagram = scene.get("diagram")
     if diagram:
-        ok, _reason = diagrams.validate_diagram_spec(diagram, source_text=content)
+        ok, _reason = diagrams.validate_diagram_spec(diagram, source_text=fact_source)
         if not ok:
             diagram = None
 

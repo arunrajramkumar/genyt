@@ -71,6 +71,11 @@ def _no_company_insights_network_by_default(monkeypatch):
     # The faithfulness second opinion is its own LLM call; tests mocking a
     # single chat_json reply would otherwise feed it the wrong payload.
     monkeypatch.setattr(company_insights, "_is_faithful", lambda claim, source: True)
+    # producer looks up a Wikipedia business description (AI thumbnail
+    # background) and the company's fundamentals (thumbnail spec).
+    monkeypatch.setattr(company_insights, "business_summary", lambda name: "")
+    from pipeline import producer
+    monkeypatch.setattr(producer, "_stock_thumbnail_spec", lambda script, on_progress=print: {})
     monkeypatch.setattr(fundamentals, "fetch_peers", lambda data: [])
 
 

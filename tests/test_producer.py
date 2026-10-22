@@ -562,7 +562,7 @@ def test_produce_from_script_passes_company_name_to_ai_background(mocked_pipelin
     captured = {}
     monkeypatch.setattr(
         producer.ai_thumbnail, "generate_hook_background",
-        lambda company_name, out_path, on_progress=print, width=None, height=None: captured.setdefault("company_name", company_name),
+        lambda company_name, out_path, on_progress=print, width=None, height=None, business_hint="": captured.setdefault("company_name", company_name),
     )
     script = _stub_script()
     script["company_name"] = "Arrow Greentech"

@@ -518,3 +518,146 @@ def render_hook_card(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img.convert("RGB").save(out_path)
     return out_path
+
+
+_THUMB_UP_COLOR = (70, 240, 140, 255)
+_THUMB_DOWN_COLOR = (255, 85, 85, 255)
+_THUMB_NEUTRAL_COLOR = (255, 215, 64, 255)
+_THUMB_HOOK_COLOR = (255, 215, 64, 255)
+_THUMB_TAG_COLORS = {"IPO": (130, 70, 230, 255)}
+_THUMB_TAG_DEFAULT_COLOR = (230, 45, 55, 255)
+
+
+def _fit_font(draw, text: str, max_width: int, start_size: int, min_size: int):
+    size = start_size
+    while size > min_size:
+        font = _load_font(size, text)
+        bbox = draw.textbbox((0, 0), text, font=font, stroke_width=max(2, size // 18))
+        if bbox[2] - bbox[0] <= max_width:
+            return font
+        size -= 4
+    return _load_font(min_size, text)
+
+
+def _fit_lines(draw, text: str, max_width: int, start_size: int, min_size: int, max_lines: int):
+    """Biggest font at which `text` wraps into at most `max_lines` lines."""
+    size = start_size
+    while size >= min_size:
+        font = _load_font(size, text)
+        lines = _wrapped_lines(draw, text, font, max_width)
+        if len(lines) <= max_lines:
+            return font, lines
+        size -= 4
+    font = _load_font(min_size, text)
+    return font, _wrapped_lines(draw, text, font, max_width)[:max_lines]
+
+
+def _draw_stroked_centered(draw, text, font, fill, y, width, stroke=None):
+    stroke = stroke if stroke is not None else max(2, font.size // 18)
+    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
+    draw.text(((width - (bbox[2] - bbox[0])) // 2 - bbox[0], y - bbox[1]), text, font=font, fill=fill,
+              stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+    return bbox[3] - bbox[1]
+
+
+def _darken_for_text(img: Image.Image, width: int, height: int) -> Image.Image:
+    """A uniform dim plus a heavier fade toward the bottom, so white/green text
+    stays readable over any AI or stock background."""
+    shade = Image.new("L", (1, height))
+    for y in range(height):
+        t = y / height
+        shade.putpixel((0, y), int(95 + 120 * max(0.0, (t - 0.45) / 0.55)))
+    shade = shade.resize((width, height))
+    dark = Image.new("RGBA", (width, height), (4, 6, 12, 255))
+    dark.putalpha(shade)
+    return Image.alpha_composite(img, dark)
+
+
+def render_stock_thumbnail(spec: dict, width: int, height: int, out_path: Path, background_path: Path = None) -> Path:
+    """Stock-video thumbnail/hook card from a pipeline.thumbnail_spec spec:
+    results/IPO tag, the company's name, one giant colour-coded YoY number
+    with an arrow and a plain label, two metric chips and a short question --
+    the elements a viewer scanning search results can take in at a glance."""
+    if background_path and Path(background_path).exists():
+        img = _crop_to_cover(background_path, width, height)
+    else:
+        img = Image.new("RGBA", (width, height), (12, 18, 30, 255))
+    img = _darken_for_text(img, width, height)
+    draw = ImageDraw.Draw(img)
+    content_w = int(width * 0.86)
+
+    y = int(height * 0.05)
+    tag = sanitize_display_text(spec.get("tag") or "")
+    if tag:
+        tag_font = _load_font(max(28, width // 20), tag)
+        bbox = draw.textbbox((0, 0), tag, font=tag_font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        pad_x, pad_y = int(width * 0.035), int(width * 0.02)
+        x0 = (width - tw) // 2 - pad_x
+        draw.rounded_rectangle([x0, y, x0 + tw + pad_x * 2, y + th + pad_y * 2], radius=14,
+                               fill=_THUMB_TAG_COLORS.get(tag, _THUMB_TAG_DEFAULT_COLOR))
+        draw.text((x0 + pad_x - bbox[0], y + pad_y - bbox[1]), tag, font=tag_font, fill=(255, 255, 255, 255))
+        y += th + pad_y * 2 + int(height * 0.025)
+
+    name = sanitize_display_text(spec.get("name") or "")
+    if name:
+        name_font, name_lines = _fit_lines(draw, name, content_w, max(60, width // 9), max(40, width // 16), 2)
+        for line in name_lines:
+            y += _draw_stroked_centered(draw, line, name_font, (255, 255, 255, 255), y, width) + int(height * 0.012)
+
+    direction = spec.get("direction")
+    color = {"up": _THUMB_UP_COLOR, "down": _THUMB_DOWN_COLOR}.get(direction, _THUMB_NEUTRAL_COLOR)
+    value = sanitize_display_text(spec.get("hero_value") or "")
+    hero_top = max(y + int(height * 0.06), int(height * 0.36))
+    arrow_w = int(width * 0.16) if direction else 0
+    gap = int(width * 0.03) if direction else 0
+    value_font = _fit_font(draw, value, content_w - arrow_w - gap, max(120, width // 3), max(80, width // 7))
+    vb = draw.textbbox((0, 0), value, font=value_font)
+    vw, vh = vb[2] - vb[0], vb[3] - vb[1]
+    x0 = (width - (arrow_w + gap + vw)) // 2
+    if direction:
+        ah = int(vh * 0.8)
+        ax0, ay0 = x0, hero_top + (vh - ah) // 2
+        points = ([(ax0, ay0 + ah), (ax0 + arrow_w, ay0 + ah), (ax0 + arrow_w // 2, ay0)] if direction == "up"
+                  else [(ax0, ay0), (ax0 + arrow_w, ay0), (ax0 + arrow_w // 2, ay0 + ah)])
+        draw.polygon(points, fill=color, outline=(0, 0, 0, 255), width=4)
+    _draw_glow_text(img, (x0 + arrow_w + gap - vb[0], hero_top - vb[1]), value, value_font, color, blur_radius=14)
+    draw = ImageDraw.Draw(img)
+    y = hero_top + vh + int(height * 0.025)
+
+    label = sanitize_display_text(spec.get("hero_label") or "")
+    if label:
+        label_font = _load_font(max(32, width // 17), label)
+        bbox = draw.textbbox((0, 0), label, font=label_font)
+        lw, lh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        pad_x, pad_y = int(width * 0.04), int(width * 0.018)
+        lx0 = (width - lw) // 2 - pad_x
+        draw.rounded_rectangle([lx0, y, lx0 + lw + pad_x * 2, y + lh + pad_y * 2], radius=16, fill=(245, 247, 250, 240))
+        draw.text((lx0 + pad_x - bbox[0], y + pad_y - bbox[1]), label, font=label_font, fill=(12, 16, 28, 255))
+        y += lh + pad_y * 2 + int(height * 0.035)
+
+    chips = [sanitize_display_text(c) for c in spec.get("chips") or [] if c]
+    if chips:
+        chip_font = _load_font(max(30, width // 19), " ".join(chips))
+        pad_x, pad_y, gap = int(width * 0.035), int(width * 0.018), int(width * 0.03)
+        boxes = [draw.textbbox((0, 0), c, font=chip_font) for c in chips]
+        widths = [b[2] - b[0] + pad_x * 2 for b in boxes]
+        ch = max(b[3] - b[1] for b in boxes) + pad_y * 2
+        x = (width - (sum(widths) + gap * (len(chips) - 1))) // 2
+        for chip, bbox, w in zip(chips, boxes, widths):
+            draw.rounded_rectangle([x, y, x + w, y + ch], radius=14, fill=(10, 14, 24, 215),
+                                   outline=(255, 255, 255, 140), width=2)
+            draw.text((x + pad_x - bbox[0], y + pad_y - bbox[1]), chip, font=chip_font, fill=(255, 255, 255, 255))
+            x += w + gap
+        y += ch + int(height * 0.035)
+
+    hook = sanitize_display_text(spec.get("hook") or "")
+    if hook:
+        hook_font, hook_lines = _fit_lines(draw, hook, content_w, max(56, width // 12), max(36, width // 20), 2)
+        hy = max(y, int(height * 0.72))
+        for line in hook_lines:
+            hy += _draw_stroked_centered(draw, line, hook_font, _THUMB_HOOK_COLOR, hy, width) + int(height * 0.01)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.convert("RGB").save(out_path)
+    return out_path

@@ -47,11 +47,31 @@ CLOUDFLARE_RUN_ENDPOINT = (
 )
 
 
+# company name -> one-sentence description of what it does, set by
+# generate_hook_background for the duration of one generation.
+_BUSINESS_HINTS = {}
+
+
 def _build_prompt(company_name: str) -> str:
-    """A generic "hookable" finance-thumbnail scene. Deliberately avoids
-    asking for any text/numbers/logos — text-to-image models render legible
-    text unreliably, and the bold stock name/stat is already burned in
-    separately by textcard.render_hook_card on top of this background."""
+    """A "hookable" finance-thumbnail scene. Deliberately avoids asking for any
+    text/numbers/logos — text-to-image models render legible text unreliably,
+    and the bold stock name/stat is already burned in separately by textcard
+    on top of this background.
+
+    With a business description it shows the company's real operations
+    (a zinc smelter, a solar panel line, a jewellery showroom): every video
+    otherwise got the same generic trading-floor image, which made the
+    channel's thumbnails indistinguishable from each other and from every
+    other finance channel's."""
+    business = _BUSINESS_HINTS.get(company_name)
+    if business:
+        return (
+            f"A dramatic, cinematic photo of the real-world operations of {company_name}. "
+            f"About the company: {business} Show its actual products, factories, sites or "
+            "stores — not a stock chart or trading floor. Bold lighting, high contrast, rich "
+            "colour, vertical 9:16 composition with the main subject in the middle third, "
+            "no text, no logos, no watermarks, no numbers, photorealistic."
+        )
     return (
         f"A dramatic, cinematic photo evoking {company_name}'s business and the stock "
         "market — a dynamic trading floor, stock chart on a big screen, or relevant "
@@ -241,7 +261,7 @@ def _generate_via_pollinations(company_name: str, out_path: Path, on_progress, w
 
 
 def generate_hook_background(company_name: str, out_path: Path, on_progress=print,
-                              width: int = 720, height: int = 1280):
+                              width: int = 720, height: int = 1280, business_hint: str = ""):
     """Returns `out_path` on success, or None (never raises) if there's no
     company name to work with or every generator tier fails.
 
@@ -252,6 +272,9 @@ def generate_hook_background(company_name: str, out_path: Path, on_progress=prin
     if not company_name:
         on_progress("[ai_thumbnail] no company name available; skipping AI thumbnail background")
         return None
+    _BUSINESS_HINTS.clear()
+    if business_hint:
+        _BUSINESS_HINTS[company_name] = business_hint
 
     if config.GEMINI_API_KEY:
         if gemini_image_within_cap():

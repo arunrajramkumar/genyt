@@ -118,6 +118,21 @@ def _wikipedia_extract(company_name: str) -> str:
     return f"Wikipedia article '{title}':\n{extract.strip()}"
 
 
+def business_summary(company_name: str) -> str:
+    """First sentence of the company's own Wikipedia article (what it actually
+    does, e.g. "...is an Indian zinc and lead mining and smelting company"),
+    for steering the AI thumbnail background toward the real business. "" when
+    there's no confidently matching article. Never raises."""
+    try:
+        extract = _wikipedia_extract(company_name)
+    except Exception:
+        return ""
+    body = extract.split("\n", 1)[1] if "\n" in extract else ""
+    first = re.split(r"(?<=[.!?])\s+", body.strip(), maxsplit=1)[0] if body.strip() else ""
+    first = re.sub(r"\s*\([^)]*\)", "", first)  # drop "(NSE: X)", pronunciations, dates
+    return first[:220]
+
+
 def _extract_story_fact(company_name: str, snippets: str) -> str:
     """Returns a verified one-sentence fact, or "" when none passes grounding."""
     if not snippets.strip():

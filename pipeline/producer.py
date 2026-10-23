@@ -288,9 +288,16 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     # placement for it, same slot a channel-specific badge would otherwise use.
     badge_text = thumbnail_badge or script.get("company_name")
     spec = _stock_thumbnail_spec(script, on_progress)
+    # The in-video opener is a transparent overlay on the moving first scene
+    # (headline number only); the full designed card is the custom thumbnail
+    # shown in search. Generic videos keep using the thumbnail as the opener.
+    hook_overlay_path = thumb_path
     if spec:
         textcard.render_stock_thumbnail(spec, orientation["width"], orientation["height"], thumb_path,
                                         background_path=hook_bg_path)
+        hook_overlay_path = work_dir / "hook_overlay.png"
+        textcard.render_stock_thumbnail(dict(spec, chips=[], hook=""), orientation["width"], orientation["height"],
+                                        hook_overlay_path, transparent=True)
     else:
         textcard.render_hook_card(
             script["title"], stat_text, orientation["width"], orientation["height"],
@@ -311,7 +318,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     assemble.assemble_video(
         script["scenes"], narration_paths, visual_paths, out_path, work_dir,
         width=orientation["width"], height=orientation["height"],
-        hook_card_path=thumb_path,
+        hook_card_path=hook_overlay_path,
     )
 
     description = _append_hashtags(script["description"], script["tags"], script["title"])

@@ -446,3 +446,44 @@ def test_assemble_video_raises_when_ffmpeg_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(assemble, "FFMPEG_BIN", None)
     with pytest.raises(RuntimeError, match="ffmpeg/ffprobe not found"):
         assemble.assemble_video([], [], [], tmp_path / "out.mp4", tmp_path / "work")
+
+
+# ---- opener: moving first scene + fading transparent overlay (2026-10-23) ----
+
+def test_hook_overlay_fades_out_with_alpha(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 8.0)
+    assemble._overlay_hook_card(tmp_path / "clip.mp4", tmp_path / "card.png", assemble.HOOK_OVERLAY_DURATION,
+                                720, 1280, tmp_path / "out.mp4")
+    graph = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "format=rgba" in graph and "fade=t=out" in graph and "alpha=1" in graph
+    assert f"st={assemble.HOOK_OVERLAY_DURATION - assemble.HOOK_OVERLAY_FADE}" in graph
+
+
+def test_opening_image_scene_gets_a_visible_push_in(monkeypatch, tmp_path):
+    calls = _record_calls(monkeypatch)
+    assemble._build_scene_clip(tmp_path / "a.png", "image", 5.0, tmp_path / "o.mp4", 720, 1280, punch_in=True)
+    assemble._build_scene_clip(tmp_path / "a.png", "image", 5.0, tmp_path / "p.mp4", 720, 1280)
+    first = calls[0][calls[0].index("-vf") + 1]
+    later = calls[1][calls[1].index("-vf") + 1]
+    assert f"1+{assemble.HOOK_SCENE_ZOOM}*on/{int(5.0 * assemble.config.VIDEO_FPS)}" in first
+    assert "zoom+0.0006" in later
+
+
+def test_assemble_uses_short_overlay_and_push_in_only_for_scene_zero(monkeypatch, tmp_path):
+    seen = {"punch": [], "hook": []}
+    monkeypatch.setattr(assemble, "_probe_duration", lambda path: 4.0)
+    monkeypatch.setattr(assemble, "_build_scene_clip",
+                        lambda v, k, d, o, w, h, punch_in=False: seen["punch"].append(punch_in))
+    monkeypatch.setattr(assemble, "_overlay_hook_card",
+                        lambda c, card, dur, w, h, o: seen["hook"].append(dur))
+    monkeypatch.setattr(assemble, "_run", lambda cmd: None)
+    scenes = [{"narration": "a"}, {"narration": "b"}]
+    try:
+        assemble.assemble_video(scenes, [tmp_path / "a.mp3", tmp_path / "b.mp3"],
+                                [(tmp_path / "x.png", "image"), (tmp_path / "y.png", "image")],
+                                tmp_path / "out.mp4", tmp_path, 720, 1280, hook_card_path=tmp_path / "card.png")
+    except Exception:
+        pass  # later muxing steps need real files; the per-scene choices are what's checked
+    assert seen["punch"][:2] == [True, False]
+    assert seen["hook"] == [assemble.HOOK_OVERLAY_DURATION]

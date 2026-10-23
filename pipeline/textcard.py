@@ -573,16 +573,39 @@ def _darken_for_text(img: Image.Image, width: int, height: int) -> Image.Image:
     return Image.alpha_composite(img, dark)
 
 
-def render_stock_thumbnail(spec: dict, width: int, height: int, out_path: Path, background_path: Path = None) -> Path:
+def _scrim(width: int, height: int, y0: int, y1: int, alpha: int = 130) -> Image.Image:
+    """Transparent canvas with a soft dark band from y0 to y1 (feathered
+    edges), so overlay text stays readable over any moving footage."""
+    band = Image.new("L", (1, height), 0)
+    feather = max(1, int(height * 0.06))
+    for y in range(height):
+        if y0 <= y <= y1:
+            a = alpha
+        elif y0 - feather < y < y0:
+            a = int(alpha * (y - (y0 - feather)) / feather)
+        elif y1 < y < y1 + feather:
+            a = int(alpha * ((y1 + feather) - y) / feather)
+        else:
+            a = 0
+        band.putpixel((0, y), a)
+    img = Image.new("RGBA", (width, height), (4, 6, 12, 255))
+    img.putalpha(band.resize((width, height)))
+    return img
+
+
+def render_stock_thumbnail(spec: dict, width: int, height: int, out_path: Path, background_path: Path = None,
+                           transparent: bool = False) -> Path:
     """Stock-video thumbnail/hook card from a pipeline.thumbnail_spec spec:
     results/IPO tag, the company's name, one giant colour-coded YoY number
     with an arrow and a plain label, two metric chips and a short question --
     the elements a viewer scanning search results can take in at a glance."""
-    if background_path and Path(background_path).exists():
-        img = _crop_to_cover(background_path, width, height)
+    if transparent:
+        # In-video opener: text over the moving first scene, not a slide.
+        img = _scrim(width, height, int(height * 0.03), int(height * 0.62))
+    elif background_path and Path(background_path).exists():
+        img = _darken_for_text(_crop_to_cover(background_path, width, height), width, height)
     else:
-        img = Image.new("RGBA", (width, height), (12, 18, 30, 255))
-    img = _darken_for_text(img, width, height)
+        img = _darken_for_text(Image.new("RGBA", (width, height), (12, 18, 30, 255)), width, height)
     draw = ImageDraw.Draw(img)
     content_w = int(width * 0.86)
 
@@ -659,5 +682,5 @@ def render_stock_thumbnail(spec: dict, width: int, height: int, out_path: Path, 
             hy += _draw_stroked_centered(draw, line, hook_font, _THUMB_HOOK_COLOR, hy, width) + int(height * 0.01)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.convert("RGB").save(out_path)
+    (img if transparent else img.convert("RGB")).save(out_path)
     return out_path

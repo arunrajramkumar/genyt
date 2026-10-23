@@ -29,7 +29,7 @@ def main():
     print(f"CHANNEL: {ch.get('subscriberCount')} subs, {ch.get('viewCount')} views, {ch.get('videoCount')} videos\n")
 
     end = date.today().isoformat()
-    metrics = "views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,likes,comments,shares"
+    metrics = "views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,subscribersGained,likes,comments,shares"
     rows = {}
     try:
         resp = analytics.reports().query(
@@ -42,12 +42,28 @@ def main():
     except Exception as e:
         print("per-video analytics failed:", e)
 
-    print("PUBLISHED   PRIV     VIEWS AVGPCT  AVGSEC SUBS  LIKES  TITLE")
+    # Views per video that came from the Shorts feed itself (vs. search etc.):
+    # the number that shows whether YouTube is actually testing a Short.
+    feed = {}
+    for vid in ids:
+        try:
+            r = analytics.reports().query(
+                ids="channel==MINE", startDate="2000-01-01", endDate=end, metrics="views",
+                dimensions="insightTrafficSourceType", filters=f"video=={vid}",
+            ).execute()
+            feed[vid] = sum(row[1] for row in r.get("rows", []) if row[0] == "SHORTS")
+        except Exception:
+            feed[vid] = 0
+
+    # ENG% = engagedViews/views: plays that got past the first few seconds.
+    # ~30% across the board (2026-10-23) meant ~70% swiped away at the opener.
+    print("PUBLISHED   PRIV     VIEWS  ENG% FEED AVGPCT  AVGSEC SUBS  LIKES  TITLE")
     for vid in sorted(ids, key=lambda v: snippets.get(v, {}).get("publishedAt", "")):
         sn, d, r = snippets.get(vid, {}), details.get(vid, {}), rows.get(vid, {})
         print(
             f"{sn.get('publishedAt', '')[:10]}  {d.get('status', {}).get('privacyStatus', '?'):8} "
-            f"{r.get('views', 0):5} {r.get('averageViewPercentage', 0):6.1f} {r.get('averageViewDuration', 0):7.1f} "
+            f"{r.get('views', 0):5} {100 * r.get('engagedViews', 0) / r['views'] if r.get('views') else 0:5.0f} "
+            f"{feed.get(vid, 0):4} {r.get('averageViewPercentage', 0):6.1f} {r.get('averageViewDuration', 0):7.1f} "
             f"{r.get('subscribersGained', 0):4} {r.get('likes', 0):5}  {sn.get('title', '')[:70]}"
         )
 

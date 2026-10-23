@@ -239,3 +239,13 @@ def test_visual_subject_hint_skips_generic_finance_queries():
     script = {"scenes": [{"visual_query": "stock market chart"}, {"visual_query": "diesel generator set in a data centre"}]}
     assert producer._visual_subject_hint(script) == "Its business involves diesel generator set in a data centre."
     assert producer._visual_subject_hint({"scenes": [{"visual_query": "trading floor"}]}) == ""
+
+
+def test_transparent_opener_keeps_footage_visible(tmp_path):
+    spec = {"name": "CUMMINS INDIA", "tag": "Q1 FY27 RESULTS", "hero_value": "-7.8%",
+            "hero_label": "NET PROFIT YoY", "direction": "down", "chips": [], "hook": ""}
+    out = textcard.render_stock_thumbnail(spec, 720, 1280, tmp_path / "o.png", transparent=True)
+    img = Image.open(out)
+    assert img.mode == "RGBA"
+    assert img.getpixel((360, 1250))[3] == 0          # bottom: fully see-through
+    assert 0 < img.getpixel((10, 400))[3] < 255       # behind the text: a partial scrim only

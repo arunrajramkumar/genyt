@@ -15,13 +15,16 @@ FFPROBE_BIN = shutil.which("ffprobe")
 # occasionally tipping over the limit and silently failing the Telegram send.
 _VIDEO_BITRATE_ARGS = ["-b:v", "1200k", "-maxrate", "1500k", "-bufsize", "3000k"]
 
-# Shorts retention drops off a cliff in the first ~3s -- 2s wasn't quite long
-# enough for a viewer to actually read the headline + stat callout before the
-# scene underneath took over, so the branded hook now holds through that whole
-# critical window instead of flashing by. _overlay_hook_card already clamps
-# this to the scene's own clip length when the first scene's narration is
-# shorter than this, so raising it here is safe for every video length.
-HOOK_CARD_DURATION = 3.0
+# The opener card is now a transparent overlay (text over moving footage) that
+# fades out -- see _overlay_hook_card. It used to be the opaque thumbnail over a
+# still image, i.e. a frozen text slide for the first 3s of every Short, and
+# ~70% of plays ended in the first few seconds (engagedViews/views ~30% on
+# every video, 2026-10-23 analytics), so the Shorts feed never widened its test.
+HOOK_OVERLAY_DURATION = 2.0
+HOOK_OVERLAY_FADE = 0.35
+# Scene 0's still image: a visible continuous push-in rather than the slow
+# 0.0006/frame Ken Burns, so the first frames already move.
+HOOK_SCENE_ZOOM = 0.3
 
 # Slight contrast/saturation lift on real photo/video stock footage (not the
 # flat-colored diagram PNGs, where boosting saturation would just wash out
@@ -73,18 +76,21 @@ def extract_frame(video_path: Path, out_path: Path, timestamp: float = None) -> 
     return out_path
 
 
-def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: Path, width: int, height: int) -> None:
+def _build_scene_clip(visual_path: Path, kind: str, duration: float, out_path: Path, width: int, height: int,
+                      punch_in: bool = False) -> None:
     """Render one scene's visual (image or video) to exactly `duration` seconds,
-    scaled/cropped to the target resolution."""
+    scaled/cropped to the target resolution. punch_in: faster, continuous zoom
+    on a still image (the opening scene)."""
     w, h = width, height
     scale_crop = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
 
     if kind == "image":
         # Slow pan/zoom (Ken Burns) over a still image.
         zoom_frames = int(duration * config.VIDEO_FPS)
+        zoom = (f"1+{HOOK_SCENE_ZOOM}*on/{max(1, zoom_frames)}" if punch_in else "min(zoom+0.0006,1.15)")
         vf = (
             f"{scale_crop},"
-            f"zoompan=z='min(zoom+0.0006,1.15)':d={zoom_frames}:"
+            f"zoompan=z='{zoom}':d={zoom_frames}:"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}:fps={config.VIDEO_FPS},"
             f"{COLOR_GRADE_FILTER}"
         )
@@ -188,7 +194,10 @@ def _overlay_hook_card(clip_path: Path, hook_card_path: Path, duration: float, w
         FFMPEG_BIN, "-y",
         "-t", str(hook_duration), "-i", str(clip_path),
         "-loop", "1", "-t", str(hook_duration), "-i", str(hook_card_path),
-        "-filter_complex", f"[1:v]scale={width}:{height}[card];[0:v][card]overlay=0:0",
+        "-filter_complex",
+        f"[1:v]scale={width}:{height},format=rgba,"
+        f"fade=t=out:st={max(0.0, hook_duration - HOOK_OVERLAY_FADE)}:d={HOOK_OVERLAY_FADE}:alpha=1[card];"
+        f"[0:v][card]overlay=0:0:format=auto",
         "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", *_VIDEO_BITRATE_ARGS,
         "-pix_fmt", "yuv420p", str(hook_segment),
     ])
@@ -275,7 +284,7 @@ def assemble_video(
     ffmpeg build has no libass/subtitle filter support.
 
     `hook_card_path` (optional): a pre-rendered thumbnail image overlaid on top
-    of scene 0's own clip for the first `HOOK_CARD_DURATION` seconds, to hook
+    of scene 0's own clip for the first `HOOK_OVERLAY_DURATION` seconds, to hook
     viewers before the first scene's visual appears underneath. It is overlaid
     rather than prepended as a separate clip, so the video track's total
     duration always matches the narration's — keeping every scene's on-screen
@@ -295,7 +304,7 @@ def assemble_video(
     ):
         duration = _probe_duration(narration_path)
         clip_path = work_dir / f"scene_{i:02d}.mp4"
-        _build_scene_clip(visual_path, kind, duration, clip_path, width, height)
+        _build_scene_clip(visual_path, kind, duration, clip_path, width, height, punch_in=(i == 0))
 
         on_screen_text = (scene.get("on_screen_text") or "").strip()
         if on_screen_text:
@@ -305,7 +314,7 @@ def assemble_video(
 
         if i == 0 and hook_card_path:
             hook_clip_path = work_dir / f"scene_{i:02d}_hook.mp4"
-            _overlay_hook_card(clip_path, hook_card_path, HOOK_CARD_DURATION, width, height, hook_clip_path)
+            _overlay_hook_card(clip_path, hook_card_path, HOOK_OVERLAY_DURATION, width, height, hook_clip_path)
             clip_path = hook_clip_path
 
         clip_paths.append(clip_path)

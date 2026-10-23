@@ -249,3 +249,19 @@ def test_transparent_opener_keeps_footage_visible(tmp_path):
     assert img.mode == "RGBA"
     assert img.getpixel((360, 1250))[3] == 0          # bottom: fully see-through
     assert 0 < img.getpixel((10, 400))[3] < 255       # behind the text: a partial scrim only
+
+
+def test_lender_prefers_roe_over_roce():
+    data = _data([], [], ratios={"ROCE": "11.2 %", "ROE": "17.1 %", "Stock P/E": "29.5"})
+    data["quarterly"]["financial"] = True
+    spec = ts.build(data, "Bajaj Finance Ltd", today=TODAY)
+    assert spec["hero_value"] == "17.1%" and spec["hero_label"] == "ROE"
+    assert spec["chips"] == ["P/E 29.5", "ROCE 11.2%"]
+
+
+def test_lender_growth_hero_when_quarterly_present():
+    data = _data(["10000", "1", "1", "1", "12400"], ["4935", "1", "1", "1", "6367"],
+                 ratios={"ROCE": "11.2 %", "ROE": "17.1 %", "Stock P/E": "29.5"})
+    data["quarterly"]["financial"] = True
+    spec = ts.build(data, "Bajaj Finance Ltd", today=TODAY)
+    assert spec["hero_value"] == "+29%" and spec["chips"] == ["P/E 29.5", "ROE 17.1%"]

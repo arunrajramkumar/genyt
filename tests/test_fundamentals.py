@@ -200,3 +200,19 @@ def test_search_company_returns_empty_dict_on_request_failure(monkeypatch):
         raise fundamentals.requests.RequestException("network down")
     monkeypatch.setattr(fundamentals.requests, "get", raise_error)
     assert _real_search_company("Pidilite Industries") == {}
+
+
+def test_lender_quarterly_table_uses_revenue_row(monkeypatch):
+    """Banks/NBFCs have "Revenue" instead of "Sales" on Screener; requiring
+    "Sales" dropped the whole table for every lender (2026-10-23, Bajaj Finance)."""
+    html = _fake_html().replace("Sales&nbsp;", "Revenue&nbsp;")
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_response(html))
+    data = fundamentals.fetch_fundamentals("BAJFINANCE")
+    assert data["quarterly"]["sales_cr"][-1] == "222" and data["quarterly"]["net_profit_cr"][-1] == "152"
+    assert data["quarterly"]["financial"] is True
+    assert data["profit_growth_yoy_pct"] == 44.8
+
+
+def test_non_lender_is_not_marked_financial(monkeypatch):
+    monkeypatch.setattr(fundamentals.requests, "get", lambda *a, **k: _mock_response(_fake_html()))
+    assert "financial" not in fundamentals.fetch_fundamentals("CDSL")["quarterly"]

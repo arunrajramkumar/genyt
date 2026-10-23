@@ -62,9 +62,18 @@ def _parse_quarterly(html: str) -> dict:
     table = match.group(0)
     dates = re.findall(r'data-date-key="(\d{4}-\d{2}-\d{2})"', table)
     sales = _extract_quarterly_row(table, "Sales")
+    # Banks and NBFCs have a "Revenue" row instead of "Sales" -- requiring
+    # "Sales" dropped the whole table (profit included) for every lender
+    # (seen live: Bajaj Finance's thumbnail fell back to a ROCE figure).
+    financial = False
+    if not sales:
+        sales = _extract_quarterly_row(table, "Revenue")
+        financial = bool(sales)
     if not dates or not sales:
         return {}
     data = {"quarter_dates": dates, "sales_cr": sales}
+    if financial:
+        data["financial"] = True
     profit = _extract_quarterly_row(table, "Net Profit")
     if profit:
         data["net_profit_cr"] = profit

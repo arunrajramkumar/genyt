@@ -73,11 +73,17 @@ def _hero(data: dict):
     if revenue is not None:
         return _fmt_pct(revenue), "REVENUE YoY"
     ratios = data.get("ratios") or {}
-    for key in ("ROCE", "ROE"):
+    for key in _ratio_order(data):
         value = _num(ratios.get(key))
         if value is not None and value > 0:
             return f"{value:g}%", key
     return "", ""
+
+
+def _ratio_order(data: dict) -> tuple:
+    """ROE is the return measure that means something for a lender; ROCE for
+    everyone else."""
+    return ("ROE", "ROCE") if (data.get("quarterly") or {}).get("financial") else ("ROCE", "ROE")
 
 
 def _chips(data: dict, hero_label: str) -> list:
@@ -86,7 +92,7 @@ def _chips(data: dict, hero_label: str) -> list:
     pe = _num(ratios.get("Stock P/E"))
     if pe is not None and pe > 0:
         chips.append(f"P/E {pe:g}")
-    for key in ("ROCE", "ROE"):
+    for key in _ratio_order(data):
         value = _num(ratios.get(key))
         if key != hero_label and value is not None and value > 0:
             chips.append(f"{key} {value:g}%")

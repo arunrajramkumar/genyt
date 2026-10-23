@@ -67,8 +67,10 @@ def _build_prompt(company_name: str) -> str:
     if business:
         return (
             f"A dramatic, cinematic photo of the real-world operations of {company_name}. "
-            f"About the company: {business} Show its actual products, factories, sites or "
-            "stores — not a stock chart or trading floor. Bold lighting, high contrast, rich "
+            f"About the company: {business} Show what it really does — its products, plants, "
+            "mines, stores, branches, or customers using its service (for a lender or "
+            "insurer: people, homes, shops and vehicles it finances, not factories) — not a "
+            "stock chart or trading floor. Bold lighting, high contrast, rich "
             "colour, vertical 9:16 composition with the main subject in the middle third, "
             "no text, no logos, no watermarks, no numbers, photorealistic."
         )

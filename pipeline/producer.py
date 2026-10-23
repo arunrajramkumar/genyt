@@ -144,6 +144,8 @@ def _stock_thumbnail_spec(script: dict, on_progress=print) -> dict:
     """Thumbnail spec built from the company's scraped fundamentals (see
     thumbnail_spec) for a stock video, or {} for anything else / on failure,
     in which case the generic hook card is used."""
+    if script.get("thumbnail_spec"):
+        return script["thumbnail_spec"]
     symbol, company = script.get("symbol"), script.get("company_name")
     if not (symbol and company):
         return {}

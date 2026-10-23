@@ -149,3 +149,50 @@ def test_example_numbers_are_not_extracted_or_grounded():
     facts = segmented_script._extract_facts(stripped)
     assert facts and not any("117" in f for f in facts)
     assert not segmented_script._is_grounded("ROCE 117%", stripped)
+
+
+# ---- IPO prompts (2026-10-23 Paras Healthcare run: no company name found) ----
+
+PARAS = ("Paras Healthcare Ltd IPO — Listing Gains or Long-Term Growth?\n\n0–6 seconds — Hook\n"
+         "“Paras Healthcare’s IPO grey-market premium is around 4%—but is this a listing-gain play?”\n\n"
+         "6–19 seconds — Key IPO Metrics\n“The IPO price band is ₹660 to ₹693 per share, with a minimum lot size "
+         "of 21 shares. The total issue size is approximately ₹1,450 crore.”\n\n19–30 seconds — Risks\n"
+         "“GMP is unofficial and does not guarantee listing gains.”")
+
+
+def test_ipo_company_name_from_heading():
+    assert segmented_script._extract_company_name(PARAS) is None
+    assert segmented_script._ipo_company_from_heading(PARAS) == "Paras Healthcare Ltd"
+    assert segmented_script._ipo_company_from_heading("0-6 seconds - Hook\nThe IPO market is hot") is None
+    assert segmented_script._ipo_company_from_heading("## Acme India Industries IPO: Railway Supplier") == "Acme India Industries"
+
+
+def test_ipo_spec_from_prompt_numbers():
+    spec = ts.build_ipo(PARAS, "Paras Healthcare Ltd", "Paras Healthcare IPO: Listing Gains or Long-Term Growth?")
+    assert spec == {"name": "PARAS HEALTHCARE", "tag": "IPO", "hero_value": "₹660–693", "hero_label": "PRICE BAND",
+                    "direction": "", "chips": ["GMP ~4%", "₹1,450 CR ISSUE"], "hook": "LISTING GAINS OR LONG-TERM GROWTH?"}
+
+
+def test_ipo_spec_needs_ipo_and_price_band():
+    assert ts.build_ipo("Results of Paras Healthcare price band ₹1 to ₹2", "Paras", "") == {}
+    assert ts.build_ipo("Paras IPO opens soon", "Paras", "") == {}
+    assert ts.build_ipo(PARAS, "", "") == {}
+
+
+def test_lot_size_used_when_issue_size_missing():
+    spec = ts.build_ipo("X IPO price band of Rs 10 - 12, lot of 1200 shares", "X Ltd", "X IPO Explained")
+    assert spec["chips"] == ["LOT 1200 SHARES"] and spec["hero_value"] == "₹10–12" and spec["hook"] == "WHAT'S IT WORTH?"
+
+
+def test_producer_prefers_attached_spec():
+    spec = {"name": "PARAS HEALTHCARE", "hero_value": "₹660–693"}
+    assert REAL_SPEC({"thumbnail_spec": spec, "title": "t"}) is spec
+
+
+def test_overrunning_quotes_are_reported(capsys):
+    segments = segmented_script.parse_segments(PARAS)
+    segmented_script._warn_if_verbatim_overruns(segments)
+    assert "the video will run" not in capsys.readouterr().out  # fits
+    long = [{"content": '"' + "word " * 140 + '"', "duration": 20}] * 3
+    segmented_script._warn_if_verbatim_overruns(long)
+    assert "the video will run ~180s" in capsys.readouterr().out

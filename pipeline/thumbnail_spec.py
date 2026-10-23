@@ -124,3 +124,42 @@ def build(data: dict, company_name: str, title: str = "", today: date = None) ->
         "chips": _chips(data, label),
         "hook": _hook(title, value),
     }
+
+
+_RUPEE = r"(?:₹|Rs\.?|INR)\s?"
+_AMT = r"(\d(?:[\d,]*\d)?)"  # "1,450" but never a trailing sentence comma
+_PRICE_BAND_RE = re.compile(rf"price band[^₹\d]{{0,30}}{_RUPEE}{_AMT}\s*(?:to|-|–|—)\s*(?:{_RUPEE})?{_AMT}", re.IGNORECASE)
+_GMP_RE = re.compile(r"(?:grey[- ]market premium|GMP)[^.%\d]{0,40}?(\d+(?:\.\d+)?)\s*%", re.IGNORECASE)
+_LOT_RE = re.compile(r"lot (?:size )?of (\d+) shares", re.IGNORECASE)
+_ISSUE_SIZE_RE = re.compile(rf"issue size[^₹\d]{{0,40}}{_RUPEE}{_AMT}\s*(?:crore|cr\b)", re.IGNORECASE)
+
+
+def build_ipo(prompt: str, company_name: str, title: str = "") -> dict:
+    """Thumbnail spec for an IPO video from the numbers in the prompt itself --
+    an unlisted IPO has no Screener page, and the prompt is this video's
+    grounding source. Price band is the hero; GMP / lot size / issue size fill
+    the chips. {} when the prompt isn't about an IPO or has no price band."""
+    if not company_name or not re.search(r"\bIPO\b", prompt or ""):
+        return {}
+    band = _PRICE_BAND_RE.search(prompt)
+    if not band:
+        return {}
+    chips = []
+    gmp, lot, size = _GMP_RE.search(prompt), _LOT_RE.search(prompt), _ISSUE_SIZE_RE.search(prompt)
+    if gmp:
+        chips.append(f"GMP ~{gmp.group(1)}%")
+    if size:
+        chips.append(f"₹{size.group(1)} CR ISSUE")
+    if lot and len(chips) < MAX_CHIPS:
+        chips.append(f"LOT {lot.group(1)} SHARES")
+    tail = re.split(r"[:|–—]\s*", title or "")[-1].strip()
+    hook = tail.upper() if tail.endswith("?") and len(tail.split()) <= 5 and not re.search(r"\d", tail) else "WHAT'S IT WORTH?"
+    return {
+        "name": segmented_script._short_company_name(company_name).upper(),
+        "tag": "IPO",
+        "hero_value": f"₹{band.group(1)}–{band.group(2)}",
+        "hero_label": "PRICE BAND",
+        "direction": "",
+        "chips": chips[:MAX_CHIPS],
+        "hook": hook,
+    }

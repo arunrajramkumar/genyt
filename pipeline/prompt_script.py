@@ -9,7 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-from . import company_insights, diagrams, fundamentals, llm, research, segmented_script, youtube_insights
+from . import company_insights, diagrams, fundamentals, llm, research, segmented_script, thumbnail_spec, youtube_insights
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -155,9 +155,18 @@ def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: li
     """
     segments = segmented_script.parse_segments(prompt)
     if segments:
-        return segmented_script.write_segmented_script(prompt, segments, duration_sec, extra_tags, global_instructions=style)
-    freeform_prompt = f"{prompt}\n\nStyle/tone: {style}" if style else prompt
-    return _write_freeform_script(freeform_prompt, duration_sec, extra_tags)
+        script = segmented_script.write_segmented_script(prompt, segments, duration_sec, extra_tags, global_instructions=style)
+    else:
+        freeform_prompt = f"{prompt}\n\nStyle/tone: {style}" if style else prompt
+        script = _write_freeform_script(freeform_prompt, duration_sec, extra_tags)
+    if not script.get("symbol"):
+        # Listed stocks get their thumbnail from Screener (producer); an IPO
+        # takes its numbers from this prompt instead.
+        script["company_name"] = script.get("company_name") or segmented_script._ipo_company_from_heading(prompt)
+        ipo_spec = thumbnail_spec.build_ipo(prompt, script.get("company_name"), script.get("title", ""))
+        if ipo_spec:
+            script["thumbnail_spec"] = ipo_spec
+    return script
 
 
 def _write_freeform_script(prompt: str, duration_sec: int = 60, extra_tags: list = None) -> dict:

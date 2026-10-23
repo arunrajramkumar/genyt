@@ -79,6 +79,19 @@ def _extract_company_name(prompt: str):
     return fallback
 
 
+_IPO_HEADING_RE = re.compile(r"^\s*[#*>\s]*(.{3,80}?)\s+IPO\b", re.IGNORECASE)
+
+
+def _ipo_company_from_heading(prompt: str):
+    """An unlisted IPO has no "(NSE: SYMBOL)" to anchor on, so take the name
+    from a heading like "Paras Healthcare Ltd IPO — Listing Gains or ...?"
+    (seen live: no name meant no AI background and a generic thumbnail).
+    Only the first non-empty line is considered."""
+    first = next((line for line in prompt.splitlines() if line.strip()), "")
+    m = _IPO_HEADING_RE.match(first)
+    return _clean_company_name(m.group(1)) if m else None
+
+
 def _extract_company_symbol(prompt: str):
     """Pulls the NSE ticker out of the same "(NSE: SYMBOL)" anchor used by
     _extract_company_name -- this is the one reliable, non-fuzzy join key back
@@ -753,14 +766,29 @@ def _write_metadata(scenes: list, style_guidance: str = "", company_name: str = 
     raise RuntimeError(f"Model failed to write video metadata 3 times in a row ({last_error}).")
 
 
+def _warn_if_verbatim_overruns(segments: list) -> None:
+    """Quoted lines are spoken word for word (the user's own script is never
+    trimmed), so a prompt with more quoted words than its timings allow just
+    makes a longer video -- seen live: ~200 quoted words in a "0-45 seconds"
+    layout gave an 88s video. Say so in the log rather than silently."""
+    words = sum(len(_extract_verbatim(s["content"]).split()) for s in segments)
+    planned = sum(s["duration"] or 0 for s in segments)
+    spoken = round(words / 140 * 60)
+    if planned and spoken > planned * 1.25:
+        print(f"[segments] quoted narration is ~{words} words (~{spoken}s at 140 wpm) but the timings add up "
+              f"to {planned}s -- the video will run ~{spoken}s; trim the quotes to ~{round(planned * 140 / 60)} "
+              "words to hit the planned length")
+
+
 def write_segmented_script(prompt: str, segments: list, duration_sec: int = 60, extra_tags: list = None,
                             global_instructions: str = None) -> dict:
+    _warn_if_verbatim_overruns(segments)
     scenes = []
     for seg in segments:
         scene = _write_segment_scene(seg["label"], seg["content"], seg["duration"], global_instructions)
         scenes.append(scene)
 
-    company_name = _extract_company_name(prompt)
+    company_name = _extract_company_name(prompt) or _ipo_company_from_heading(prompt)
     symbol = _extract_company_symbol(prompt)
     if company_name and symbol:
         for scene in scenes:

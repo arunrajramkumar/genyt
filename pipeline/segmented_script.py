@@ -711,9 +711,24 @@ def _ensure_company_name_in_title(title: str, company_name: str) -> str:
         return title
     title = _collapse_company_name_mentions(title, company_name)
     short = _short_company_name(company_name)
-    if re.search(rf"(?<!\w){re.escape(short)}(?!\w)", title, flags=re.IGNORECASE):
-        return title
+    for name in (short, _name_lead(short)):
+        if name and re.search(rf"(?<!\w){re.escape(name)}(?!\w)", title, flags=re.IGNORECASE):
+            return title
     return f"{short}: {title}" if title.strip() else short
+
+
+def _name_lead(short: str) -> str:
+    """The first two words of a 3+ word name ("Lloyds Metals" of "Lloyds Metals
+    & Energy") -- how titles usually shorten it; seen live: "Lloyds Metals &
+    Energy: Lloyds Metals Profit Triples". Extended past a trailing connector
+    ("Bank of" -> "Bank of Baroda" is the whole name, so "")."""
+    words = short.split()
+    if len(words) < 3:
+        return ""
+    lead = words[:2]
+    if lead[-1].lower() in _NAME_CONNECTORS:
+        return ""
+    return " ".join(lead)
 
 
 def _truncate_title(title: str, limit: int = 70) -> str:

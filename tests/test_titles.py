@@ -127,3 +127,13 @@ def test_metadata_prompt_steers_to_short_name_search_pattern():
     assert "short name" in prompt
     assert "60 characters or fewer" in prompt
     assert "Karur Vysya Bank Q2 Results" in prompt
+
+
+@pytest.mark.parametrize("raw, company, expected", [
+    ("Lloyds Metals Profit Triples to ₹1,726 cr", "Lloyds Metals & Energy Ltd", "Lloyds Metals Profit Triples to ₹1,726 cr"),
+    ("Tata Consumer Q2 Results", "Tata Consumer Products Ltd", "Tata Consumer Q2 Results"),
+    ("Q2 Profit Up 12%", "Bank of Baroda", "Bank of Baroda: Q2 Profit Up 12%"),
+    ("Profit Up 37%", "Karur Vysya Bank Ltd", "Karur Vysya Bank: Profit Up 37%"),
+])
+def test_shortened_company_name_counts_as_present(raw, company, expected):
+    assert ss.polish_stock_title(raw, company) == expected

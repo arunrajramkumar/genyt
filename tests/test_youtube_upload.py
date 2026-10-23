@@ -269,3 +269,12 @@ def test_post_engagement_comment_propagates_http_error_for_caller_to_handle(monk
 
     with pytest.raises(HttpError):
         youtube_upload.post_engagement_comment("abc123", "Q?")
+
+
+def test_either_or_question_is_not_a_yes_no_question():
+    q = "Is this a buying opportunity or the start of a deeper correction?"
+    assert youtube_upload.engagement_comment(q).endswith("Tell us below 👇")
+    assert youtube_upload.engagement_line(q).endswith("Tell us your view in the comments.")
+    assert youtube_upload.question_from_description(f"x\n\n{youtube_upload.engagement_line(q)}") == q
+    yes_no = "Will the rally continue or not?"
+    assert youtube_upload.engagement_comment(yes_no).endswith("Reply YES or NO below 👇")

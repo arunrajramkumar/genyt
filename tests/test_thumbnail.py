@@ -265,3 +265,12 @@ def test_lender_growth_hero_when_quarterly_present():
     data["quarterly"]["financial"] = True
     spec = ts.build(data, "Bajaj Finance Ltd", today=TODAY)
     assert spec["hero_value"] == "+29%" and spec["chips"] == ["P/E 29.5", "ROE 17.1%"]
+
+
+@pytest.mark.parametrize("style", ["alert", "calm"])
+def test_generic_opener_can_be_transparent(tmp_path, style):
+    out = textcard.render_hook_card("Why Is the Nifty Falling Today?", "22,450", 720, 1280, tmp_path / "g.png",
+                                    badge_text="MARKET", style=style, transparent=True)
+    img = Image.open(out)
+    assert img.mode == "RGBA" and img.getpixel((360, 640))[3] < 128   # middle mostly see-through
+    assert Image.open(textcard.render_hook_card("T", "", 720, 1280, tmp_path / "o.png", style=style)).mode == "RGB"

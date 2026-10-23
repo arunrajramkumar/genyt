@@ -115,3 +115,9 @@ def test_recap_asks_a_comment_question(monkeypatch):
     entry = build_theme_entry("SOLARINDS", "Solar Industries India Ltd")
     recap = entry["theme"].split("Recap")[-1]
     assert "yes-or-no question" in recap and "never a recommendation" in recap
+
+
+def test_margin_fact_skipped_for_lenders():
+    data = {"quarterly": {"sales_cr": ["100", "1", "1", "1", "200"], "net_profit_cr": ["10", "1", "1", "1", "40"],
+                          "financial": True}}
+    assert ci.margin_fact(data) == ""

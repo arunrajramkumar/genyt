@@ -338,9 +338,11 @@ def _crop_to_cover(background_path: Path, width: int, height: int) -> Image.Imag
 
 def _render_hook_card_calm(
     title: str, stat_text: str, width: int, height: int, out_path: Path,
-    background_path: Path = None, badge_text: str = None,
+    background_path: Path = None, badge_text: str = None, transparent: bool = False,
 ) -> Path:
-    if background_path and Path(background_path).exists():
+    if transparent:
+        img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    elif background_path and Path(background_path).exists():
         img = _crop_to_cover(background_path, width, height)
     else:
         img = Image.new("RGBA", (width, height), (10, 20, 14, 255))
@@ -392,7 +394,7 @@ def _render_hook_card_calm(
         _draw_glow_text(img, ((width - num_w) // 2, cy), stat_text, num_font, _CALM_ACCENT_COLOR, blur_radius=8)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.convert("RGB").save(out_path)
+    (img if transparent else img.convert("RGB")).save(out_path)
     return out_path
 
 
@@ -405,6 +407,7 @@ def render_hook_card(
     background_path: Path = None,
     badge_text: str = None,
     style: str = "alert",
+    transparent: bool = False,
 ) -> Path:
     """Renders a bold, full-bleed branded "hook card": used as both the opening
     ~2s clip of a video (to grab attention before the narration starts) and as
@@ -419,6 +422,8 @@ def render_hook_card(
     "breaking news" treatment; "calm" is a gold-on-dark-green treatment with
     no badge/banner angling, for SIP/wealth-building/personal-finance content
     where the alert urgency reads as tonally wrong.
+    `transparent`: no background -- the in-video opener drawn over the moving
+    first scene instead of a frozen slide (see assemble.HOOK_OVERLAY_DURATION).
     """
     title = sanitize_display_text(title)
     stat_text = sanitize_display_text(stat_text) if stat_text else stat_text
@@ -426,9 +431,11 @@ def render_hook_card(
     if style == "calm":
         return _render_hook_card_calm(
             title, stat_text, width, height, out_path,
-            background_path=background_path, badge_text=badge_text,
+            background_path=background_path, badge_text=badge_text, transparent=transparent,
         )
-    if background_path and Path(background_path).exists():
+    if transparent:
+        img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    elif background_path and Path(background_path).exists():
         img = _crop_to_cover(background_path, width, height)
     else:
         img = Image.new("RGBA", (width, height), (12, 18, 30, 255))
@@ -516,7 +523,7 @@ def render_hook_card(
         draw = ImageDraw.Draw(img)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.convert("RGB").save(out_path)
+    (img if transparent else img.convert("RGB")).save(out_path)
     return out_path
 
 

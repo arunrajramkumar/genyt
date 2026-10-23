@@ -79,10 +79,12 @@ def test_produce_from_script_excludes_already_used_visuals_for_later_scenes(mock
     assert seen_excludes[1] == {responses[0][0]}
 
 
-def test_produce_from_script_fills_missing_first_scene_on_screen_text_with_title(mocked_pipeline):
+def test_produce_from_script_does_not_copy_title_into_first_scene_text(mocked_pipeline):
+    """The transparent opener carries the headline; copying a 40-char cut of
+    the title into scene 0's on-screen text just duplicated it ("...Oil, FII")."""
     script = _stub_script()
     producer.produce_from_script(script, on_progress=lambda m: None)
-    assert script["scenes"][0]["on_screen_text"] == "Octopus Facts"
+    assert (script["scenes"][0].get("on_screen_text") or "") != "Octopus Facts"
 
 
 def test_produce_from_script_returns_expected_output_paths(mocked_pipeline):
@@ -184,7 +186,9 @@ def test_produce_from_script_upload_description_includes_hashtags(mocked_pipelin
 
 def test_produce_from_script_picks_first_numeric_on_screen_text_as_stat_for_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert", transparent=False):
+        if transparent:
+            return out_path  # the in-video opener overlay; the thumbnail call is what's checked
         captured["stat_text"] = stat_text
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
@@ -458,7 +462,9 @@ def test_produce_from_script_playlist_add_failure_does_not_fail_the_job(mocked_p
 def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline, monkeypatch):
     captured = {}
 
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert", transparent=False):
+        if transparent:
+            return out_path  # the in-video opener overlay; the thumbnail call is what's checked
         captured["badge_text"] = badge_text
         return out_path
 
@@ -470,7 +476,9 @@ def test_produce_from_script_passes_thumbnail_badge_to_hook_card(mocked_pipeline
 def test_produce_from_script_defaults_badge_to_company_name_when_no_explicit_badge(mocked_pipeline, monkeypatch):
     captured = {}
 
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert", transparent=False):
+        if transparent:
+            return out_path  # the in-video opener overlay; the thumbnail call is what's checked
         captured["badge_text"] = badge_text
         return out_path
 
@@ -484,7 +492,9 @@ def test_produce_from_script_defaults_badge_to_company_name_when_no_explicit_bad
 def test_produce_from_script_leaves_badge_empty_when_no_badge_and_no_company_name(mocked_pipeline, monkeypatch):
     captured = {}
 
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert", transparent=False):
+        if transparent:
+            return out_path  # the in-video opener overlay; the thumbnail call is what's checked
         captured["badge_text"] = badge_text
         return out_path
 
@@ -533,7 +543,9 @@ def test_produce_from_script_uses_ai_background_when_generated(mocked_pipeline, 
     monkeypatch.setattr(producer, "_pick_hook_background", fake_pick_hook_background)
 
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert", transparent=False):
+        if transparent:
+            return out_path  # the in-video opener overlay; the thumbnail call is what's checked
         captured["background_path"] = background_path
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
@@ -548,7 +560,9 @@ def test_produce_from_script_falls_back_to_stock_background_when_ai_background_u
     monkeypatch.setattr(producer.ai_thumbnail, "generate_hook_background", lambda *a, **k: None)
 
     captured = {}
-    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert"):
+    def fake_render_hook_card(title, stat_text, width, height, out_path, background_path=None, badge_text=None, style="alert", transparent=False):
+        if transparent:
+            return out_path  # the in-video opener overlay; the thumbnail call is what's checked
         captured["background_path"] = background_path
         return out_path
     monkeypatch.setattr(producer.textcard, "render_hook_card", fake_render_hook_card)
@@ -770,3 +784,12 @@ def test_private_upload_defers_comment_and_puts_question_in_description(mocked_p
     assert any("deferred until the video is public" in m for m in logs)
     assert producer.youtube_upload.question_from_description(uploaded["description"]) == \
         "Do you think the rally is priced in?"
+
+
+@pytest.mark.parametrize("narration, expected", [
+    ("The key question is: can future growth justify a P/E of around 52?", "Can future growth justify a P/E of around 52?"),
+    ("So here's the question - will margins hold?", "Will margins hold?"),
+    ("Can Lloyds turn its mine into a lasting steel business? Comment yes or no.", "Can Lloyds turn its mine into a lasting steel business?"),
+])
+def test_engagement_question_drops_lead_ins(narration, expected):
+    assert producer._extract_engagement_question([{"narration": narration}]) == expected

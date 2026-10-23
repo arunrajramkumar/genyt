@@ -297,6 +297,8 @@ def profit_per_day_fact(data: dict) -> str:
 
 def margin_fact(data: dict) -> str:
     q = (data or {}).get("quarterly") or {}
+    if q.get("financial"):
+        return ""  # a lender's "revenue" is interest income -- "out of every Rs 100 it sold" would be wrong
     sales, profit = q.get("sales_cr", []), q.get("net_profit_cr", [])
     s_now, p_now, s_ago, p_ago = _latest(sales), _latest(profit), _latest(sales, 5), _latest(profit, 5)
     if None in (s_now, p_now, s_ago, p_ago) or s_now <= 0 or s_ago <= 0:

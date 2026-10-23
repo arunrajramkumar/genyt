@@ -166,5 +166,13 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          gh issue comment "$ISSUE_NUMBER" --body "Run finished with status: $JOB_STATUS. Logs: $RUN_URL"
+          BODY="Run finished with status: $JOB_STATUS. Logs: $RUN_URL"
+          # Figures in the prompt that disagree with Screener (pipeline/prompt_factcheck.py).
+          if ls output/*.factcheck.txt >/dev/null 2>&1; then
+            BODY="$BODY
+
+          ⚠️ **Fact-check warnings (prompt vs Screener)** -- review before making the video public:
+          $(cat output/*.factcheck.txt)"
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body "$BODY"
           gh issue close "$ISSUE_NUMBER"

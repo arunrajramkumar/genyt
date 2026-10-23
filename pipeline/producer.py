@@ -118,6 +118,11 @@ _ENGAGEMENT_ADVICE_RE = re.compile(
     re.IGNORECASE,
 )
 _ENGAGEMENT_QUESTION_MAX_CHARS = 200
+_QUESTION_LEAD_IN_RE = re.compile(
+    r"^(?:(?:so|but|and|now)\s*,?\s+)?(?:the\s+(?:key|big|real|main)\s+question\s+is|here'?s\s+the\s+question|"
+    r"ask\s+yourself|then\s+answer)\s*[:,\-–—]?\s*",
+    re.IGNORECASE,
+)
 _ENGAGEMENT_SCENE_WINDOW = 2  # only the last couple of content scenes are searched
 
 
@@ -133,7 +138,9 @@ def _extract_engagement_question(scenes: list) -> str:
         questions = [s.strip() for s in re.split(r"(?<=[.!?])\s+", narration) if s.strip().endswith("?")]
         if not questions:
             continue
-        question = questions[-1]
+        # "The key question is: can future growth justify ...?" -> "Can future growth justify ...?"
+        question = _QUESTION_LEAD_IN_RE.sub("", questions[-1]).strip()
+        question = question[:1].upper() + question[1:]
         if _ENGAGEMENT_ADVICE_RE.search(question) or len(question) > _ENGAGEMENT_QUESTION_MAX_CHARS:
             return ""
         return question
@@ -166,7 +173,8 @@ def _stock_thumbnail_spec(script: dict, on_progress=print) -> dict:
     if not (symbol and company):
         return {}
     try:
-        return thumbnail_spec.build(fundamentals.fetch_fundamentals(symbol), company, script.get("title", ""))
+        data = script.get("_fundamentals") or fundamentals.fetch_fundamentals(symbol)
+        return thumbnail_spec.build(data, company, script.get("title", ""))
     except Exception as e:
         on_progress(f"  stock thumbnail spec failed ({e}), using the generic hook card")
         return {}
@@ -216,8 +224,9 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
 
     on_progress(f"Title: {script['title']} ({len(script['scenes'])} scenes)")
 
-    if script["scenes"] and not (script["scenes"][0].get("on_screen_text") or "").strip():
-        script["scenes"][0]["on_screen_text"] = script["title"][:40]
+    # (Scene 0 used to get the title's first 40 characters as on-screen text
+    # when it had none. The transparent opener overlay now carries the headline,
+    # so that just duplicated it, cut mid-word: "...Oil, FII".)
 
     on_progress("Synthesizing narration")
     total_narration_chars = sum(len(scene["narration"]) for scene in script["scenes"])
@@ -290,7 +299,7 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     spec = _stock_thumbnail_spec(script, on_progress)
     # The in-video opener is a transparent overlay on the moving first scene
     # (headline number only); the full designed card is the custom thumbnail
-    # shown in search. Generic videos keep using the thumbnail as the opener.
+    # shown in search.
     hook_overlay_path = thumb_path
     if spec:
         textcard.render_stock_thumbnail(spec, orientation["width"], orientation["height"], thumb_path,
@@ -303,6 +312,11 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
             script["title"], stat_text, orientation["width"], orientation["height"],
             thumb_path, background_path=hook_bg_path, badge_text=badge_text,
             style=_pick_hook_style(script["title"]),
+        )
+        hook_overlay_path = work_dir / "hook_overlay.png"
+        textcard.render_hook_card(
+            script["title"], stat_text, orientation["width"], orientation["height"],
+            hook_overlay_path, badge_text=badge_text, style=_pick_hook_style(script["title"]), transparent=True,
         )
 
     on_progress("Building captions")
@@ -338,12 +352,19 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
         description = f"{description}\n\n{youtube_upload.engagement_line(question)}"
 
     meta_path = config.OUTPUT_DIR / f"{slug}.metadata.txt"
+    factcheck = script.get("factcheck") or []
     meta_path.write_text(
         f"TITLE:\n{script['title']}\n\n"
         f"DESCRIPTION:\n{description}\n\n"
-        f"TAGS:\n{', '.join(script['tags'])}\n",
+        f"TAGS:\n{', '.join(script['tags'])}\n"
+        + ("\nFACT-CHECK WARNINGS (prompt vs Screener):\n" + "\n".join(f"- {w}" for w in factcheck) + "\n"
+           if factcheck else ""),
         encoding="utf-8",
     )
+    if factcheck:
+        # Picked up by the workflow's issue comment (auto-video.yml).
+        (config.OUTPUT_DIR / f"{slug}.factcheck.txt").write_text(
+            "\n".join(f"- {w}" for w in factcheck) + "\n", encoding="utf-8")
 
     youtube_url = None
     if config.YOUTUBE_AUTO_UPLOAD:

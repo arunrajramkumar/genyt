@@ -9,7 +9,7 @@ For open-ended topics without hard facts, it can write normally/engagingly.
 import json
 import re
 
-from . import company_insights, diagrams, fundamentals, llm, research, segmented_script, thumbnail_spec, youtube_insights
+from . import company_insights, diagrams, fundamentals, llm, prompt_factcheck, research, segmented_script, thumbnail_spec, youtube_insights
 
 SYSTEM_PROMPT = """You write scripts for short-form YouTube videos (including Shorts) on
 whatever topic the user gives you. Output ONLY valid JSON (no markdown fences, no
@@ -159,6 +159,14 @@ def write_script_from_prompt(prompt: str, duration_sec: int = 60, extra_tags: li
     else:
         freeform_prompt = f"{prompt}\n\nStyle/tone: {style}" if style else prompt
         script = _write_freeform_script(freeform_prompt, duration_sec, extra_tags)
+    if script.get("symbol") and segmented_script.QUOTE_RE.search(prompt):
+        # Hand-written quoted lines are spoken word for word -- compare their
+        # figures with Screener before the video is made (prompt_factcheck).
+        data = fundamentals.fetch_fundamentals(script["symbol"])
+        script["_fundamentals"] = data
+        script["factcheck"] = prompt_factcheck.check(prompt, data)
+        for warning in script["factcheck"]:
+            print(f"[factcheck] WARNING: {warning}")
     if not script.get("symbol"):
         # Listed stocks get their thumbnail from Screener (producer); an IPO
         # takes its numbers from this prompt instead.

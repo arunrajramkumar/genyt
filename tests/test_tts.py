@@ -11,9 +11,9 @@ from pipeline import tts
     ("ABC Pvt Ltd", "ABC Private Limited"),
     ("P/E ratio is 22", "price to earnings ratio is 22"),
     ("Revenue grew 18% YoY", "18% year over year"),
-    ("Rs 412 crore", "Rupees 412 crore"),
-    ("₹412 crore", "Rupees 412 crore"),
-    ("ROE of 22% Cr", "return on equity of 22% Crore"),
+    ("Rs 412 crore", "412 crore rupees"),
+    ("₹412 crore", "412 crore rupees"),
+    ("ROE of 22% Cr", "return on equity of 22% crore"),
     ("ROCE stood at 18%", "return on capital employed stood at 18%"),
     ("CAGR of 15%", "compound annual growth rate of 15%"),
     ("EBITDA margin improved", "earnings before interest, tax, depreciation and amortization margin improved"),
@@ -349,3 +349,22 @@ def test_premium_rejection_is_detected_from_http_400(monkeypatch, tmp_path):
     monkeypatch.setattr(tts.requests, "post", lambda *a, **k: resp)
     with pytest.raises(tts._VoiceRejectedError):
         tts._synthesize_google("hi", tmp_path / "a.mp3", PREMIUM)
+
+
+@pytest.mark.parametrize("text, spoken", [
+    ("profit of ₹1,726 crore", "profit of 1,726 crore rupees"),
+    ("price band is ₹660 to ₹693 per share", "price band is 660 to 693 rupees per share"),
+    ("a ₹500-crore fresh issue", "a 500 crore rupees fresh issue"),
+    ("AUM of ₹5.85 lakh crore", "assets under management of 5.85 lakh crore rupees"),
+    ("₹660–693", "660 to 693 rupees"),
+    ("P/B is 4.6x, down 12 bps", "price to book is 4.6 times, down 12 basis points"),
+    ("Q1 FY27 and FY2026", "Q1 F Y 27 and F Y 2026"),
+    ("NII rose", "net interest income rose"),
+    ("valued at 171x earnings", "valued at 171 times earnings"),
+])
+def test_amounts_and_finance_terms_read_naturally(text, spoken):
+    assert tts._normalize_for_speech(text) == spoken
+
+
+def test_words_ending_in_x_are_untouched():
+    assert tts._normalize_for_speech("Max Healthcare and 3M index") == "Max Healthcare and 3M index"

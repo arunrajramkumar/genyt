@@ -143,16 +143,26 @@ def post_engagement_comment(video_id: str, text: str) -> None:
 
 ENGAGEMENT_PREFIX = "💬 "
 ENGAGEMENT_SUFFIX = " Reply YES or NO in the comments."
-_ENGAGEMENT_LINE_RE = re.compile(rf"^{re.escape(ENGAGEMENT_PREFIX)}(.+?\?){re.escape(ENGAGEMENT_SUFFIX)}\s*$", re.MULTILINE)
+ENGAGEMENT_SUFFIX_OPEN = " Tell us your view in the comments."
+_ENGAGEMENT_LINE_RE = re.compile(
+    rf"^{re.escape(ENGAGEMENT_PREFIX)}(.+?\?)(?:{re.escape(ENGAGEMENT_SUFFIX)}|{re.escape(ENGAGEMENT_SUFFIX_OPEN)})\s*$",
+    re.MULTILINE,
+)
+
+
+def _is_either_or(question: str) -> bool:
+    """"Is this a buying opportunity or the start of a deeper correction?"
+    can't be answered YES/NO ("... or not?" still can)."""
+    return bool(re.search(r"\bor\b(?!\s+not\b)", question, re.IGNORECASE))
 
 
 def engagement_line(question: str) -> str:
     """The description line carrying the video's closing question."""
-    return f"{ENGAGEMENT_PREFIX}{question}{ENGAGEMENT_SUFFIX}"
+    return f"{ENGAGEMENT_PREFIX}{question}{ENGAGEMENT_SUFFIX_OPEN if _is_either_or(question) else ENGAGEMENT_SUFFIX}"
 
 
 def engagement_comment(question: str) -> str:
-    return f"{question} Reply YES or NO below 👇"
+    return f"{question} {'Tell us below' if _is_either_or(question) else 'Reply YES or NO below'} 👇"
 
 
 def question_from_description(description: str) -> str:

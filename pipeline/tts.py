@@ -55,19 +55,37 @@ FFPROBE_BIN = shutil.which("ffprobe")
 # "Inc\.?" matches the first 3 letters of "Incorporation"/"Increase"/"Income"/
 # "Incredible", splicing the expansion into the leftover letters and producing
 # garbage like "Corporationoration" or "Incorporatedorporation".
+def _unit(unit):
+    """"crore " / "lakh crore " / "" for an amount's unit word ("Cr." -> crore)."""
+    if not unit:
+        return ""
+    return ("crore" if unit.lower().startswith("cr") else unit.lower()) + " "
+
+
 _ABBREVIATIONS = [
     (r"\bLtd\.?(?![a-zA-Z])", "Limited"),
     (r"\bPvt\.?(?![a-zA-Z])", "Private"),
     (r"\bCorp\.?(?![a-zA-Z])", "Corporation"),
     (r"\bInc\.?(?![a-zA-Z])", "Incorporated"),
     (r"\bCo\.(?![a-zA-Z])", "Company"),
+    # Amounts: "₹1,726 crore" -> "1,726 crore rupees", "₹660 to ₹693" ->
+    # "660 to 693 rupees" -- how amounts are actually said; "Rupees 1,726
+    # crore" / "Rupees 660 to Rupees 693" read stilted. Ranges first.
+    (r"(?:₹|\bRs\.?)\s?(\d[\d,.]*)\s*(?:to|–|-)\s*(?:₹|Rs\.?)?\s?(\d[\d,.]*)(?:\s*-?\s*(lakh crore|crore|lakh|cr\b\.?))?",
+     lambda m: f"{m.group(1)} to {m.group(2)} {_unit(m.group(3))}rupees"),
+    (r"(?:₹|\bRs\.?)\s?(\d[\d,.]*)(?:\s*-?\s*(lakh crore|crore|lakh|cr\b\.?))?",
+     lambda m: f"{m.group(1)} {_unit(m.group(2))}rupees"),
+    (r"(\d)\s?[x×](?![a-zA-Z0-9])", r"\1 times"),
+    (r"\bFY\s?'?(\d{2,4})\b", r"F Y \1"),
     (r"\bP/E\b", "price to earnings"),
+    (r"\bP/B\b", "price to book"),
+    (r"\bNII\b", "net interest income"),
+    (r"\bAUM\b", "assets under management"),
+    (r"\bbps\b", "basis points"),
     (r"\bYoY\b", "year over year"),
     (r"\bQoQ\b", "quarter over quarter"),
-    (r"\bRs\.?(?=\s?\d)", "Rupees"),
-    (r"₹", "Rupees "),
     (r"~\s?(?=\d)", "approximately "),
-    (r"\bCr\.?\b", "Crore"),
+    (r"\bCr\.?(?![a-zA-Z])", "crore"),
     (r"\bROCE\b", "return on capital employed"),
     (r"\bROE\b", "return on equity"),
     (r"\bCAGR\b", "compound annual growth rate"),

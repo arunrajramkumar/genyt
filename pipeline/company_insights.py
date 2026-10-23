@@ -78,11 +78,13 @@ def _core_name(name: str) -> str:
     return " ".join(tokens)
 
 
-def _wikipedia_extract(company_name: str) -> str:
+def _wikipedia_extract(company_name: str, allow_parent: bool = False) -> str:
     """Plain-text extract of the company's own Wikipedia article ("" if there
     isn't a confidently matching one). The article title must equal the
     company's core name, so a same-named person/place/other company is never
-    used."""
+    used. allow_parent also accepts the parent group's article when the Indian
+    listed arm has none ("Cummins" for "Cummins India") -- fine for describing
+    the line of business, never for a fact about the listed company."""
     core = _core_name(company_name)
     if len(core) < 3:
         return ""
@@ -100,6 +102,12 @@ def _wikipedia_extract(company_name: str) -> str:
              if _core_name(h["title"]) == core or _core_name(h["title"]).startswith(core + " ")),
             None,
         )
+        if not title and allow_parent:
+            title = next(
+                (h["title"] for h in hits
+                 if len(_core_name(h["title"])) >= 4 and core.startswith(_core_name(h["title"]) + " ")),
+                None,
+            )
         if not title:
             return ""
         resp = requests.get(
@@ -124,11 +132,13 @@ def business_summary(company_name: str) -> str:
     for steering the AI thumbnail background toward the real business. "" when
     there's no confidently matching article. Never raises."""
     try:
-        extract = _wikipedia_extract(company_name)
+        extract = _wikipedia_extract(company_name, allow_parent=True)
     except Exception:
         return ""
     body = extract.split("\n", 1)[1] if "\n" in extract else ""
-    first = re.split(r"(?<=[.!?])\s+", body.strip(), maxsplit=1)[0] if body.strip() else ""
+    # Sentence end, but not after "Inc." / "Ltd." / "Co." / "U.S." etc.
+    first = re.split(r"(?<!\bInc\.)(?<!\bLtd\.)(?<!\bCo\.)(?<!\bCorp\.)(?<!\bSt\.)(?<!\bDr\.)(?<!\b[A-Z]\.)(?<=[.!?])\s+",
+                     body.strip(), maxsplit=1)[0] if body.strip() else ""
     first = re.sub(r"\s*\([^)]*\)", "", first)  # drop "(NSE: X)", pronunciations, dates
     return first[:220]
 

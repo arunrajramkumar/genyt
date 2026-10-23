@@ -140,6 +140,22 @@ def _extract_engagement_question(scenes: list) -> str:
     return ""
 
 
+_GENERIC_VISUAL_RE = re.compile(r"stock|chart|trading|market|money|coin|graph|finance|business|office|handshake|"
+                                r"abstract|background|presentation|investor|rupee|calculator|analys", re.IGNORECASE)
+
+
+def _visual_subject_hint(script: dict) -> str:
+    """When there's no Wikipedia description, the scenes' own visual queries
+    usually already name the business ("diesel generator set", "hospital
+    operating theatre") -- reuse the first one that isn't generic finance
+    imagery so the AI background still shows the real business."""
+    for scene in script.get("scenes") or []:
+        query = (scene.get("visual_query") or "").strip()
+        if query and not _GENERIC_VISUAL_RE.search(query):
+            return f"Its business involves {query}."
+    return ""
+
+
 def _stock_thumbnail_spec(script: dict, on_progress=print) -> dict:
     """Thumbnail spec built from the company's scraped fundamentals (see
     thumbnail_spec) for a stock video, or {} for anything else / on failure,
@@ -227,8 +243,8 @@ def produce_from_script(script: dict, orientation: dict = None, on_progress=prin
     # scene of the video. Falls back to Pexels for that scene like any other
     # when generation fails, same as before this was reused this way.
     business_hint = ""
-    if script.get("symbol") and script.get("company_name"):
-        business_hint = company_insights.business_summary(script["company_name"])
+    if script.get("company_name"):
+        business_hint = company_insights.business_summary(script["company_name"]) or _visual_subject_hint(script)
     ai_hook_bg_path = ai_thumbnail.generate_hook_background(
         script.get("company_name"), work_dir / "ai_hook_bg.png", on_progress,
         width=orientation["width"], height=orientation["height"], business_hint=business_hint,

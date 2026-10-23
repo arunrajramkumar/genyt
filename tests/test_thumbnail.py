@@ -129,11 +129,11 @@ def test_prompt_uses_business_description_when_known(monkeypatch, tmp_path):
 
 
 def test_business_summary_first_sentence_without_parentheticals(monkeypatch):
-    monkeypatch.setattr(ci, "_wikipedia_extract", lambda n: (
+    monkeypatch.setattr(ci, "_wikipedia_extract", lambda n, allow_parent=False: (
         "Wikipedia article 'Hindustan Zinc':\nHindustan Zinc Limited (HZL) is an Indian integrated zinc producer. "
         "It is based in Udaipur."))
     assert REAL_SUMMARY("Hindustan Zinc") == "Hindustan Zinc Limited is an Indian integrated zinc producer."
-    monkeypatch.setattr(ci, "_wikipedia_extract", lambda n: "")
+    monkeypatch.setattr(ci, "_wikipedia_extract", lambda n, allow_parent=False: "")
     assert REAL_SUMMARY("Nobody") == ""
 
 
@@ -196,3 +196,46 @@ def test_overrunning_quotes_are_reported(capsys):
     long = [{"content": '"' + "word " * 140 + '"', "duration": 20}] * 3
     segmented_script._warn_if_verbatim_overruns(long)
     assert "the video will run ~180s" in capsys.readouterr().out
+
+
+# ---- business hint fallbacks (2026-10-23 Cummins India: generic trading floor) ----
+
+def test_business_summary_keeps_abbreviations_inside_the_sentence(monkeypatch):
+    monkeypatch.setattr(ci, "_wikipedia_extract", lambda n, allow_parent=False: (
+        "Wikipedia article 'Cummins':\nCummins Inc. is an American maker of diesel engines and generators. It is big."))
+    assert REAL_SUMMARY("Cummins India Ltd") == "Cummins Inc. is an American maker of diesel engines and generators."
+
+
+def _wiki(monkeypatch, titles):
+    class R:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.payload
+
+    def get(url, params, headers, timeout):
+        if params.get("list") == "search":
+            return R({"query": {"search": [{"title": t} for t in titles]}})
+        return R({"query": {"pages": {"1": {"extract": "Cummins Inc. is a corporation that makes engines."}}}})
+    monkeypatch.setattr(ci.requests, "get", get)
+
+
+def test_parent_article_only_when_allowed(monkeypatch):
+    _wiki(monkeypatch, ["Cummins", "KPIT Technologies"])
+    assert ci._wikipedia_extract("Cummins India Ltd") == ""  # facts: own article only
+    assert "makes engines" in ci._wikipedia_extract("Cummins India Ltd", allow_parent=True)
+
+
+def test_parent_match_needs_a_real_prefix(monkeypatch):
+    _wiki(monkeypatch, ["Cum", "India"])
+    assert ci._wikipedia_extract("Cummins India Ltd", allow_parent=True) == ""
+
+
+def test_visual_subject_hint_skips_generic_finance_queries():
+    script = {"scenes": [{"visual_query": "stock market chart"}, {"visual_query": "diesel generator set in a data centre"}]}
+    assert producer._visual_subject_hint(script) == "Its business involves diesel generator set in a data centre."
+    assert producer._visual_subject_hint({"scenes": [{"visual_query": "trading floor"}]}) == ""

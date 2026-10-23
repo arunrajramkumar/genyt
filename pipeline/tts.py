@@ -98,17 +98,33 @@ async def _synthesize_async(text: str, voice: str, out_path: Path) -> None:
     await communicate.save(str(out_path))
 
 
-def _synthesize_google(text: str, out_path: Path) -> None:
+# The Google voice chosen for the video currently being narrated (set by the
+# whole-video preflight, ensure_google_tts_budget), so one video never mixes
+# voices mid-way. None until a preflight has run.
+_video_voice = None
+# Set once Google rejects the premium voice, so later videos in the same run
+# don't each spend a failed request on it.
+_premium_rejected = [False]
+
+
+class _VoiceRejectedError(Exception):
+    pass
+
+
+def _synthesize_google(text: str, out_path: Path, voice: str = None) -> None:
+    voice = voice or config.GOOGLE_TTS_VOICE
     response = requests.post(
         "https://texttospeech.googleapis.com/v1/text:synthesize",
         params={"key": config.GOOGLE_TTS_API_KEY},
         json={
             "input": {"text": text},
-            "voice": {"languageCode": "en-IN", "name": config.GOOGLE_TTS_VOICE},
+            "voice": {"languageCode": "en-IN", "name": voice},
             "audioConfig": {"audioEncoding": "MP3"},
         },
         timeout=30,
     )
+    if response.status_code == 400 and voice == config.GOOGLE_TTS_PREMIUM_VOICE:
+        raise _VoiceRejectedError(response.text[:300])
     response.raise_for_status()
     out_path.write_bytes(base64.b64decode(response.json()["audioContent"]))
 
@@ -117,9 +133,14 @@ def _current_month() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
-def _load_google_tts_usage() -> dict:
+def _usage_file(voice: str = None) -> Path:
+    premium = config.GOOGLE_TTS_PREMIUM_VOICE and voice == config.GOOGLE_TTS_PREMIUM_VOICE
+    return config.GOOGLE_TTS_PREMIUM_USAGE_FILE if premium else config.GOOGLE_TTS_USAGE_FILE
+
+
+def _load_google_tts_usage(voice: str = None) -> dict:
     try:
-        data = json.loads(config.GOOGLE_TTS_USAGE_FILE.read_text())
+        data = json.loads(_usage_file(voice).read_text())
     except (FileNotFoundError, ValueError):
         data = {}
     if data.get("month") != _current_month():
@@ -127,10 +148,15 @@ def _load_google_tts_usage() -> dict:
     return data
 
 
-def _record_google_tts_usage(num_chars: int) -> None:
-    usage = _load_google_tts_usage()
+def _record_google_tts_usage(num_chars: int, voice: str = None) -> None:
+    usage = _load_google_tts_usage(voice)
     usage["characters"] += num_chars
-    config.GOOGLE_TTS_USAGE_FILE.write_text(json.dumps(usage))
+    _usage_file(voice).write_text(json.dumps(usage))
+
+
+def _premium_within_cap(num_chars: int) -> bool:
+    usable = config.GOOGLE_TTS_PREMIUM_MONTHLY_CHAR_CAP - config.GOOGLE_TTS_SAFETY_BUFFER_CHARS
+    return _load_google_tts_usage(config.GOOGLE_TTS_PREMIUM_VOICE)["characters"] + num_chars <= usable
 
 
 class TTSQuotaExceededError(RuntimeError):
@@ -157,6 +183,15 @@ def ensure_google_tts_budget(total_chars: int) -> None:
     this BEFORE starting per-scene synthesis, since checking only inside each
     synthesize() call risks a video with some scenes narrated and others not,
     once the cap is crossed mid-video."""
+    global _video_voice
+    premium = config.GOOGLE_TTS_PREMIUM_VOICE and not _premium_rejected[0]
+    if config.TTS_ENGINE == "google" and premium and _premium_within_cap(total_chars):
+        _video_voice = config.GOOGLE_TTS_PREMIUM_VOICE
+        return
+    if config.TTS_ENGINE == "google" and premium:
+        print(f"[tts] {config.GOOGLE_TTS_PREMIUM_VOICE} monthly cap "
+              f"({config.GOOGLE_TTS_PREMIUM_MONTHLY_CHAR_CAP}) reached -- using {config.GOOGLE_TTS_VOICE}")
+    _video_voice = config.GOOGLE_TTS_VOICE
     if not google_tts_within_cap(total_chars):
         raise TTSQuotaExceededError(
             f"Google TTS monthly character cap ({config.GOOGLE_TTS_MONTHLY_CHAR_CAP}) "
@@ -200,6 +235,7 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
     total safely under that so this never silently tips into billed usage --
     raises instead of calling the API once the cap would be exceeded.
     """
+    global _video_voice
     if not FFPROBE_BIN:
         raise RuntimeError("ffprobe not found on PATH. Install ffmpeg first.")
 
@@ -211,16 +247,31 @@ def synthesize(text: str, out_path: Path, voice: str = None) -> float:
         # ensure_google_tts_budget() with the whole video's character count
         # before this loop starts -- this per-call check is defense-in-depth
         # in case synthesize() is ever called directly without that preflight.
-        ensure_google_tts_budget(len(normalized))
+        if _video_voice is None:
+            ensure_google_tts_budget(len(normalized))
+        elif not (_premium_within_cap(len(normalized)) if _video_voice == config.GOOGLE_TTS_PREMIUM_VOICE
+                  else google_tts_within_cap(len(normalized))):
+            raise TTSQuotaExceededError(f"Google TTS monthly cap reached for {_video_voice}")
         # Record the attempt before the request, same reasoning as Tavily's
         # guardrail: undercounting here would risk the cap never actually biting.
-        _record_google_tts_usage(len(normalized))
+        _record_google_tts_usage(len(normalized), _video_voice)
 
     attempts = 8
     for attempt in range(1, attempts + 1):
         try:
             if config.TTS_ENGINE == "google":
-                _synthesize_google(normalized, out_path)
+                try:
+                    _synthesize_google(normalized, out_path, _video_voice)
+                except _VoiceRejectedError as e:
+                    # A wrong/unavailable premium voice name: finish this video
+                    # (and the rest of the run) on the regular voice instead.
+                    print(f"[tts] Google rejected {_video_voice} ({e}) -- falling back to {config.GOOGLE_TTS_VOICE}")
+                    _video_voice = config.GOOGLE_TTS_VOICE
+                    _premium_rejected[0] = True
+                    if not google_tts_within_cap(len(normalized)):
+                        raise TTSQuotaExceededError("Google TTS monthly character cap reached") from e
+                    _record_google_tts_usage(len(normalized), _video_voice)
+                    _synthesize_google(normalized, out_path, _video_voice)
             else:
                 asyncio.run(_synthesize_async(normalized, voice or config.TTS_VOICE, out_path))
             return _probe_duration(out_path)

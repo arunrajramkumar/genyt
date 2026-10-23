@@ -79,6 +79,16 @@ def _no_company_insights_network_by_default(monkeypatch):
     monkeypatch.setattr(fundamentals, "fetch_peers", lambda data: [])
 
 
+@pytest.fixture(autouse=True)
+def _reset_tts_voice_state(monkeypatch):
+    """pipeline.tts remembers the Google voice chosen for the current video;
+    start every test with no choice made."""
+    from pipeline import tts
+    monkeypatch.setattr(tts, "_video_voice", None)
+    monkeypatch.setattr(tts, "_premium_rejected", [False])
+    monkeypatch.setattr(config, "GOOGLE_TTS_PREMIUM_USAGE_FILE", config.CACHE_DIR / "google_tts_chirp_usage.json")
+
+
 @pytest.fixture
 def no_api_keys(monkeypatch):
     """Explicitly blanks API keys for tests asserting the "not configured" error paths."""

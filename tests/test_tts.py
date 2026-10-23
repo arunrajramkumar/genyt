@@ -147,7 +147,7 @@ def test_synthesize_uses_google_when_engine_configured(tmp_path, monkeypatch):
     monkeypatch.setattr(tts, "_probe_duration", lambda path: 3.0)
     calls = []
 
-    def fake_synthesize_google(text, out_path):
+    def fake_synthesize_google(text, out_path, voice=None):
         calls.append(text)
         out_path.write_bytes(b"fake-mp3")
 
@@ -166,7 +166,7 @@ def test_synthesize_retries_google_on_request_exception_then_succeeds(tmp_path, 
     monkeypatch.setattr(tts, "_probe_duration", lambda path: 3.0)
     attempts = {"count": 0}
 
-    def flaky_synthesize_google(text, out_path):
+    def flaky_synthesize_google(text, out_path, voice=None):
         attempts["count"] += 1
         if attempts["count"] < 3:
             raise tts.requests.RequestException("rate limited")
@@ -189,7 +189,7 @@ def test_synthesize_raises_when_google_monthly_cap_would_be_exceeded(tmp_path, m
     monkeypatch.setattr(tts.config, "GOOGLE_TTS_SAFETY_BUFFER_CHARS", 0)
     monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
 
-    def fail_if_called(text, out_path):
+    def fail_if_called(text, out_path, voice=None):
         raise AssertionError("must not call the API once the cap would be exceeded")
 
     monkeypatch.setattr(tts, "_synthesize_google", fail_if_called)
@@ -240,9 +240,112 @@ def test_synthesize_records_google_usage_and_resets_on_new_month(tmp_path, monke
     monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 400000)
     monkeypatch.setattr(tts, "_current_month", lambda: "2026-10")
     monkeypatch.setattr(tts, "_probe_duration", lambda path: 1.0)
-    monkeypatch.setattr(tts, "_synthesize_google", lambda text, out_path: out_path.write_bytes(b"fake-mp3"))
+    monkeypatch.setattr(tts, "_synthesize_google", lambda text, out_path, voice=None: out_path.write_bytes(b"fake-mp3"))
 
     tts.synthesize("hello", tmp_path / "out.mp3")
 
     usage = json.loads(usage_file.read_text())
     assert usage == {"month": "2026-10", "characters": len("hello")}
+
+
+# ---- premium (Chirp 3 HD) voice first, Neural2 after its cap ----
+
+PREMIUM = "en-IN-Chirp3-HD-Charon"
+
+
+@pytest.fixture
+def google_premium(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts, "FFPROBE_BIN", "/usr/bin/ffprobe")
+    monkeypatch.setattr(tts.config, "TTS_ENGINE", "google")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_PREMIUM_VOICE", PREMIUM)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_VOICE", "en-IN-Neural2-B")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_USAGE_FILE", tmp_path / "neural.json")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_PREMIUM_USAGE_FILE", tmp_path / "chirp.json")
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_PREMIUM_MONTHLY_CHAR_CAP", 10_000)
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_SAFETY_BUFFER_CHARS", 100)
+    monkeypatch.setattr(tts, "_probe_duration", lambda path: 1.0)
+    voices = []
+
+    def fake(text, out_path, voice=None):
+        voices.append(voice)
+        out_path.write_bytes(b"mp3")
+    monkeypatch.setattr(tts, "_synthesize_google", fake)
+    return tmp_path, voices
+
+
+def _chars(path):
+    return json.loads(path.read_text())["characters"] if path.exists() else 0
+
+
+def test_premium_voice_used_and_counted_separately(google_premium):
+    tmp, voices = google_premium
+    tts.ensure_google_tts_budget(10)
+    tts.synthesize("hello there", tmp / "a.mp3")
+    assert voices == [PREMIUM]
+    assert _chars(tmp / "chirp.json") == 11 and _chars(tmp / "neural.json") == 0
+
+
+def test_falls_back_to_neural2_once_premium_cap_is_reached(google_premium):
+    tmp, voices = google_premium
+    (tmp / "chirp.json").write_text(json.dumps({"month": tts._current_month(), "characters": 9_895}))
+    tts.ensure_google_tts_budget(10)  # 9,895 + 10 > 10,000 - 100
+    tts.synthesize("hello there", tmp / "a.mp3")
+    assert voices == ["en-IN-Neural2-B"] and _chars(tmp / "neural.json") == 11
+
+
+def test_premium_counter_resets_each_month(google_premium):
+    tmp, voices = google_premium
+    (tmp / "chirp.json").write_text(json.dumps({"month": "2020-01", "characters": 9_999}))
+    tts.ensure_google_tts_budget(10)
+    tts.synthesize("hi", tmp / "a.mp3")
+    assert voices == [PREMIUM]
+
+
+def test_one_video_never_mixes_voices(google_premium):
+    tmp, voices = google_premium
+    tts.ensure_google_tts_budget(30)
+    for i in range(3):
+        tts.synthesize("scene text", tmp / f"{i}.mp3")
+    assert voices == [PREMIUM] * 3
+
+
+def test_rejected_premium_voice_falls_back_for_the_rest_of_the_run(google_premium, monkeypatch):
+    tmp, voices = google_premium
+
+    def fake(text, out_path, voice=None):
+        voices.append(voice)
+        if voice == PREMIUM:
+            raise tts._VoiceRejectedError("invalid voice name")
+        out_path.write_bytes(b"mp3")
+    monkeypatch.setattr(tts, "_synthesize_google", fake)
+    tts.ensure_google_tts_budget(10)
+    tts.synthesize("hello", tmp / "a.mp3")
+    tts.ensure_google_tts_budget(10)  # next video: premium not retried
+    tts.synthesize("hello", tmp / "b.mp3")
+    assert voices == [PREMIUM, "en-IN-Neural2-B", "en-IN-Neural2-B"]
+
+
+def test_neural2_cap_still_stops_the_run_after_premium_is_used_up(google_premium, monkeypatch):
+    tmp, voices = google_premium
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_MONTHLY_CHAR_CAP", 10_000)
+    for f in ("chirp.json", "neural.json"):
+        (tmp / f).write_text(json.dumps({"month": tts._current_month(), "characters": 9_950}))
+    with pytest.raises(tts.TTSQuotaExceededError):
+        tts.ensure_google_tts_budget(100)
+    assert voices == []
+
+
+def test_premium_off_when_unset(google_premium, monkeypatch):
+    tmp, voices = google_premium
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_PREMIUM_VOICE", "")
+    tts.ensure_google_tts_budget(10)
+    tts.synthesize("hi", tmp / "a.mp3")
+    assert voices == ["en-IN-Neural2-B"] and not (tmp / "chirp.json").exists()
+
+
+def test_premium_rejection_is_detected_from_http_400(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts.config, "GOOGLE_TTS_PREMIUM_VOICE", PREMIUM)
+    resp = mock.Mock(status_code=400, text='{"error": "voice not found"}')
+    monkeypatch.setattr(tts.requests, "post", lambda *a, **k: resp)
+    with pytest.raises(tts._VoiceRejectedError):
+        tts._synthesize_google("hi", tmp_path / "a.mp3", PREMIUM)

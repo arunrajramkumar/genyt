@@ -90,6 +90,18 @@ GOOGLE_TTS_MONTHLY_CHAR_CAP = int(os.environ.get("GOOGLE_TTS_MONTHLY_CHAR_CAP", 
 # flip-flopping between "just under" and "just over" across retried runs.
 GOOGLE_TTS_SAFETY_BUFFER_CHARS = int(os.environ.get("GOOGLE_TTS_SAFETY_BUFFER_CHARS", "5000"))
 
+# Optional more natural "premium" Google voice (Chirp 3 HD, e.g.
+# en-IN-Chirp3-HD-Charon) used first while its own monthly counter is under
+# its cap; after that -- or if Google rejects the voice -- narration falls back
+# to GOOGLE_TTS_VOICE (Neural2), which keeps its own counter/cap above. Chirp 3
+# HD and Neural2 each have a separate 1M-characters/month free tier; the cap
+# here is per channel (each channel has its own usage file), kept well under
+# half the free tier so both channels together never reach it. Off when unset.
+GOOGLE_TTS_PREMIUM_VOICE = os.environ.get("GOOGLE_TTS_PREMIUM_VOICE", "")
+GOOGLE_TTS_PREMIUM_USAGE_FILE = Path(os.environ.get(
+    "GOOGLE_TTS_PREMIUM_USAGE_FILE", str(ROOT / "google_tts_chirp_usage.json")))
+GOOGLE_TTS_PREMIUM_MONTHLY_CHAR_CAP = int(os.environ.get("GOOGLE_TTS_PREMIUM_MONTHLY_CHAR_CAP", "400000"))
+
 # Gemini 2.5 Flash Image ("Nano Banana") — Google AI Studio's free-tier
 # image-generation model, used as the primary AI thumbnail/hook-background
 # generator (see pipeline/ai_thumbnail.py) since it renders legible on-screen

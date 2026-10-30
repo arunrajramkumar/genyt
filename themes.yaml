@@ -1261,3 +1261,69 @@ themes:
   category_id: '25'
   _label: 'GSPL Transmission (NSE: GSPL)'
   trending_event: results
+- theme: 'Surani Steel Tubes (NSE: SURANI)
+
+
+    0-6 seconds - Hook
+
+    Write an exciting, curiosity-sparking opening question for stock-market viewers
+    that leads immediately with this headline number -- ROCE: 0.77 % -- in the first
+    6-8 words, before anything else; never open with the company name, a date, or
+    other background framing first. Mention Surani Steel Tubes (NSE: SURANI) only
+    after that number has hooked the viewer.
+
+
+    6-13 seconds - Did You Know
+
+    "Did you know? Surani Steel Tubes is still about 17% under its 52‑week high of
+    Rs 174—so why isn’t it climbing?"
+
+
+    13-24 seconds - Key Metrics
+
+    For Surani Steel Tubes (NSE: SURANI), pick ONLY the 2 or 3 most striking of these
+    valuation metrics -- do not list all of them. For each one you use, state the
+    number and then immediately translate it into one short plain-English clause a
+    retail investor would understand (e.g. a high ROCE -- meaning it generates a lot
+    of profit from the capital it employs), not just the bare ratio name and figure.
+    Use only the numbers below. Facts:
+
+    ROCE: 0.77 %
+
+    ROE: -0.43 %
+
+    Dividend Yield: 0.00 %
+
+
+    24-34 seconds - Revenue & Profit Growth
+
+    Explain what this quarterly growth trend means for Surani Steel Tubes. Facts:
+
+    Latest quarterly revenue: Rs 41.34 crore
+
+    Latest quarterly net profit: Rs -0.07 crore
+
+
+    34-45 seconds - Recap
+
+    Based ONLY on the valuation and growth facts already given above, raise one balanced,
+    neutral question a long-term investor should still answer for themselves about
+    Surani Steel Tubes (e.g. whether the current valuation already prices in the growth).
+    Do not give a buy/sell recommendation, and do not add any new numbers beyond what''s
+    already been given. Then briefly restate the key numbers about Surani Steel Tubes
+    so viewers remember them, and end with one short yes-or-no question inviting viewers
+    to answer in the comments (a question only, never a recommendation).'
+  style: confident, data-driven stock-analysis explainer, strictly neutral -- no investment
+    advice
+  duration_sec: 45
+  shorts: true
+  done: true
+  extra_tags:
+  - stock analysis
+  - Surani Steel Tubes
+  - SURANI
+  - NSE
+  - investing
+  category_id: '25'
+  _label: 'Surani Steel Tubes (NSE: SURANI)'
+  trending_event: results
